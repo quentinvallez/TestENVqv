@@ -234,7 +234,9 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
         </form>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-canvas px-5 py-4">
+      {/* Phones scroll messages and draft together; larger screens pin the draft at the bottom. */}
+      <div className="min-h-0 flex-1 overflow-y-auto md:flex md:flex-col md:overflow-hidden">
+      <div className="bg-canvas px-4 py-4 md:flex-1 md:overflow-y-auto md:px-5">
         <div className="mx-auto flex max-w-[720px] flex-col gap-3">
           {c.summary && (
             <div className="flex items-start gap-2 rounded-lg border border-ai-line bg-ai-soft px-3 py-2 text-ai">
@@ -294,7 +296,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-line bg-panel px-5 py-3">
+      <div className="border-t border-line bg-panel px-4 py-3 md:shrink-0 md:px-5">
         <div className="mx-auto max-w-[720px]">
           {draft && typeof draft.input.body === "string" ? (
             <DraftComposer
@@ -312,6 +314,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
             <ReplyBox send={replyAction.bind(null, c.id)} channelLabel={channelLabel} />
           )}
         </div>
+      </div>
       </div>
     </>
   );

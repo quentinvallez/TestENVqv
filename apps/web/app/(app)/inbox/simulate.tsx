@@ -24,7 +24,8 @@ export function SimulateMessage({
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         <FlaskConical className="size-3.5" />
-        Simulate incoming message
+        <span className="sm:hidden">Simulate</span>
+        <span className="hidden sm:inline">Simulate incoming message</span>
       </Button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 pt-[10vh]" onClick={() => setOpen(false)}>

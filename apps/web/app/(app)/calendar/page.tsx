@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { AGENCY_TIMEZONE, runTool, startOfZonedDay, tools } from "@viewing/core";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Navigation, Phone } from "lucide-react";
 import { Avatar, PageHeader } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
 import { fullName, formatTime } from "@/lib/format";
 
@@ -17,8 +18,9 @@ function localMinutes(date: Date) {
   return h! * 60 + m!;
 }
 
-export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
-  const week = Number((await searchParams).week ?? 0) || 0;
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ week?: string; day?: string }> }) {
+  const params = await searchParams;
+  const week = Number(params.week ?? 0) || 0;
   const now = new Date();
   // Monday of the selected week, in agency time.
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: AGENCY_TIMEZONE, weekday: "short" }).format(now);
@@ -28,6 +30,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const to = startOfZonedDay(now, 7 - weekdayIndex + week * 7);
   const appointments = await runTool(tools.listAppointments, await getToolContext(), { from, to });
   const today = startOfZonedDay(now).getTime();
+  // Phones show one day at a time: today in the current week, else Monday.
+  const todayIndex = days.findIndex((d) => d.getTime() === today);
+  const dayIndex = Math.min(6, Math.max(0, Number(params.day ?? (todayIndex >= 0 ? todayIndex : 0)) || 0));
+  const selectedDay = days[dayIndex]!;
+  const dayEnd = days[dayIndex + 1]?.getTime() ?? to.getTime();
+  const dayItems = appointments.filter((a) => a.startsAt.getTime() >= selectedDay.getTime() && a.startsAt.getTime() < dayEnd);
+  const longDay = new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "long", day: "numeric", month: "long" }).format(selectedDay);
 
   const dayLabel = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "short", day: "numeric" }).format(d);
   const rangeLabel = `${new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short" }).format(from)} – ${new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short", year: "numeric" }).format(days[6]!)}`;
@@ -38,7 +47,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         crumbs={[{ label: "Calendar" }]}
         actions={
           <div className="flex items-center gap-1">
-            <span className="mr-2 text-muted">{rangeLabel}</span>
+            <span className="mr-2 hidden text-muted md:inline">{rangeLabel}</span>
             <Link href={`/calendar?week=${week - 1}`} className="flex size-7 items-center justify-center rounded-md border border-line hover:bg-hover">
               <ChevronLeft className="size-4" />
             </Link>
@@ -51,7 +60,75 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           </div>
         }
       />
-      <div className="flex-1 overflow-auto">
+      <div className="flex min-h-0 flex-1 flex-col md:hidden">
+        <div className="grid shrink-0 grid-cols-7 gap-1 border-b border-line px-2 py-2">
+          {days.map((d, i) => {
+            const count = appointments.filter((a) => a.startsAt.getTime() >= d.getTime() && a.startsAt.getTime() < (days[i + 1]?.getTime() ?? to.getTime())).length;
+            return (
+              <Link
+                key={d.getTime()}
+                href={`/calendar?week=${week}&day=${i}`}
+                className={cn("flex flex-col items-center rounded-lg py-1.5", i === dayIndex ? "bg-primary text-primary-fg" : d.getTime() === today ? "text-fg" : "text-muted")}
+              >
+                <span className="text-[11px]">{new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "narrow" }).format(d)}</span>
+                <span className="font-medium tabular-nums">{new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric" }).format(d)}</span>
+                <span className={cn("mt-0.5 size-1 rounded-full", count ? (i === dayIndex ? "bg-primary-fg" : "bg-fg") : "bg-transparent")} />
+              </Link>
+            );
+          })}
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pt-4 pb-2 font-medium">
+            {longDay}
+            <span className="ml-2 font-normal text-muted">
+              {dayItems.length} {dayItems.length === 1 ? "viewing" : "viewings"}
+            </span>
+          </div>
+          {dayItems.length === 0 && <p className="px-4 py-8 text-center text-muted">Nothing planned.</p>}
+          <ul className="flex flex-col gap-2 px-4 pb-4">
+            {dayItems.map((apt) => {
+              const place = [apt.listingStreet, apt.listingHouseNumber, apt.listingCity].filter(Boolean).join(" ") || apt.location;
+              return (
+                <li key={apt.id} className="rounded-lg border border-line bg-panel p-3" style={{ borderLeft: `3px solid ${apt.agentColor ?? "#71717a"}` }}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold tabular-nums">
+                      {formatTime(apt.startsAt)}–{formatTime(apt.endsAt)}
+                    </span>
+                    <span className="ml-auto flex items-center gap-1.5 text-[12px] text-muted">
+                      <Avatar name={apt.agentName} color={apt.agentColor} size={18} />
+                      {apt.agentName.split(" ")[0]}
+                    </span>
+                  </div>
+                  <Link href={apt.contactId ? `/contacts/${apt.contactId}` : "#"} className="mt-1 block font-medium">
+                    {fullName(apt.contactFirstName, apt.contactLastName)}
+                  </Link>
+                  <div className="text-muted">{place}</div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {apt.contactPhone ? (
+                      <a href={`tel:${apt.contactPhone.replace(/\s/g, "")}`} className="flex h-10 items-center justify-center gap-1.5 rounded-md border border-line font-medium">
+                        <Phone className="size-4" />
+                        Call
+                      </a>
+                    ) : (
+                      <span className="flex h-10 items-center justify-center rounded-md border border-line text-faint">No phone</span>
+                    )}
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place ?? "")}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-10 items-center justify-center gap-1.5 rounded-md border border-line font-medium"
+                    >
+                      <Navigation className="size-4" />
+                      Route
+                    </a>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+      <div className="hidden flex-1 overflow-auto md:block">
         <div className="min-w-[760px]">
           <div className="sticky top-0 z-10 grid grid-cols-[56px_repeat(7,1fr)] border-b border-line bg-panel">
             <div />

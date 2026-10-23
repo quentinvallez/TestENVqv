@@ -50,25 +50,26 @@ export function DraftComposer({
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={Math.min(14, body.split("\n").length + 1)}
+        style={{ maxHeight: "40dvh" }}
         className="block w-full resize-y bg-transparent px-3 py-2.5 leading-5 outline-none"
       />
       {state?.error && <p className="px-3 pb-2 text-danger">{state.error}</p>}
       <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2">
-        <Button variant="primary" size="sm" disabled={pending}>
+        <Button variant="primary" disabled={pending} className="h-10 flex-1 sm:h-7 sm:flex-none sm:px-2.5 sm:text-[12px]">
           <Send className="size-3.5" />
           {pending ? "Sending…" : `Send via ${channelLabel}`}
         </Button>
         {aiEnabled && (
-          <Button type="button" size="sm" variant="ai" onClick={() => redraft()}>
+          <Button type="button" size="sm" variant="ai" onClick={() => redraft()} className="h-10 sm:h-7">
             <RefreshCw className="size-3.5" />
             Rewrite with AI
           </Button>
         )}
-        <Button type="button" size="sm" variant="ghost" onClick={() => dismiss()}>
+        <Button type="button" size="sm" variant="ghost" onClick={() => dismiss()} className="h-10 sm:h-7">
           <X className="size-3.5" />
           Dismiss
         </Button>
-        <span className="ml-auto text-[11px] text-faint">Saved to the conversation; delivery starts when {channelLabel} is connected.</span>
+        <span className="w-full text-[11px] text-faint sm:ml-auto sm:w-auto">Saved to the conversation; delivery starts when {channelLabel} is connected.</span>
       </div>
     </form>
   );
