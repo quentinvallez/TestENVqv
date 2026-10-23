@@ -1,9 +1,9 @@
-import type { Database } from "@viewing/db";
+import type { Database, Transaction } from "@viewing/db";
 import type { ActorType } from "@viewing/db/schema";
 import { z } from "zod";
 
 export type ToolContext = {
-  db: Database;
+  db: Database | Transaction;
   agencyId: string;
   actor: { type: ActorType; id: string | null };
 };

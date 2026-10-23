@@ -49,6 +49,10 @@ export const eventLabel: Record<string, string> = {
   "lead.stage_changed": "Lead moved",
   "appointment.booked": "Viewing booked",
   "appointment.cancelled": "Viewing cancelled",
+  "appointment.rescheduled": "Viewing moved",
+  "agent.availability_changed": "Working hours changed",
+  "proposal.approved": "Proposal approved",
+  "proposal.rejected": "Proposal dismissed",
   "listing.created": "Listing created",
   "message.received": "Message received",
 };

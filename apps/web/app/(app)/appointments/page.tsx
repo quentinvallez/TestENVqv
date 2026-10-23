@@ -5,6 +5,7 @@ import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { address, formatDay, formatTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta } from "@/lib/labels";
+import { cancelAppointmentAction } from "../actions";
 
 export default async function AppointmentsPage() {
   const now = new Date();
@@ -28,7 +29,8 @@ export default async function AppointmentsPage() {
                 <th className="px-3 font-normal">Contact</th>
                 <th className="px-3 font-normal">Listing</th>
                 <th className="px-3 font-normal">Status</th>
-                <th className="py-2 pr-5 pl-3 font-normal">Agent</th>
+                <th className="px-3 font-normal">Agent</th>
+                <th className="py-2 pr-5 pl-3 font-normal" />
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -53,11 +55,18 @@ export default async function AppointmentsPage() {
                       {appointmentStatusMeta[apt.status].label}
                     </span>
                   </td>
-                  <td className="py-2.5 pr-5 pl-3">
+                  <td className="px-3">
                     <span className="flex items-center gap-2 whitespace-nowrap">
                       <Avatar name={apt.agentName} color={apt.agentColor} />
                       {apt.agentName}
                     </span>
+                  </td>
+                  <td className="py-2.5 pr-5 pl-3 text-right">
+                    {apt.startsAt > now && (apt.status === "scheduled" || apt.status === "confirmed") && (
+                      <form action={cancelAppointmentAction.bind(null, apt.id)}>
+                        <button className="text-[12px] text-muted hover:text-danger">Cancel</button>
+                      </form>
+                    )}
                   </td>
                 </tr>
               ))}

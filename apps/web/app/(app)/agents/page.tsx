@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { Users } from "lucide-react";
 import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
@@ -26,13 +27,13 @@ export default async function AgentsPage() {
               {agents.map((a) => (
                 <tr key={a.id}>
                   <td className="py-2.5 pr-3 pl-5">
-                    <span className="flex items-center gap-2.5">
+                    <Link href={`/agents/${a.id}`} className="group flex items-center gap-2.5">
                       <Avatar name={a.name} color={a.color} size={26} />
                       <span>
-                        <span className="block font-medium">{a.name}</span>
+                        <span className="block font-medium group-hover:underline">{a.name}</span>
                         <span className="block text-[12px] text-muted">{a.email}</span>
                       </span>
-                    </span>
+                    </Link>
                   </td>
                   <td className="px-3 text-muted">{a.officeName ?? "—"}</td>
                   <td className="px-3 tabular-nums">{a.activeListings}</td>
@@ -46,7 +47,7 @@ export default async function AgentsPage() {
                     ) : (
                       <span className="flex items-center gap-1.5 text-muted">
                         <StatusDot color="var(--line-strong)" />
-                        Not connected · Phase 1
+                        Not connected
                       </span>
                     )}
                   </td>

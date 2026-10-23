@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { runTool, tools } from "@viewing/core";
 import { CalendarDays, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { CopyLinkButton } from "@/components/copy-link";
 import { ListingPhoto } from "@/components/listing-photo";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Pill, StatusDot, Tabs } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
@@ -19,10 +21,27 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
   const base = `/listings/${listing.id}`;
   const street = address(listing.street, listing.houseNumber, listing.city);
+  const bookable = listing.status === "active" || listing.status === "under_offer";
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Listings", href: "/listings" }, { label: street || listing.reference }]} />
+      <PageHeader
+        crumbs={[{ label: "Listings", href: "/listings" }, { label: street || listing.reference }]}
+        actions={
+          bookable && (
+            <>
+              <CopyLinkButton path={`/book/${listing.id}`} label="Copy booking link" />
+              <Link
+                href={`/book/${listing.id}`}
+                target="_blank"
+                className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"
+              >
+                Open booking page
+              </Link>
+            </>
+          )
+        }
+      />
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col gap-5 border-b border-line px-5 py-5 sm:flex-row">
           <ListingPhoto src={listing.photos[0]?.url} alt={listing.title ?? listing.reference} className="h-32 w-full shrink-0 rounded-lg border border-line sm:w-48" />

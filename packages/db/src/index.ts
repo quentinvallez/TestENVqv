@@ -18,3 +18,4 @@ if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
 
 export const db = drizzle(pool, { schema, casing: "snake_case" });
 export type Database = typeof db;
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];

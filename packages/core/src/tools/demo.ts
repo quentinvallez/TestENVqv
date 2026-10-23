@@ -173,9 +173,9 @@ export const seedDemoData = defineTool({
       await tx.insert(proposals).values({
         agencyId,
         agentName: "planner",
-        toolName: "appointments_reschedule",
-        input: { appointmentId: cancelling.id, offerSlots: 3 },
-        summary: "Louis Willems can't make his viewing at Grote Steenweg 112. Free the slot and send him 3 new times next week?",
+        toolName: "appointments_cancel",
+        input: { appointmentId: cancelling.id, reason: "Client asked to come next week instead", reopenLead: true },
+        summary: "Louis Willems can't make his viewing at Grote Steenweg 112. Cancel it and invite him to pick a new time?",
         reasoning: 'WhatsApp reply: "Sorry, ik kan toch niet komen. Kan het volgende week?" Intent classified as reschedule.',
         subjectType: "appointment",
         subjectId: cancelling.id,
