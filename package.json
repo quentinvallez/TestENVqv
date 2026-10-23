@@ -1,8 +1,16 @@
 {
   "name": "viewing",
   "private": true,
-  "type": "module",
-  "dependencies": {
-    "@neondatabase/serverless": "^0.10.4"
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "db:generate": "pnpm --filter @viewing/db generate",
+    "db:migrate": "pnpm --filter @viewing/db migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.10",
+    "typescript": "^6.0.3"
   }
 }
