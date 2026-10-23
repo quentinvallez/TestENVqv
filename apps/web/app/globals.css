@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Near-monochrome surfaces, thin borders instead of shadows,
+ * and one violet accent reserved for AI: anything an agent did or proposes.
+ */
+:root {
+  --canvas: #fafafa;
+  --panel: #ffffff;
+  --hover: #f4f4f5;
+  --line: #ebebeb;
+  --line-strong: #dcdcdc;
+  --fg: #171717;
+  --muted: #6b6b6b;
+  --faint: #a1a1a1;
+  --primary: #171717;
+  --primary-fg: #ffffff;
+  --ai: #7c3aed;
+  --ai-soft: #f5f0ff;
+  --ai-line: #e4d8fd;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #0a0a0a;
+    --panel: #111111;
+    --hover: #1a1a1a;
+    --line: #222222;
+    --line-strong: #2e2e2e;
+    --fg: #ededed;
+    --muted: #a1a1a1;
+    --faint: #6b6b6b;
+    --primary: #ededed;
+    --primary-fg: #0a0a0a;
+    --ai: #a78bfa;
+    --ai-soft: #1a1430;
+    --ai-line: #33285a;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: #0a0a0a;
+  --panel: #111111;
+  --hover: #1a1a1a;
+  --line: #222222;
+  --line-strong: #2e2e2e;
+  --fg: #ededed;
+  --muted: #a1a1a1;
+  --faint: #6b6b6b;
+  --primary: #ededed;
+  --primary-fg: #0a0a0a;
+  --ai: #a78bfa;
+  --ai-soft: #1a1430;
+  --ai-line: #33285a;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-ai-line: var(--ai-line);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--fg);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--ai-line);
+}

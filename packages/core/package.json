@@ -1,0 +1,21 @@
+{
+  "name": "@viewing/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./time": "./src/time.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@viewing/db": "workspace:*",
+    "inngest": "^4.26.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "typescript": "^6.0.3"
+  }
+}

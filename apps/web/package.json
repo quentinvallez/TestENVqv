@@ -1,0 +1,34 @@
+{
+  "name": "@viewing/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@viewing/core": "workspace:*",
+    "@viewing/db": "workspace:*",
+    "better-auth": "^1.7.12",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "geist": "^1.5.1",
+    "inngest": "^4.26.0",
+    "lucide-react": "^1.61.0",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3"
+  }
+}
