@@ -27,9 +27,16 @@ pnpm install
 cp .env.example apps/web/.env.local   # fill in DATABASE_URL and BETTER_AUTH_SECRET
 pnpm db:migrate
 pnpm dev                              # http://localhost:3000
+DATABASE_URL=postgres://… pnpm test   # unit tests + database tests
 ```
 
 Sign up, then click **Load demo data** on the dashboard.
+
+## Booking flow
+
+- `/book/<listingId>`: public booking page. It finds the listing's agent and shows their free slots (working hours − appointments − calendar events − travel buffer).
+- `/a/<token>`: the client's own page to change or cancel; this link goes into every confirmation and reminder.
+- Calendar sync (Google, Outlook) plugs into `packages/core/src/calendar`; see [docs/setup-calendars.md](docs/setup-calendars.md).
 
 ## Environments
 

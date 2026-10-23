@@ -16,4 +16,10 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 
 ## Checks before pushing
 
-`pnpm typecheck` and `pnpm --filter @viewing/web build`.
+`pnpm typecheck`, `DATABASE_URL=… pnpm test` (database tests are skipped without it) and `pnpm --filter @viewing/web build`.
+
+## Booking
+
+- Slots come from `computeSlots` (`packages/core/src/planner/availability.ts`), a pure function with unit tests. Keep it pure.
+- Booking and rescheduling take a per-agent advisory lock inside a transaction and re-check the slot; never insert appointments any other way.
+- Pages without login (`app/(public)`) resolve the agency through `@viewing/core/public` and then call tools with `publicContext(agencyId)`.

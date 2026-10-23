@@ -25,7 +25,6 @@ export const decideProposal = defineTool({
   mutates: true,
   input: z.object({ proposalId: z.string(), decision: z.enum(["approved", "rejected"]) }),
   run: async (ctx, input) => {
-    // Executing approved proposals arrives with the planner agent; for now the decision is recorded.
     const [updated] = await ctx.db
       .update(proposals)
       .set({ status: input.decision, decidedBy: ctx.actor.type === "user" ? ctx.actor.id : null, decidedAt: new Date() })
@@ -38,6 +37,21 @@ export const decideProposal = defineTool({
       subjectId: updated.id,
       data: { toolName: updated.toolName },
     });
-    return updated;
+    if (input.decision === "rejected") return updated;
+
+    // Approving runs the proposed tool with the proposed input, on behalf of the approver.
+    const { toolsByName } = await import("../registry");
+    const tool = toolsByName[updated.toolName];
+    let status: "executed" | "failed" = "executed";
+    let result: Record<string, unknown>;
+    try {
+      if (!tool) throw new Error(`Unknown tool ${updated.toolName}`);
+      result = { output: (await tool.run(ctx, tool.input.parse(updated.input))) ?? null };
+    } catch (error) {
+      status = "failed";
+      result = { error: error instanceof Error ? error.message : String(error) };
+    }
+    const [final] = await ctx.db.update(proposals).set({ status, result }).where(eq(proposals.id, updated.id)).returning();
+    return final!;
   },
 });

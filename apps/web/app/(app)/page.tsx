@@ -114,7 +114,7 @@ export default async function DashboardPage() {
                               ) : null}
                             </div>
                             <div className="text-[12px] text-faint">
-                              {event.actorType === "contact" ? "by contact" : event.actorType === "agent" ? "by planner agent" : event.actorType === "user" ? "by you" : "automatic"}
+                              {event.actorType === "contact" ? "by client" : event.actorType === "agent" ? "by planner agent" : event.actorType === "user" ? "by you" : "automatic"}
                               {" · "}
                               {formatRelative(event.createdAt)}
                             </div>

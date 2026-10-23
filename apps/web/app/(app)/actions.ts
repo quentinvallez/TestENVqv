@@ -18,3 +18,33 @@ export async function decideProposalAction(proposalId: string, decision: "approv
   await runTool(tools.decideProposal, await getToolContext(), { proposalId, decision });
   revalidatePath("/", "layout");
 }
+
+export type AvailabilityState = { saved?: boolean; error?: string } | undefined;
+
+export async function saveAvailabilityAction(agentId: string, _state: AvailabilityState, form: FormData): Promise<AvailabilityState> {
+  const toMinutes = (value: FormDataEntryValue | null) => {
+    const [h, m] = String(value ?? "").split(":").map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+  const workingHours = [0, 1, 2, 3, 4, 5, 6]
+    .filter((day) => form.get(`on-${day}`) === "on")
+    .map((weekday) => ({ weekday, startMinute: toMinutes(form.get(`start-${weekday}`)), endMinute: toMinutes(form.get(`end-${weekday}`)) }));
+  if (workingHours.some((w) => w.endMinute <= w.startMinute)) return { error: "End times must be after start times." };
+  try {
+    await runTool(tools.setAgentAvailability, await getToolContext(), {
+      agentId,
+      workingHours,
+      slotMinutes: Number(form.get("slotMinutes")),
+      bufferMinutes: Number(form.get("bufferMinutes")),
+    });
+  } catch {
+    return { error: "Could not save. Please check the times." };
+  }
+  revalidatePath("/agents", "layout");
+  return { saved: true };
+}
+
+export async function cancelAppointmentAction(appointmentId: string) {
+  await runTool(tools.cancelAppointment, await getToolContext(), { appointmentId, reason: "Cancelled by the agency" });
+  revalidatePath("/", "layout");
+}

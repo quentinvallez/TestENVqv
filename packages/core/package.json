@@ -4,10 +4,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./time": "./src/time.ts"
+    "./time": "./src/time.ts",
+    "./public": "./src/public.ts"
   },
   "scripts": {
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "vitest run"
   },
   "dependencies": {
     "@viewing/db": "workspace:*",
@@ -16,6 +18,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12"
   }
 }
