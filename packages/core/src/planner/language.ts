@@ -62,6 +62,11 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     fr: (v) => `Bonjour ${v.name},\n\nMerci de nous avoir prévenus. Nous avons annulé votre visite de ${v.address}. Si vous souhaitez tout de même venir plus tard, voici les moments disponibles :`,
     en: (v) => `Dear ${v.name},\n\nThanks for letting us know. We've cancelled your viewing at ${v.address}. If you'd still like to come later, these times are free:`,
   },
+  cancelled_by_client: {
+    nl: (v) => `Beste ${v.name},\n\nWe zagen dat u uw bezoek aan ${v.address} heeft geannuleerd, geen probleem. Wilt u toch nog komen kijken? Deze momenten zijn vrij:`,
+    fr: (v) => `Bonjour ${v.name},\n\nNous avons bien vu que vous avez annulé votre visite de ${v.address}, aucun souci. Souhaitez-vous venir à un autre moment ? Voici les moments disponibles :`,
+    en: (v) => `Dear ${v.name},\n\nWe saw you cancelled your viewing at ${v.address}, no problem at all. Would you like to come at another time? These times are free:`,
+  },
   question: {
     nl: (v) => `Beste ${v.name},\n\nBedankt voor uw vraag over ${v.address}. ${v.agentName} bekijkt dit en komt vandaag nog bij u terug.`,
     fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre question concernant ${v.address}. ${v.agentName} examine cela et revient vers vous aujourd'hui.`,

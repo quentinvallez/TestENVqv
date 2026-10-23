@@ -5,7 +5,7 @@ import { aiAvailable, AiUnavailableError, generateStructured } from "../ai/clien
 import { availableSlots } from "../tools/booking";
 import { AGENCY_TIMEZONE } from "../time";
 import { runTool, type ToolContext } from "../tool";
-import { composeMessage, linkLabels, signature, templates, toLang, type Lang } from "./language";
+import { composeMessage, formatSlot, linkLabels, signature, templates, toLang, type Lang } from "./language";
 
 const { conversations, messages, contacts, listings, agents, appointments, leads, organization, proposals } = schema;
 
@@ -67,7 +67,7 @@ const addressOf = (listing: Thread["listing"]) =>
 
 function transcript(thread: Thread) {
   return thread.conversation.messages
-    .map((m) => `${m.direction === "inbound" ? "CLIENT" : "AGENCY"} (${m.sentAt.toISOString()}): ${m.body}`)
+    .map((m) => `${m.authorType === "system" ? "SYSTEM NOTE" : m.direction === "inbound" ? "CLIENT" : "AGENCY"} (${m.sentAt.toISOString()}): ${m.body}`)
     .join("\n\n");
 }
 
@@ -446,4 +446,89 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
   };
   const proposal = await propose(ctx, thread, plan, lang, "Viewing completed; no follow-up sent yet.", useAi);
   return { proposalId: proposal.id, conversationId: conversation!.id };
+}
+
+/**
+ * When a client cancels or moves a viewing through their link, the agency hears
+ * about it in the inbox like any message. A cancellation also gets a draft
+ * offering new times.
+ */
+export async function noteAppointmentChange(
+  ctx: ToolContext,
+  appointmentId: string,
+  change: { kind: "cancelled" } | { kind: "rescheduled"; from: Date },
+  options: { useAi?: boolean } = {},
+) {
+  const appointment = await ctx.db.query.appointments.findFirst({
+    where: and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.id, appointmentId)),
+    with: { contact: true, listing: true },
+  });
+  if (!appointment?.contact) return null;
+  const contact = appointment.contact;
+  const channel = contact.whatsappOptIn && contact.phone ? "whatsapp" : "email";
+
+  let [conversation] = await ctx.db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, contact.id), eq(conversations.channel, channel)))
+    .orderBy(desc(conversations.lastMessageAt))
+    .limit(1);
+  conversation ??= (
+    await ctx.db
+      .insert(conversations)
+      .values({
+        agencyId: ctx.agencyId,
+        contactId: contact.id,
+        leadId: appointment.leadId,
+        listingId: appointment.listingId,
+        agentId: appointment.agentId,
+        channel,
+        provider: channel === "whatsapp" ? "whatsapp_business" : "outlook",
+      })
+      .returning()
+  )[0]!;
+
+  const place = addressOf(appointment.listing);
+  const when = (d: Date) => formatSlot(d, "en");
+  const body =
+    change.kind === "cancelled"
+      ? `Cancelled the viewing at ${place} (${when(appointment.startsAt)}) using their booking link.`
+      : `Moved the viewing at ${place} from ${when(change.from)} to ${when(appointment.startsAt)} using their booking link.`;
+  const soon = appointment.startsAt.getTime() - Date.now() < 48 * 3600 * 1000;
+  const priority: Priority = change.kind === "cancelled" ? (soon ? "high" : "normal") : "low";
+  const category: ConversationCategory = change.kind === "cancelled" ? "cancellation" : "reschedule";
+
+  const [message] = await ctx.db
+    .insert(messages)
+    .values({ agencyId: ctx.agencyId, conversationId: conversation.id, direction: "inbound", authorType: "system", body, intent: category })
+    .returning();
+  await ctx.db
+    .update(conversations)
+    .set({
+      category,
+      priority,
+      summary: change.kind === "cancelled" ? "Cancelled their viewing via the booking link." : "Moved their viewing via the booking link.",
+      status: change.kind === "cancelled" ? "open" : "waiting",
+      unread: true,
+      lastMessageAt: message!.sentAt,
+      listingId: appointment.listingId ?? conversation.listingId,
+    })
+    .where(eq(conversations.id, conversation.id));
+
+  if (change.kind === "rescheduled") return { conversationId: conversation.id, proposalId: null };
+
+  // The viewing is already cancelled; offer new times without pushing.
+  const thread = await loadThread(ctx, conversation.id);
+  const lang = toLang(contact.language);
+  const planned = await planFor(ctx, thread, { category: "cancellation", priority, language: lang, summary: body, sentiment: "neutral", by: "rules" });
+  // Nothing left to cancel: the client already did, and any other viewing they have stays.
+  const plan = planned && {
+    ...planned,
+    templateKey: "cancelled_by_client",
+    purpose: "The client cancelled the viewing themselves through their booking link. Acknowledge it kindly in one sentence, and without pushing offer the times below in case they still want to come.",
+    cancelAppointmentId: undefined,
+    summary: `Offer ${contact.firstName ?? "the client"} new times after the cancellation`,
+  };
+  const proposal = plan ? await propose(ctx, thread, plan, lang, body, options.useAi ?? true) : null;
+  return { conversationId: conversation.id, proposalId: proposal?.id ?? null };
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { aiAvailable, inboxFolders, runTool, tools, type InboxFolder } from "@viewing/core";
-import { ArrowLeft, Building2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, CalendarX2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
 import { ChannelMark, providerMeta, providerOf } from "@/components/channel";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -131,6 +131,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {c.subject && <div className="mt-0.5 truncate text-[12px]">{c.subject}</div>}
                   <p className="mt-0.5 line-clamp-2 text-[12px] text-muted">
                     {c.lastMessage?.direction === "outbound" && <span className="text-faint">You: </span>}
+                    {c.lastMessage?.authorType === "system" && <span className="text-faint">Booking link: </span>}
                     {c.lastMessage?.body}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -248,6 +249,17 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
 
           {c.messages.map((m) => {
             const outbound = m.direction === "outbound";
+            if (m.authorType === "system") {
+              return (
+                <div key={m.id} className="flex items-center justify-center gap-2 py-1 text-center text-[12px] text-muted">
+                  <CalendarX2 className="size-3.5 shrink-0" />
+                  <span>
+                    <span className="font-medium text-fg">{name}</span> {m.body.charAt(0).toLowerCase() + m.body.slice(1)}
+                  </span>
+                  <span className="text-faint tabular-nums">{formatTime(m.sentAt)}</span>
+                </div>
+              );
+            }
             if (c.channel === "email") {
               return (
                 <article key={m.id} className={cn("rounded-lg border border-line bg-panel", outbound && "ml-8")}>
