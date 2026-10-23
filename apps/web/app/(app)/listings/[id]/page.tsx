@@ -32,6 +32,13 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             <>
               <CopyLinkButton path={`/book/${listing.id}`} label="Copy booking link" />
               <Link
+                href={`/demo-site/${listing.agencyId}/${listing.id}`}
+                target="_blank"
+                className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover"
+              >
+                See on demo website
+              </Link>
+              <Link
                 href={`/book/${listing.id}`}
                 target="_blank"
                 className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"

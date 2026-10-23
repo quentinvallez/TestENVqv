@@ -23,3 +23,11 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Slots come from `computeSlots` (`packages/core/src/planner/availability.ts`), a pure function with unit tests. Keep it pure.
 - Booking and rescheduling take a per-agent advisory lock inside a transaction and re-check the slot; never insert appointments any other way.
 - Pages without login (`app/(public)`) resolve the agency through `@viewing/core/public` and then call tools with `publicContext(agencyId)`.
+
+## Planner agent and inbox
+
+- The planner lives in `packages/core/src/planner/agent.ts`: triage (category, priority, language, summary), then a draft reply saved as a `proposals` row with `toolName: "conversations_reply"`. Approving runs that tool, optionally with the human's edits.
+- Claude is called only through `packages/core/src/ai/client.ts` (`generateStructured`, model `claude-opus-5-5`, server-side refusal fallback). Every AI path has a template or rules fallback, so the product works without `ANTHROPIC_API_KEY`; the UI must say which one produced a draft.
+- Offered times always come from the booking engine and are appended by `composeMessage`; the AI never writes times or links itself.
+- Outbound messages are stored with `delivery: "simulated"` until Outlook/Gmail/WhatsApp are connected. Never present them as sent.
+- Client-facing text exists in NL, FR and EN (`planner/language.ts`, `apps/web/lib/widget-i18n.ts`).

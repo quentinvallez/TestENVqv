@@ -3,6 +3,7 @@ import { z } from "zod";
 import { syncAppointmentToCalendar, externalBusy, type CalendarEvent } from "../calendar";
 import { recordEvent } from "../events";
 import { computeSlots, type Interval } from "../planner/availability";
+import { qualify } from "../planner/qualification";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
 
@@ -134,6 +135,7 @@ export const bookViewing = defineTool({
     contact: contactInput,
     message: z.string().trim().max(2000).optional(),
     source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
+    qualification: z.record(z.string(), z.string()).optional().describe("Answers to the widget's qualifying questions: question id → option id"),
   }),
   run: async (ctx, input) => {
     const result = await ctx.db.transaction(async (tx) => {
@@ -174,11 +176,16 @@ export const bookViewing = defineTool({
             sql`${leads.stage} not in ('won','lost')`,
           ),
         );
+      const qualification = input.qualification ? qualify(listing.transaction, input.qualification) : undefined;
       const [lead] = openLead
-        ? await tx.update(leads).set({ stage: "booked", agentId: agent.id }).where(eq(leads.id, openLead.id)).returning()
+        ? await tx
+            .update(leads)
+            .set({ stage: "booked", agentId: agent.id, ...(qualification && { qualification }) })
+            .where(eq(leads.id, openLead.id))
+            .returning()
         : await tx
             .insert(leads)
-            .values({ agencyId: ctx.agencyId, contactId: contact!.id, listingId: listing.id, agentId: agent.id, source: input.source, stage: "booked", message: input.message })
+            .values({ agencyId: ctx.agencyId, contactId: contact!.id, listingId: listing.id, agentId: agent.id, source: input.source, stage: "booked", message: input.message, qualification })
             .returning();
 
       const [appointment] = await tx

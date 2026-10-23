@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { MessageCircle, UserRound } from "lucide-react";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
@@ -27,7 +28,11 @@ export default async function ContactsPage() {
             <tbody className="divide-y divide-line">
               {contacts.map((c) => (
                 <tr key={c.id}>
-                  <td className="py-2.5 pr-3 pl-5 font-medium">{fullName(c.firstName, c.lastName)}</td>
+                  <td className="py-2.5 pr-3 pl-5 font-medium">
+                    <Link href={`/contacts/${c.id}`} className="hover:underline">
+                      {fullName(c.firstName, c.lastName)}
+                    </Link>
+                  </td>
                   <td className="px-3 text-muted">{c.email}</td>
                   <td className="px-3 whitespace-nowrap text-muted">
                     <span className="flex items-center gap-1.5">
