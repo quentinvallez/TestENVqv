@@ -1,5 +1,6 @@
 import { eq, schema, sql } from "@viewing/db";
 import { z } from "zod";
+import { draftFollowUp, handleConversation } from "../planner/agent";
 import { zonedDay, zonedTime } from "../time";
 import { defineTool } from "../tool";
 
@@ -24,7 +25,7 @@ export const seedDemoData = defineTool({
       .where(eq(listings.agencyId, agencyId));
     if ((existing?.n ?? 0) > 0) return { seeded: false, reason: "Agency already has listings" };
 
-    return ctx.db.transaction(async (tx) => {
+    const seeded = await ctx.db.transaction(async (tx) => {
       const [antwerp, ghent] = await tx
         .insert(offices)
         .values([
@@ -160,27 +161,6 @@ export const seedDemoData = defineTool({
         )
         .returning();
 
-      // A WhatsApp reply the planner agent has interpreted as a cancellation.
-      const cancelling = appointmentRows[2]!;
-      const [conversation] = await tx
-        .insert(conversations)
-        .values({ agencyId, contactId: cancelling.contactId, leadId: cancelling.leadId, channel: "whatsapp", lastMessageAt: new Date() })
-        .returning();
-      await tx.insert(messages).values([
-        { agencyId, conversationId: conversation!.id, direction: "outbound", body: "Hallo Louis, uw bezoek aan Grote Steenweg 112 is bevestigd. Tot dan!", sentAt: new Date(Date.now() - 26 * 3600 * 1000) },
-        { agencyId, conversationId: conversation!.id, direction: "inbound", body: "Sorry, ik kan toch niet komen. Kan het volgende week?", intent: "reschedule" },
-      ]);
-      await tx.insert(proposals).values({
-        agencyId,
-        agentName: "planner",
-        toolName: "appointments_cancel",
-        input: { appointmentId: cancelling.id, reason: "Client asked to come next week instead", reopenLead: true },
-        summary: "Louis Willems can't make his viewing at Grote Steenweg 112. Cancel it and invite him to pick a new time?",
-        reasoning: 'WhatsApp reply: "Sorry, ik kan toch niet komen. Kan het volgende week?" Intent classified as reschedule.',
-        subjectType: "appointment",
-        subjectId: cancelling.id,
-      });
-
       await tx.insert(events).values([
         ...leadRows.map((lead) => ({
           agencyId,
@@ -200,17 +180,150 @@ export const seedDemoData = defineTool({
           data: {},
           createdAt: new Date(Date.now() - (i + 1) * 5 * 3600 * 1000),
         })),
-        {
-          agencyId,
-          type: "message.received",
-          subjectType: "conversation",
-          subjectId: conversation!.id,
-          actorType: "contact" as const,
-          data: { channel: "whatsapp", intent: "reschedule" },
-        },
       ]);
 
-      return { seeded: true, listings: listingRows.length, leads: leadRows.length, appointments: appointmentRows.length };
+      // What clients told the booking widget.
+      const answers = (pairs: [string, string][]) => ({ answers: pairs.map(([question, answer]) => ({ id: question, question, answer })) });
+      const qualified: [number, ReturnType<typeof answers> & { temperature: "hot" | "warm" | "cold" }][] = [
+        [0, { ...answers([["What are you looking for?", "To live in"], ["Do you have mortgage approval?", "Yes"], ["Do you need to sell your current home first?", "No"], ["When would you like to buy?", "Within 3 months"]]), temperature: "hot" }],
+        [7, { ...answers([["What are you looking for?", "To live in"], ["Do you have mortgage approval?", "In progress"], ["When would you like to buy?", "3 to 6 months"]]), temperature: "warm" }],
+        [6, { ...answers([["When would you like to move in?", "As soon as possible"], ["How many people?", "1"], ["Do you have pets?", "No"]]), temperature: "hot" }],
+        [9, { ...answers([["What are you looking for?", "To live in"], ["Do you have mortgage approval?", "Yes"], ["When would you like to buy?", "Within 3 months"]]), temperature: "hot" }],
+        [11, { ...answers([["What are you looking for?", "To live in"], ["Do you have mortgage approval?", "Not yet"], ["When would you like to buy?", "Later"]]), temperature: "cold" }],
+      ];
+      for (const [index, qualification] of qualified) {
+        await tx.update(leads).set({ qualification }).where(eq(leads.id, leadRows[index]!.id));
+      }
+
+      return { leadRows, appointmentRows, listingRows, contactRows };
     });
+
+    // Conversations as they would arrive in the agents' Outlook and Gmail mailboxes and the business WhatsApp.
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3600 * 1000);
+    const { leadRows, appointmentRows, contactRows } = seeded;
+    type Seed = {
+      lead: number;
+      channel: "email" | "whatsapp";
+      provider: "outlook" | "gmail" | "whatsapp_business";
+      subject?: string;
+      messages: { direction: "inbound" | "outbound"; body: string; hoursAgo: number }[];
+      status?: "open" | "waiting" | "done";
+      category?: "confirmation" | "viewing_request";
+    };
+    const threads: Seed[] = [
+      {
+        lead: 0,
+        channel: "email",
+        provider: "outlook",
+        subject: "Immoweb – Contactaanvraag voor ANT-1042, Cogels-Osylei 38",
+        messages: [{ direction: "inbound", hoursAgo: 2, body: "Goedemiddag,\n\nIs het appartement aan de Cogels-Osylei nog beschikbaar? We zouden het graag eens komen bekijken, bij voorkeur volgende week.\n\nGroeten,\nEmma Claes" }],
+      },
+      {
+        lead: 2,
+        channel: "email",
+        provider: "gmail",
+        subject: "Question – maison Coupure Links 55",
+        messages: [{ direction: "inbound", hoursAgo: 5, body: "Bonjour,\n\nLa maison Coupure Links dispose-t-elle d'un jardin ? Et quel est le score PEB exact ?\n\nMerci d'avance,\nCamille Lambert" }],
+      },
+      {
+        lead: 7,
+        channel: "whatsapp",
+        provider: "whatsapp_business",
+        messages: [
+          { direction: "outbound", hoursAgo: 26, body: "Hallo Louis, uw bezoek aan Grote Steenweg 112 is bevestigd. Tot dan! – Sofie, Immo" },
+          { direction: "inbound", hoursAgo: 1, body: "Sorry, ik kan toch niet komen. Kan het volgende week?" },
+        ],
+      },
+      {
+        lead: 9,
+        channel: "whatsapp",
+        provider: "whatsapp_business",
+        messages: [
+          { direction: "outbound", hoursAgo: 50, body: "Bonjour Victor, merci pour cette deuxième visite de la villa à Brasschaat !" },
+          { direction: "inbound", hoursAgo: 3, body: "Bonjour Thomas, nous avons adoré la villa. Nous aimerions faire une offre, comment procède-t-on ?" },
+        ],
+      },
+      {
+        lead: 11,
+        channel: "email",
+        provider: "gmail",
+        subject: "Re: Votre visite Hundelgemsesteenweg 480",
+        messages: [{ direction: "inbound", hoursAgo: 20, body: "Bonjour Maxime,\n\nMerci pour la visite. La maison est très belle mais un peu trop petite pour nous, malheureusement.\n\nJules Martin" }],
+      },
+      {
+        lead: 6,
+        channel: "whatsapp",
+        provider: "whatsapp_business",
+        status: "done",
+        category: "confirmation",
+        messages: [
+          { direction: "outbound", hoursAgo: 30, body: "Hi Olivia, your viewing of the studio on Kortrijksesteenweg is confirmed. See you then! – Lien" },
+          { direction: "inbound", hoursAgo: 29, body: "Great, thanks! See you then." },
+        ],
+      },
+      {
+        lead: 3,
+        channel: "email",
+        provider: "outlook",
+        status: "waiting",
+        category: "viewing_request",
+        subject: "Uw aanvraag: penthouse Londenstraat 7",
+        messages: [{ direction: "outbound", hoursAgo: 40, body: "Beste Noah,\n\nBedankt voor uw interesse in het penthouse aan de Londenstraat. U kunt hier zelf een moment kiezen voor een bezoek.\n\nMet vriendelijke groeten,\nThomas Janssens" }],
+      },
+    ];
+
+    const toHandle: string[] = [];
+    for (const thread of threads) {
+      const lead = leadRows[thread.lead]!;
+      const last = thread.messages[thread.messages.length - 1]!;
+      const [conversation] = await ctx.db
+        .insert(conversations)
+        .values({
+          agencyId,
+          contactId: lead.contactId,
+          leadId: lead.id,
+          listingId: lead.listingId,
+          agentId: lead.agentId,
+          channel: thread.channel,
+          provider: thread.provider,
+          subject: thread.subject,
+          status: thread.status ?? "open",
+          category: thread.category,
+          priority: thread.status === "done" ? "low" : "normal",
+          unread: last.direction === "inbound" && thread.status !== "done",
+          lastMessageAt: hoursAgo(last.hoursAgo),
+        })
+        .returning();
+      await ctx.db.insert(messages).values(
+        thread.messages.map((m) => ({
+          agencyId,
+          conversationId: conversation!.id,
+          direction: m.direction,
+          body: m.body,
+          subject: thread.subject,
+          authorType: m.direction === "inbound" ? ("contact" as const) : ("user" as const),
+          delivery: m.direction === "outbound" ? ("simulated" as const) : null,
+          sentAt: hoursAgo(m.hoursAgo),
+        })),
+      );
+      await ctx.db.insert(events).values({
+        agencyId,
+        type: "message.received",
+        subjectType: "conversation",
+        subjectId: conversation!.id,
+        actorType: "contact",
+        data: { channel: thread.channel },
+        createdAt: hoursAgo(last.hoursAgo),
+      });
+      if (last.direction === "inbound" && thread.status !== "done") toHandle.push(conversation!.id);
+    }
+
+    // The planner reads each new message and drafts a reply, as it does for real mail. Templates keep seeding fast.
+    const plannerCtx = { ...ctx, actor: { type: "agent" as const, id: "planner" } };
+    for (const conversationId of toHandle) await handleConversation(plannerCtx, conversationId, { useAi: false });
+    const viewedYesterday = appointmentRows.find((a) => a.status === "completed" && a.contactId === contactRows[8]!.id);
+    if (viewedYesterday) await draftFollowUp(plannerCtx, viewedYesterday.id, { useAi: false });
+
+    return { seeded: true, listings: seeded.listingRows.length, leads: leadRows.length, appointments: appointmentRows.length, conversations: threads.length };
   },
 });

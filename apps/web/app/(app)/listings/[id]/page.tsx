@@ -32,11 +32,19 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             <>
               <CopyLinkButton path={`/book/${listing.id}`} label="Copy booking link" />
               <Link
+                href={`/demo-site/${listing.agencyId}/${listing.id}`}
+                target="_blank"
+                className="hidden h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover sm:inline-flex"
+              >
+                See on demo website
+              </Link>
+              <Link
                 href={`/book/${listing.id}`}
                 target="_blank"
                 className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"
               >
-                Open booking page
+                <span className="sm:hidden">Booking page</span>
+                <span className="hidden sm:inline">Open booking page</span>
               </Link>
             </>
           )
@@ -65,7 +73,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             </div>
           </div>
           {listing.agent && (
-            <div className="shrink-0 sm:w-48">
+            <div className="shrink-0 border-t border-line pt-4 sm:w-48 sm:border-0 sm:pt-0">
               <div className="text-[12px] text-muted">Responsible agent</div>
               <div className="mt-1.5 flex items-center gap-2">
                 <Avatar name={listing.agent.name} color={listing.agent.color} size={24} />
