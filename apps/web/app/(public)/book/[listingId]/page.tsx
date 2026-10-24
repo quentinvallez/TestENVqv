@@ -40,7 +40,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
           agentName={widget.agent.name}
           slotMinutes={widget.slotMinutes}
           agencyName={agencyName}
-          action={bookFromWidgetAction.bind(null, listing.id, lang)}
+          action={bookFromWidgetAction.bind(null, listing.id, lang, widget.agent.id)}
         />
       </div>
     </BookingShell>

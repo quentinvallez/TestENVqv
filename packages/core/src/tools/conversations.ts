@@ -50,7 +50,7 @@ const inFolder: Record<InboxFolder, (c: InboxItem) => boolean> = {
   priority: (c) => c.status !== "done" && c.priority === "high",
   drafts: (c) => c.pendingDraft !== null,
   needs_reply: (c) => c.status === "open" && c.lastMessage?.direction === "inbound",
-  viewing_request: (c) => c.status !== "done" && c.category === "viewing_request",
+  viewing_request: (c) => c.status !== "done" && (c.category === "viewing_request" || c.category === "booking"),
   changes: (c) => c.status !== "done" && (c.category === "reschedule" || c.category === "cancellation"),
   question: (c) => c.status !== "done" && c.category === "question",
   offer: (c) => c.status !== "done" && c.category === "offer",

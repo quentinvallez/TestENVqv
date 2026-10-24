@@ -4,7 +4,7 @@ import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
 import { seedDemoData } from "./tools/demo";
 import { listLeads, moveLeadStage } from "./tools/leads";
-import { createListing, getListing, listListings } from "./tools/listings";
+import { assignListingAgent, createListing, getListing, listListings } from "./tools/listings";
 import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
 import { decideProposal, listProposals } from "./tools/proposals";
 import { availableSlots, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
@@ -15,6 +15,7 @@ export const tools = {
   listListings,
   getListing,
   createListing,
+  assignListingAgent,
   listLeads,
   moveLeadStage,
   listContacts,

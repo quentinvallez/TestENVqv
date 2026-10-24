@@ -87,7 +87,7 @@ export const getContact = defineTool({
         ...conversation.messages.map((m) => ({
           at: m.sentAt,
           kind: "message" as const,
-          title: m.authorType === "system" ? "Changed via booking link" : m.direction === "inbound" ? "Message from client" : "Reply sent",
+          title: m.authorType === "system" ? (m.intent === "booking" ? "Booked on the website" : "Changed via booking link") : m.direction === "inbound" ? "Message from client" : "Reply sent",
           detail: m.body,
           direction: m.direction,
           channel: conversation.provider ?? conversation.channel,

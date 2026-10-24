@@ -20,10 +20,13 @@ export function composeMessage(options: {
   lang: Lang;
   body: string;
   slots?: Date[];
+  /** Fixed facts such as the confirmed time and place, one per line. */
+  details?: { label: string; value: string }[];
   link?: { url: string; label: string };
   signature: string;
 }) {
   const parts = [options.body.trim()];
+  if (options.details?.length) parts.push(options.details.map((d) => `${d.label}: ${d.value}`).join("\n"));
   if (options.slots?.length) {
     parts.push(options.slots.map((slot) => `• ${formatSlot(slot, options.lang)}`).join("\n"));
   }
@@ -35,6 +38,12 @@ export function composeMessage(options: {
 export const linkLabels = {
   book: { nl: "Kies zelf een moment", fr: "Choisissez votre moment", en: "Pick a time yourself" },
   change: { nl: "Uw bezoek verplaatsen", fr: "Modifier votre visite", en: "Change your viewing" },
+} satisfies Record<string, Record<Lang, string>>;
+
+export const detailLabels = {
+  when: { nl: "Wanneer", fr: "Quand", en: "When" },
+  where: { nl: "Waar", fr: "Où", en: "Where" },
+  with: { nl: "Met", fr: "Avec", en: "With" },
 } satisfies Record<string, Record<Lang, string>>;
 
 export function signature(lang: Lang, agentName: string, agencyName: string, channel: string = "email") {
@@ -61,6 +70,16 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     nl: (v) => `Beste ${v.name},\n\nBedankt om ons te verwittigen. We hebben uw bezoek aan ${v.address} geannuleerd. Wilt u later toch nog komen kijken? Deze momenten zijn vrij:`,
     fr: (v) => `Bonjour ${v.name},\n\nMerci de nous avoir prévenus. Nous avons annulé votre visite de ${v.address}. Si vous souhaitez tout de même venir plus tard, voici les moments disponibles :`,
     en: (v) => `Dear ${v.name},\n\nThanks for letting us know. We've cancelled your viewing at ${v.address}. If you'd still like to come later, these times are free:`,
+  },
+  booking_confirmation: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw boeking! Uw bezoek aan ${v.address} is bevestigd. ${v.agentName} ontvangt u graag ter plaatse.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre réservation ! Votre visite de ${v.address} est confirmée. ${v.agentName} vous accueillera sur place.`,
+    en: (v) => `Dear ${v.name},\n\nThank you for booking! Your viewing at ${v.address} is confirmed. ${v.agentName} will meet you there.`,
+  },
+  reschedule_confirmation: {
+    nl: (v) => `Beste ${v.name},\n\nUw bezoek aan ${v.address} is verplaatst. Dit is het nieuwe moment:`,
+    fr: (v) => `Bonjour ${v.name},\n\nVotre visite de ${v.address} a bien été déplacée. Voici le nouveau moment :`,
+    en: (v) => `Dear ${v.name},\n\nYour viewing at ${v.address} has been moved. This is the new time:`,
   },
   cancelled_by_client: {
     nl: (v) => `Beste ${v.name},\n\nWe zagen dat u uw bezoek aan ${v.address} heeft geannuleerd, geen probleem. Wilt u toch nog komen kijken? Deze momenten zijn vrij:`,

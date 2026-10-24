@@ -54,6 +54,8 @@ export const eventLabel: Record<string, string> = {
   "proposal.approved": "Proposal approved",
   "proposal.rejected": "Proposal dismissed",
   "message.sent": "Reply sent",
+  "listing.agent_changed": "Responsible agent changed",
+  "appointment.booked_by_client": "Booked on the website",
   "planner.drafted": "Planner drafted a reply",
   "planner.follow_up_drafted": "Planner drafted a follow-up",
   "conversation.status_changed": "Conversation updated",
@@ -62,6 +64,7 @@ export const eventLabel: Record<string, string> = {
 };
 
 export const categoryMeta: Record<string, { label: string; color: string }> = {
+  booking: { label: "New booking", color: "#16a34a" },
   viewing_request: { label: "Viewing request", color: "#3b82f6" },
   reschedule: { label: "Reschedule", color: "#f59e0b" },
   cancellation: { label: "Cancellation", color: "#dc2626" },

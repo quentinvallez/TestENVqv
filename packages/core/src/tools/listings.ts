@@ -111,3 +111,32 @@ export const createListing = defineTool({
     return listing!;
   },
 });
+
+export const assignListingAgent = defineTool({
+  name: "listings_assign_agent",
+  description:
+    "Change the responsible agent of a listing. New bookings and open leads that have no viewing yet go to the new agent; viewings already planned stay in the calendar of the agent who has them.",
+  mutates: true,
+  input: z.object({ listingId: z.string(), agentId: z.string() }),
+  run: async (ctx, input) => {
+    const [listing] = await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, input.listingId)));
+    if (!listing) throw new Error("Listing not found");
+    const [agent] = await ctx.db.select().from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
+    if (!agent) throw new Error("Agent not found");
+    if (listing.agentId === agent.id) return { changed: false, leadsMoved: 0 };
+
+    await ctx.db.update(listings).set({ agentId: agent.id }).where(eq(listings.id, listing.id));
+    const moved = await ctx.db
+      .update(leads)
+      .set({ agentId: agent.id })
+      .where(and(eq(leads.agencyId, ctx.agencyId), eq(leads.listingId, listing.id), sql`${leads.stage} in ('new','invited')`))
+      .returning({ id: leads.id });
+    await recordEvent(ctx, {
+      type: "listing.agent_changed",
+      subjectType: "listing",
+      subjectId: listing.id,
+      data: { from: listing.agentId, to: agent.id, leadsMoved: moved.length },
+    });
+    return { changed: true, leadsMoved: moved.length };
+  },
+});

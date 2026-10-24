@@ -3,6 +3,8 @@ import { runTool, tools } from "@viewing/core";
 import { CalendarDays, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link";
+import { assignAgentAction } from "../../actions";
+import { AgentPicker } from "./agent-picker";
 import { ListingPhoto } from "@/components/listing-photo";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Pill, StatusDot, Tabs } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
@@ -16,7 +18,8 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const { id } = await params;
   const { tab: tabParam } = await searchParams;
   const tab: TabId = tabIds.includes(tabParam as TabId) ? (tabParam as TabId) : "viewings";
-  const listing = await runTool(tools.getListing, await getToolContext(), { id });
+  const ctx = await getToolContext();
+  const [listing, agents] = await Promise.all([runTool(tools.getListing, ctx, { id }), runTool(tools.listAgents, ctx, {})]);
   if (!listing) notFound();
 
   const base = `/listings/${listing.id}`;
@@ -72,18 +75,14 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
               {listing.epcLabel && <span>EPC {listing.epcLabel}</span>}
             </div>
           </div>
-          {listing.agent && (
-            <div className="shrink-0 border-t border-line pt-4 sm:w-48 sm:border-0 sm:pt-0">
-              <div className="text-[12px] text-muted">Responsible agent</div>
-              <div className="mt-1.5 flex items-center gap-2">
-                <Avatar name={listing.agent.name} color={listing.agent.color} size={24} />
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{listing.agent.name}</div>
-                  <div className="truncate text-[12px] text-muted">{listing.office?.name ?? listing.agent.email}</div>
-                </div>
-              </div>
-            </div>
-          )}
+          <div className="shrink-0 border-t border-line pt-4 sm:w-56 sm:border-0 sm:pt-0">
+            <div className="text-[12px] text-muted">Responsible agent</div>
+            <AgentPicker
+              agents={agents.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name, color: a.color, office: a.officeName }))}
+              currentId={listing.agentId}
+              action={assignAgentAction.bind(null, listing.id)}
+            />
+          </div>
         </div>
 
         <Tabs

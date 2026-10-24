@@ -62,3 +62,32 @@ export async function publicListings(agencyId: string) {
     .where(and(eq(schema.listings.agencyId, agencyId), inArray(schema.listings.status, ["active", "under_offer"])))
     .orderBy(schema.listings.createdAt);
 }
+
+/** The listing behind a reference shown on an agency's website, plus the names the widget looks for on the page. */
+export async function widgetContext(agencyId: string, reference: string) {
+  const [listing] = await db
+    .select({ id: schema.listings.id })
+    .from(schema.listings)
+    .where(
+      and(
+        eq(schema.listings.agencyId, agencyId),
+        eq(schema.listings.reference, reference),
+        inArray(schema.listings.status, ["active", "under_offer"]),
+      ),
+    );
+  const agents = await db
+    .select({ id: schema.agents.id, name: schema.agents.name })
+    .from(schema.agents)
+    .where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.active, true)));
+  return { listingId: listing?.id ?? null, agents };
+}
+
+/** Public details of the agent responsible for a listing, as an agency site shows them. */
+export async function listingAgent(listingId: string) {
+  const [row] = await db
+    .select({ id: schema.agents.id, name: schema.agents.name, email: schema.agents.email, phone: schema.agents.phone, color: schema.agents.color })
+    .from(schema.listings)
+    .innerJoin(schema.agents, eq(schema.agents.id, schema.listings.agentId))
+    .where(eq(schema.listings.id, listingId));
+  return row ?? null;
+}

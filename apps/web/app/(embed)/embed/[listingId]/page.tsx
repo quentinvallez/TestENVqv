@@ -12,10 +12,12 @@ export const metadata: Metadata = { title: "Book a viewing", robots: { index: fa
  * The widget as it runs inside an agency's website (in an iframe). The embed
  * script of Phase 2 loads exactly this page.
  */
-export default async function EmbedPage({ params, searchParams }: { params: Promise<{ listingId: string }>; searchParams: Promise<{ lang?: string }> }) {
+export default async function EmbedPage({ params, searchParams }: { params: Promise<{ listingId: string }>; searchParams: Promise<{ lang?: string; agent?: string }> }) {
   const { listingId } = await params;
-  const lang = toWidgetLang((await searchParams).lang);
-  const widget = await loadWidget(listingId, lang);
+  const query = await searchParams;
+  const lang = toWidgetLang(query.lang);
+  // The agent named on the agency's page, as detected by widget.js; ignored if not an active agent of this agency.
+  const widget = await loadWidget(listingId, lang, query.agent);
   if (!widget) notFound();
   const brand = widget.branding?.primaryColor;
 
@@ -28,7 +30,7 @@ export default async function EmbedPage({ params, searchParams }: { params: Prom
         agentName={widget.agent.name}
         slotMinutes={widget.slotMinutes}
         agencyName={widget.agencyName}
-        action={bookFromWidgetAction.bind(null, listingId, lang)}
+        action={bookFromWidgetAction.bind(null, listingId, lang, widget.agent.id)}
       />
     </div>
   );

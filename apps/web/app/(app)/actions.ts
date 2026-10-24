@@ -55,3 +55,16 @@ export async function draftFollowUpAction(appointmentId: string) {
   revalidatePath("/", "layout");
   redirect(`/inbox?c=${conversationId}`);
 }
+
+export type AssignState = { saved?: string; error?: string } | undefined;
+
+export async function assignAgentAction(listingId: string, _state: AssignState, form: FormData): Promise<AssignState> {
+  try {
+    const result = await runTool(tools.assignListingAgent, await getToolContext(), { listingId, agentId: String(form.get("agentId") ?? "") });
+    revalidatePath("/", "layout");
+    if (!result.changed) return { saved: "No change" };
+    return { saved: result.leadsMoved ? `Saved · ${result.leadsMoved} open ${result.leadsMoved === 1 ? "lead" : "leads"} moved` : "Saved" };
+  } catch {
+    return { error: "Could not change the agent" };
+  }
+}
