@@ -13,7 +13,24 @@ export default async function AgentsPage() {
         {agents.length === 0 ? (
           <EmptyState icon={<Users className="size-5" />} title="No agents" description="Add the agents whose calendars the planner should fill." />
         ) : (
-          <table className="w-full min-w-[760px] text-left">
+          <>
+          <ul className="divide-y divide-line md:hidden">
+            {agents.map((a) => (
+              <li key={a.id}>
+                <Link href={`/agents/${a.id}`} className="flex items-center gap-3 px-4 py-3 active:bg-hover">
+                  <Avatar name={a.name} color={a.color} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{a.name}</div>
+                    <div className="truncate text-[12px] text-muted">
+                      {a.officeName ?? "No office"} · {a.activeListings} listings · {a.upcomingAppointments} viewings
+                    </div>
+                  </div>
+                  <StatusDot color={a.calendarProvider ? "var(--success)" : "var(--line-strong)"} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <table className="hidden w-full min-w-[760px] text-left md:table">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
                 <th className="py-2 pr-3 pl-5 font-normal">Agent</th>
@@ -55,6 +72,7 @@ export default async function AgentsPage() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </>
