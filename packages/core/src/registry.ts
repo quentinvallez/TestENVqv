@@ -1,11 +1,11 @@
 import { listAgents } from "./tools/agents";
 import { dashboardSummary, recentActivity } from "./tools/activity";
 import { listAppointments } from "./tools/appointments";
-import { getContact, listContacts } from "./tools/contacts";
+import { listContacts } from "./tools/contacts";
 import { seedDemoData } from "./tools/demo";
 import { listLeads, moveLeadStage } from "./tools/leads";
 import { createListing, getListing, listListings } from "./tools/listings";
-import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
+import { listConversations } from "./tools/conversations";
 import { decideProposal, listProposals } from "./tools/proposals";
 import { availableSlots, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
 import type { Tool } from "./tool";
@@ -22,14 +22,7 @@ export const tools = {
   listAgents,
   listProposals,
   decideProposal,
-  listInbox,
-  getConversation,
-  replyToConversation,
-  updateConversation,
-  receiveMessage,
-  plannerRedraft,
-  plannerFollowUp,
-  getContact,
+  listConversations,
   recentActivity,
   dashboardSummary,
   availableSlots,

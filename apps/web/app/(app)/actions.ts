@@ -2,7 +2,6 @@
 
 import { leadStages, runTool, tools } from "@viewing/core";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getToolContext } from "@/lib/context";
 
 export async function seedDemoAction() {
@@ -48,10 +47,4 @@ export async function saveAvailabilityAction(agentId: string, _state: Availabili
 export async function cancelAppointmentAction(appointmentId: string) {
   await runTool(tools.cancelAppointment, await getToolContext(), { appointmentId, reason: "Cancelled by the agency" });
   revalidatePath("/", "layout");
-}
-
-export async function draftFollowUpAction(appointmentId: string) {
-  const { conversationId } = await runTool(tools.plannerFollowUp, await getToolContext(), { appointmentId });
-  revalidatePath("/", "layout");
-  redirect(`/inbox?c=${conversationId}`);
 }

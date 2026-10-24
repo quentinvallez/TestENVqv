@@ -53,27 +53,6 @@ export const eventLabel: Record<string, string> = {
   "agent.availability_changed": "Working hours changed",
   "proposal.approved": "Proposal approved",
   "proposal.rejected": "Proposal dismissed",
-  "message.sent": "Reply sent",
-  "planner.drafted": "Planner drafted a reply",
-  "planner.follow_up_drafted": "Planner drafted a follow-up",
-  "conversation.status_changed": "Conversation updated",
   "listing.created": "Listing created",
   "message.received": "Message received",
 };
-
-export const categoryMeta: Record<string, { label: string; color: string }> = {
-  viewing_request: { label: "Viewing request", color: "#3b82f6" },
-  reschedule: { label: "Reschedule", color: "#f59e0b" },
-  cancellation: { label: "Cancellation", color: "#dc2626" },
-  question: { label: "Question", color: "#06b6d4" },
-  offer: { label: "Offer", color: "#16a34a" },
-  feedback: { label: "Feedback", color: "#ec4899" },
-  confirmation: { label: "Confirmation", color: "#a1a1aa" },
-  other: { label: "Other", color: "#a1a1aa" },
-};
-
-export const temperatureMeta = {
-  hot: { label: "Hot lead", color: "#dc2626" },
-  warm: { label: "Warm lead", color: "#f59e0b" },
-  cold: { label: "Cold lead", color: "#60a5fa" },
-} as const;

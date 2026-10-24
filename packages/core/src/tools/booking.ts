@@ -3,7 +3,6 @@ import { z } from "zod";
 import { syncAppointmentToCalendar, externalBusy, type CalendarEvent } from "../calendar";
 import { recordEvent } from "../events";
 import { computeSlots, type Interval } from "../planner/availability";
-import { qualify } from "../planner/qualification";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
 
@@ -135,7 +134,6 @@ export const bookViewing = defineTool({
     contact: contactInput,
     message: z.string().trim().max(2000).optional(),
     source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
-    qualification: z.record(z.string(), z.string()).optional().describe("Answers to the widget's qualifying questions: question id → option id"),
   }),
   run: async (ctx, input) => {
     const result = await ctx.db.transaction(async (tx) => {
@@ -176,16 +174,11 @@ export const bookViewing = defineTool({
             sql`${leads.stage} not in ('won','lost')`,
           ),
         );
-      const qualification = input.qualification ? qualify(listing.transaction, input.qualification) : undefined;
       const [lead] = openLead
-        ? await tx
-            .update(leads)
-            .set({ stage: "booked", agentId: agent.id, ...(qualification && { qualification }) })
-            .where(eq(leads.id, openLead.id))
-            .returning()
+        ? await tx.update(leads).set({ stage: "booked", agentId: agent.id }).where(eq(leads.id, openLead.id)).returning()
         : await tx
             .insert(leads)
-            .values({ agencyId: ctx.agencyId, contactId: contact!.id, listingId: listing.id, agentId: agent.id, source: input.source, stage: "booked", message: input.message, qualification })
+            .values({ agencyId: ctx.agencyId, contactId: contact!.id, listingId: listing.id, agentId: agent.id, source: input.source, stage: "booked", message: input.message })
             .returning();
 
       const [appointment] = await tx
@@ -280,10 +273,6 @@ export const cancelAppointment = defineTool({
       data: { reason: input.reason ?? null, reopenLead: input.reopenLead },
     });
     await syncAppointmentToCalendar(ctx, appointment.agentId, appointment.externalEventId, null);
-    if (ctx.actor.type === "contact") {
-      const { noteAppointmentChange } = await import("../planner/agent");
-      await noteAppointmentChange(ctx, appointment.id, { kind: "cancelled" });
-    }
     return { changed: true };
   },
 });
@@ -294,7 +283,6 @@ export const rescheduleAppointment = defineTool({
   mutates: true,
   input: z.object({ appointmentId: z.string(), startsAt: z.coerce.date() }),
   run: async (ctx, input) => {
-    let previousStart = input.startsAt;
     const updated = await ctx.db.transaction(async (tx) => {
       const txCtx = { ...ctx, db: tx };
       const appointment = await getAppointment(txCtx, input.appointmentId);
@@ -306,7 +294,6 @@ export const rescheduleAppointment = defineTool({
       const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
       if (!slot) throw new SlotUnavailableError();
 
-      previousStart = appointment.startsAt;
       const [row] = await tx
         .update(appointments)
         .set({ startsAt: slot.start, endsAt: slot.end, status: "confirmed" })
@@ -331,10 +318,6 @@ export const rescheduleAppointment = defineTool({
     );
     if (externalEventId !== updated.externalEventId) {
       await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, updated.id));
-    }
-    if (ctx.actor.type === "contact") {
-      const { noteAppointmentChange } = await import("../planner/agent");
-      await noteAppointmentChange(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     }
     return { appointmentId: updated.id, startsAt: updated.startsAt, endsAt: updated.endsAt };
   },
