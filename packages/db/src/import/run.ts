@@ -19,7 +19,9 @@ if (!kind || !file) {
   console.error("Usage: run.ts <market|postcodes> <file> [--dry-run]");
   process.exit(1);
 }
-const text = readFileSync(file, "utf8");
+// Statbel's text files are Latin-1 (ISO-8859-1); bpost CSV exports are UTF-8.
+const raw = readFileSync(file);
+const text = new TextDecoder(raw.includes(0xc3) ? "utf-8" : "latin1").decode(raw);
 
 if (kind === "market") {
   const rows = parseStatbel(text);

@@ -41,15 +41,24 @@ export function regionOf(nisCode: string): Region | null {
   return null;
 }
 
+/**
+ * Municipality NIS codes only. Totals for Belgium and the regions (0xxxx),
+ * provinces (x0000, 20001, 20002) and districts (xx000) are skipped.
+ */
+export function isMunicipality(nisCode: string) {
+  return /^\d{5}$/.test(nisCode) && !nisCode.startsWith("0") && !nisCode.endsWith("000") && nisCode !== "20001" && nisCode !== "20002";
+}
+
 /** Statbel building categories → our types. "All houses" is skipped to avoid double counting. */
 export function statbelType(label: string): MarketPropertyType | null {
   const l = label.toLowerCase();
   // Order matters: "all houses (excluding apartments)" mentions apartments, "halfopen" contains "open".
   if (/^(alle|toutes|tous|all)\b/.test(l)) return null;
+  if (/bouwgrond|terrain|building land/.test(l)) return null;
   if (/appartement|flat|studio/.test(l)) return "apartment";
   if (/\b2 (of|ou|or) 3\b|gesloten|halfopen|mitoyenn/.test(l)) return "house";
-  if (/\b4\b.*(meer|plus|more)|\(open bebouwing|villa/.test(l)) return "villa";
-  if (/maison|huis|house/.test(l)) return "house";
+  if (/\b4\b.*(meer|plus|more)|\(open bebouwing|villa|landhuis|landhuizen|bungalow/.test(l)) return "villa";
+  if (/maison|huis|house|woonhuizen/.test(l)) return "house";
   return null;
 }
 
@@ -64,12 +73,15 @@ export function parseStatbel(text: string) {
   for (const row of rows) {
     const period = pick(row, ["CD_PERIOD", "PERIOD", "PERIODE"]);
     if (period && !/^(y|year|jaar|année|annee|0)$/i.test(period)) continue; // annual figures only
+    // Some files split each figure by living-area class; keep the total.
+    const surfaceClass = pick(row, ["CD_CLASS_SURFACE"]);
+    if (surfaceClass && !/tota/i.test(surfaceClass)) continue;
     const nisCode = pick(row, ["CD_REFNIS", "CD_MUNTY_REFNIS", "REFNIS", "NIS"]);
     const type = statbelType(pick(row, ["CD_TYPE_NL", "TX_TYPE_NL", "CD_TYPE_FR", "TX_TYPE_FR", "CD_TYPE", "TYPE"]) ?? "");
     const year = toInt(pick(row, ["CD_YEAR", "YEAR", "JAAR"]));
     const median = toInt(pick(row, ["MS_P_50", "MS_P50", "MS_P_50_MEDIAN", "MEDIAN", "MEDIAAN"]));
-    const transactions = toInt(pick(row, ["MS_TRANSACTIONS", "MS_TRANS", "TRANSACTIONS"])) ?? 0;
-    if (!nisCode || !type || !year || !median) continue;
+    const transactions = toInt(pick(row, ["MS_TRANSACTIONS", "MS_TOTAL_TRANSACTIONS", "MS_TRANS", "TRANSACTIONS"])) ?? 0;
+    if (!nisCode || !isMunicipality(nisCode) || !type || !year || !median) continue;
     out.push({
       nisCode,
       municipality: pick(row, ["CD_REFNIS_NL", "TX_REFNIS_NL", "TX_MUNTY_DESCR_NL", "CD_REFNIS_FR", "TX_REFNIS_FR", "MUNICIPALITY"]) ?? nisCode,

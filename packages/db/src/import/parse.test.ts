@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateNames, nameKey, parseBpost, parseStatbel, regionOf, statbelType } from "./parse";
+import { candidateNames, isMunicipality, nameKey, parseBpost, parseStatbel, regionOf, statbelType } from "./parse";
 
 // Small hand-written samples in the shape of the public files; not real figures.
 describe("parseStatbel", () => {
@@ -53,5 +53,29 @@ describe("candidateNames", () => {
   it("tries the locality, the main municipality and the parts of a merged one", () => {
     expect(candidateNames("Bottelare", "MERELBEKE-MELLE")).toEqual(["bottelare", "merelbekemelle", "merelbeke", "melle"]);
     expect(candidateNames("Liège", "LIÈGE")).toEqual(["liege"]);
+  });
+});
+
+describe("Statbel's older file layout", () => {
+  // Header and labels as in Statbel's national file (1973–2017); figures replaced.
+  it("reads MS_TOTAL_TRANSACTIONS, keeps the total surface class and skips building land", () => {
+    const text = [
+      "CD_YEAR|CD_TYPE_NL|CD_TYPE_FR|CD_REFNIS|CD_REFNIS_NL|CD_REFNIS_FR|CD_PERIOD|CD_CLASS_SURFACE|MS_TOTAL_TRANSACTIONS|MS_TOTAL_PRICE|MS_TOTAL_SURFACE|MS_MEAN_PRICE|MS_P10|MS_P25|MS_P50|MS_P75|MS_P90",
+      "2017|gewone woonhuizen|maisons d'habitation|44021|Gent|Gand|Y|totaal / total|10|0|0|0|0|1|2|3|0",
+      "2017|gewone woonhuizen|maisons d'habitation|44021|Gent|Gand|Y|< 100 m²|4|0|0|0|0|1|2|3|0",
+      "2017|villa's bungalows, landhuizen|villas, bungalows, maisons de campagne|44021|Gent|Gand|Y|totaal / total|5|0|0|0|0|4|5|6|0",
+      "2017|bouwgronden|terrains à bâtir|44021|Gent|Gand|Y|totaal / total|5|0|0|0|0|4|5|6|0",
+    ].join("\n");
+    expect(parseStatbel(text).map((r) => [r.propertyType, r.transactions, r.median, r.municipalityFr])).toEqual([
+      ["house", 10, 2, "Gand"],
+      ["villa", 5, 5, "Gand"],
+    ]);
+  });
+});
+
+describe("isMunicipality", () => {
+  it("keeps municipalities and skips country, region, province and district totals", () => {
+    expect(["11002", "21004", "44021", "62063", "92094"].every(isMunicipality)).toBe(true);
+    expect(["01000", "02000", "04000", "10000", "20001", "21000", "44000"].some(isMunicipality)).toBe(false);
   });
 });
