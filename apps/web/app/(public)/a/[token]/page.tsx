@@ -74,7 +74,7 @@ export default async function ManagePage({
 
         {query.booked && !cancelled && (
           <p className="mt-5 rounded-lg bg-hover px-3 py-2.5 text-muted">
-            Keep this page: you can use it to change or cancel your viewing.
+            Keep this page: you can use it to change or cancel your viewing. A confirmation is on its way.
           </p>
         )}
 

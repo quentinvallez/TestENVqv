@@ -23,21 +23,8 @@ export const decideProposal = defineTool({
   name: "proposals_decide",
   description: "Approve or reject a pending proposal from an AI agent.",
   mutates: true,
-  input: z.object({
-    proposalId: z.string(),
-    decision: z.enum(["approved", "rejected"]),
-    edits: z.record(z.string(), z.unknown()).optional().describe("Fields of the proposed input the human changed before approving, e.g. an edited message body"),
-  }),
+  input: z.object({ proposalId: z.string(), decision: z.enum(["approved", "rejected"]) }),
   run: async (ctx, input) => {
-    if (input.edits && input.decision === "approved") {
-      const [current] = await ctx.db
-        .select({ input: proposals.input })
-        .from(proposals)
-        .where(and(eq(proposals.agencyId, ctx.agencyId), eq(proposals.id, input.proposalId), eq(proposals.status, "pending")));
-      if (current) {
-        await ctx.db.update(proposals).set({ input: { ...current.input, ...input.edits } }).where(eq(proposals.id, input.proposalId));
-      }
-    }
     const [updated] = await ctx.db
       .update(proposals)
       .set({ status: input.decision, decidedBy: ctx.actor.type === "user" ? ctx.actor.id : null, decidedAt: new Date() })

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { runTool, startOfZonedDay, tools } from "@viewing/core";
 import { CalendarCheck } from "lucide-react";
 import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
-import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
 import { address, formatDay, formatTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta } from "@/lib/labels";
@@ -23,27 +22,7 @@ export default async function AppointmentsPage() {
         {appointments.length === 0 ? (
           <EmptyState icon={<CalendarCheck className="size-5" />} title="No appointments" description="Viewings booked by clients or agents appear here." />
         ) : (
-          <>
-          <ul className="divide-y divide-line md:hidden">
-            {appointments.map((apt) => (
-              <li key={apt.id} className={cn("flex items-center gap-3 px-4 py-3", apt.startsAt < now && "text-muted")}>
-                <div className="w-14 shrink-0 tabular-nums">
-                  <div className="font-medium">{formatTime(apt.startsAt)}</div>
-                  <div className="text-[11px] text-muted">{formatDay(apt.startsAt)}</div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{fullName(apt.contactFirstName, apt.contactLastName)}</div>
-                  <div className="truncate text-[12px] text-muted">{address(apt.listingStreet, apt.listingHouseNumber, apt.listingCity) || apt.location}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
-                    <StatusDot color={appointmentStatusMeta[apt.status].color} className="size-1.5" />
-                    {appointmentStatusMeta[apt.status].label}
-                  </div>
-                </div>
-                <Avatar name={apt.agentName} color={apt.agentColor} />
-              </li>
-            ))}
-          </ul>
-          <table className="hidden w-full min-w-[760px] text-left md:table">
+          <table className="w-full min-w-[760px] text-left">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
                 <th className="py-2 pr-3 pl-5 font-normal">When</th>
@@ -93,7 +72,6 @@ export default async function AppointmentsPage() {
               ))}
             </tbody>
           </table>
-          </>
         )}
       </div>
     </>

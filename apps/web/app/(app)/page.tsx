@@ -50,12 +50,12 @@ export default async function DashboardPage() {
               </div>
 
               {proposals.length > 0 && (
-                <Link href="/inbox?f=drafts" className="mt-3 block">
+                <Link href="/inbox" className="mt-3 block">
                   <div className="flex items-center gap-3 rounded-lg border border-ai-line bg-ai-soft px-4 py-3 text-ai transition hover:brightness-[0.98]">
                     <Sparkles className="size-4 shrink-0" />
                     <span className="flex-1">
                       <span className="font-medium">
-                        The planner drafted {proposals.length} {proposals.length === 1 ? "reply" : "replies"} for you to check.
+                        The planner needs your decision on {proposals.length} {proposals.length === 1 ? "item" : "items"}.
                       </span>{" "}
                       <span className="opacity-80">{proposals[0]!.summary}</span>
                     </span>

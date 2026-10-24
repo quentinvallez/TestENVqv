@@ -73,3 +73,29 @@ export function Sidebar({ agencyName, userName, inboxCount }: { agencyName: stri
     </aside>
   );
 }
+
+/** Compact navigation for phones: one scrollable row of the same links. */
+export function MobileNav() {
+  const pathname = usePathname();
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  return (
+    <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-2 py-2 md:hidden">
+      {navSections
+        .flatMap((s) => s.items)
+        .filter((item) => !item.soon)
+        .map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5",
+              isActive(item.href) ? "bg-hover font-medium text-fg" : "text-muted",
+            )}
+          >
+            <item.icon className="size-4" strokeWidth={1.75} />
+            {item.label}
+          </Link>
+        ))}
+    </nav>
+  );
+}

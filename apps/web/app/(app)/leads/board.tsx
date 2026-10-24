@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { Building2, Clock, Mail, Phone } from "lucide-react";
 import { Avatar, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -35,13 +35,6 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
     state.map((lead) => (lead.id === id ? { ...lead, stage } : lead)),
   );
 
-  const [mobileStage, setMobileStage] = useState<Stage>("new");
-  const moveTo = (id: string, stage: Stage) =>
-    startTransition(async () => {
-      move({ id, stage });
-      await moveLeadStageAction(id, stage);
-    });
-
   const onDrop = (stage: Stage, e: React.DragEvent) => {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/lead-id");
@@ -54,63 +47,7 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
   };
 
   return (
-    <>
-    {/* Phones: one stage at a time; touch screens can't drag between columns. */}
-    <div className="flex h-full flex-col md:hidden">
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-line px-2 py-2">
-        {columns.map((stage) => (
-          <button
-            key={stage}
-            onClick={() => setMobileStage(stage)}
-            className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5", mobileStage === stage ? "bg-primary text-primary-fg" : "text-muted")}
-          >
-            <StatusDot color={leadStageMeta[stage].color} />
-            {leadStageMeta[stage].label}
-            <span className="tabular-nums opacity-70">{optimistic.filter((l) => l.stage === stage).length}</span>
-          </button>
-        ))}
-      </div>
-      <ul className="flex-1 divide-y divide-line overflow-y-auto">
-        {optimistic.filter((l) => l.stage === mobileStage).length === 0 && <li className="px-4 py-10 text-center text-muted">No leads in this stage.</li>}
-        {optimistic
-          .filter((l) => l.stage === mobileStage)
-          .map((lead) => (
-            <li key={lead.id} className="px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex-1 truncate font-medium">{fullName(lead.firstName, lead.lastName)}</span>
-                <Pill>{sourceLabel[lead.source] ?? lead.source}</Pill>
-              </div>
-              {lead.listingId && (
-                <div className="mt-0.5 truncate text-[12px] text-muted">
-                  {lead.listingReference} · {[lead.listingStreet, lead.listingHouseNumber].filter(Boolean).join(" ")}
-                </div>
-              )}
-              <div className="mt-2 flex items-center gap-2">
-                {lead.phone && (
-                  <a href={`tel:${lead.phone.replace(/\s/g, "")}`} className="flex h-9 items-center gap-1.5 rounded-md border border-line px-3">
-                    <Phone className="size-3.5" />
-                    Call
-                  </a>
-                )}
-                <select
-                  value={lead.stage}
-                  onChange={(e) => moveTo(lead.id, e.target.value as Stage)}
-                  className="h-9 flex-1 rounded-md border border-line bg-panel px-2"
-                  aria-label="Move to stage"
-                >
-                  {columns.map((stage) => (
-                    <option key={stage} value={stage}>
-                      {stage === lead.stage ? leadStageMeta[stage].label : `Move to ${leadStageMeta[stage].label}`}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[11px] text-faint">{formatRelative(lead.createdAt)}</span>
-              </div>
-            </li>
-          ))}
-      </ul>
-    </div>
-    <div className="hidden h-full gap-3 overflow-x-auto bg-canvas p-3 md:flex">
+    <div className="flex h-full gap-3 overflow-x-auto bg-canvas p-3">
       {columns.map((stage) => {
         const items = optimistic.filter((l) => l.stage === stage);
         return (
@@ -173,6 +110,5 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
         );
       })}
     </div>
-    </>
   );
 }
