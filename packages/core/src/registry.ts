@@ -7,7 +7,9 @@ import { listLeads, moveLeadStage } from "./tools/leads";
 import { assignListingAgent, createListing, getListing, listListings } from "./tools/listings";
 import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
 import { decideProposal, listProposals } from "./tools/proposals";
-import { availableSlots, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
+import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
+import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
+import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
@@ -39,6 +41,16 @@ export const tools = {
   rescheduleAppointment,
   getAgentAvailability,
   setAgentAvailability,
+  requestValuation,
+  verifyValuation,
+  getValuation,
+  listValuations,
+  bookValuationVisit,
+  similarListings,
+  recommendForContact,
+  suggestListings,
+  findMatchingClients,
+  suggestListingToMatches,
   seedDemoData,
 };
 

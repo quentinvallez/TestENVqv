@@ -19,6 +19,10 @@
       "cache": false,
       "persistent": true
     },
-    "test": {}
+    "test": {
+      "passThroughEnv": [
+        "DATABASE_URL"
+      ]
+    }
   }
 }

@@ -7,8 +7,8 @@ import { AiPill, Avatar, Button, PageHeader, Panel, Pill, StatusDot } from "@/co
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
 import { address, formatDateTime, fullName } from "@/lib/format";
-import { appointmentStatusMeta, categoryMeta, leadStageMeta, sourceLabel, temperatureMeta } from "@/lib/labels";
-import { draftFollowUpAction } from "../../actions";
+import { appointmentStatusMeta, categoryMeta, leadStageMeta, reasonLabel, sourceLabel, temperatureMeta } from "@/lib/labels";
+import { draftFollowUpAction, suggestListingsAction } from "../../actions";
 
 function EntryIcon({ entry }: { entry: TimelineEntry }) {
   if (entry.kind === "message" || entry.kind === "draft") {
@@ -24,7 +24,8 @@ function EntryIcon({ entry }: { entry: TimelineEntry }) {
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await runTool(tools.getContact, await getToolContext(), { contactId: id });
+  const ctx = await getToolContext();
+  const [data, recommendations] = await Promise.all([runTool(tools.getContact, ctx, { contactId: id }), runTool(tools.recommendForContact, ctx, { contactId: id })]);
   if (!data) notFound();
   const { contact, leads, appointments, timeline, qualification } = data;
   const name = fullName(contact.firstName, contact.lastName);
@@ -160,7 +161,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                         {lead.listing.reference} · {address(lead.listing.street, lead.listing.houseNumber, lead.listing.city)}
                       </Link>
                     ) : (
-                      <span>General enquiry</span>
+                      <span>{lead.intent === "sell" ? "Selling their home (valuation)" : "General enquiry"}</span>
                     )}
                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
                       <StatusDot color={leadStageMeta[lead.stage].color} className="size-1.5" />
@@ -171,6 +172,30 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                 ))}
               </ul>
             </Panel>
+
+            {recommendations.length > 0 && (
+              <Panel className="border-ai-line p-4">
+                <div className="mb-2 flex items-center gap-2 font-medium">
+                  <Sparkles className="size-4 text-ai" />
+                  May also like
+                </div>
+                <ul className="flex flex-col gap-2.5">
+                  {recommendations.map((r) => (
+                    <li key={r.listing.id}>
+                      <Link href={`/listings/${r.listing.id}`} className="hover:underline">
+                        {r.listing.reference} · {address(r.listing.street, r.listing.houseNumber, r.listing.city)}
+                      </Link>
+                      <div className="text-[12px] text-muted">{r.reasons.map((x) => reasonLabel[x]).join(" · ")}</div>
+                    </li>
+                  ))}
+                </ul>
+                <form action={suggestListingsAction.bind(null, contact.id)} className="mt-3">
+                  <Button size="sm" variant="ai" className="w-full">
+                    Draft a suggestion message
+                  </Button>
+                </form>
+              </Panel>
+            )}
 
             <Panel className="p-4 text-muted">
               <div className="mb-1 flex items-center gap-2 font-medium text-fg">

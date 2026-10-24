@@ -1,23 +1,24 @@
-import Link from "next/link";
 
 const accent = "#0e4d64";
 
-export function DemoSiteHeader({ agencyId, agencyName }: { agencyId: string; agencyName: string }) {
+export function DemoSiteHeader({ agencyId, agencyName, active = "buy" }: { agencyId: string; agencyName: string; active?: "buy" | "sell" }) {
   return (
     <header className="border-b border-black/10">
       <div className="mx-auto flex h-16 max-w-[1120px] items-center gap-8 px-4">
-        <Link href={`/demo-site/${agencyId}`} className="flex items-center gap-2">
+        <a href={`/demo-site/${agencyId}`} className="flex items-center gap-2">
           <span className="flex size-8 items-center justify-center rounded text-[15px] font-bold text-white" style={{ background: accent }}>
             {agencyName.slice(0, 1).toUpperCase()}
           </span>
           <span className="font-serif text-[19px] font-semibold tracking-tight">{agencyName}</span>
-        </Link>
+        </a>
         <nav className="hidden flex-1 gap-6 text-[14px] text-black/70 md:flex">
-          <Link href={`/demo-site/${agencyId}`} className="font-medium text-black">
+          <a href={`/demo-site/${agencyId}`} className={active === "buy" ? "font-medium text-black" : "hover:text-black"}>
             Kopen
-          </Link>
+          </a>
           <span>Huren</span>
-          <span>Verkopen</span>
+          <a href={`/demo-site/${agencyId}/verkopen`} className={active === "sell" ? "font-medium text-black" : "hover:text-black"}>
+            Verkopen
+          </a>
           <span>Over ons</span>
           <span>Contact</span>
         </nav>

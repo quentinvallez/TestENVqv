@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { agents, appointments, contacts, conversations, leads, listings, messages, offices, proposals } from "./domain";
+import { agents, appointments, contacts, conversations, leads, listings, messages, offices, proposals, valuations } from "./domain";
 
 export const officeRelations = relations(offices, ({ many }) => ({
   agents: many(agents),
@@ -53,4 +53,10 @@ export const proposalRelations = relations(proposals, ({ one }) => ({
 
 export const messageRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, { fields: [messages.conversationId], references: [conversations.id] }),
+}));
+
+export const valuationRelations = relations(valuations, ({ one }) => ({
+  contact: one(contacts, { fields: [valuations.contactId], references: [contacts.id] }),
+  lead: one(leads, { fields: [valuations.leadId], references: [leads.id] }),
+  agent: one(agents, { fields: [valuations.agentId], references: [agents.id] }),
 }));
