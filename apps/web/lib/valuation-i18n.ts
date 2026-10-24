@@ -49,7 +49,7 @@ type Text = {
     title: string;
     disclaimer: string;
     marketTitle: string;
-    market: (municipality: string, year: number, n: number) => string;
+    market: (municipality: string, period: string, n: number) => string;
     noMarket: string;
     comparablesTitle: string;
     comparablesNote: string;
@@ -112,7 +112,7 @@ export const valuationText: Record<WidgetLang, Text> = {
       title: "Schattingsrapport",
       disclaimer: "Indicatieve online schatting, geen officiële waardebepaling door een erkend vastgoedmakelaar.",
       marketTitle: "Markt in uw gemeente",
-      market: (m, y, n) => `Mediaanprijs in ${m} (${y}), op basis van ${n} verkopen (bron: Statbel)`,
+      market: (m, p, n) => `Mediaanprijs in ${m} over de laatste 12 maanden (${p}), op basis van ${n} verkopen (bron: Statbel)`,
       noMarket: "Nog geen officiële marktcijfers beschikbaar voor deze gemeente; de schatting steunt op recente verkopen van ons kantoor.",
       comparablesTitle: "Recent verkocht in de buurt",
       comparablesNote: "Verkopen van ons kantoor; per straat getoond om privacyredenen.",
@@ -173,7 +173,7 @@ export const valuationText: Record<WidgetLang, Text> = {
       title: "Rapport d'estimation",
       disclaimer: "Estimation indicative en ligne, pas une expertise officielle par un agent immobilier agréé.",
       marketTitle: "Le marché dans votre commune",
-      market: (m, y, n) => `Prix médian à ${m} (${y}), sur base de ${n} ventes (source : Statbel)`,
+      market: (m, p, n) => `Prix médian à ${m} sur les 12 derniers mois (${p}), sur base de ${n} ventes (source : Statbel)`,
       noMarket: "Pas encore de chiffres officiels pour cette commune ; l'estimation se base sur les ventes récentes de notre agence.",
       comparablesTitle: "Vendu récemment dans le quartier",
       comparablesNote: "Ventes de notre agence ; affichées par rue pour des raisons de confidentialité.",
@@ -234,7 +234,7 @@ export const valuationText: Record<WidgetLang, Text> = {
       title: "Valuation report",
       disclaimer: "Indicative online estimate, not an official valuation by an accredited estate agent.",
       marketTitle: "The market in your municipality",
-      market: (m, y, n) => `Median price in ${m} (${y}), based on ${n} sales (source: Statbel)`,
+      market: (m, p, n) => `Median price in ${m} over the last 12 months (${p}), based on ${n} sales (source: Statbel)`,
       noMarket: "No official market figures for this municipality yet; the estimate is based on our agency's recent sales.",
       comparablesTitle: "Recently sold nearby",
       comparablesNote: "Sales by our agency; shown by street for privacy.",

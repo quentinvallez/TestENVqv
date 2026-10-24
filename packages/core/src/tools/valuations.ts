@@ -23,17 +23,51 @@ const answersSchema = z.object({
   plans: z.enum(["sell_soon", "sell_later", "curious"]).optional(),
 }) satisfies z.ZodType<ValuationAnswers>;
 
-/** Statbel figures for the municipality behind a postcode: latest year with enough sales for this type. */
-async function marketFor(ctx: ToolContext, postcode: string, propertyType: ValuationAnswers["propertyType"]): Promise<MarketMedian | null> {
+/**
+ * Statbel figures for the municipality behind a postcode. Quarterly data is
+ * combined over the last four quarters (eight if too many quarters had their
+ * price suppressed for having under 10 sales): sales are added up and the
+ * quartiles averaged, weighted by the number of sales.
+ */
+export async function marketFor(ctx: Pick<ToolContext, "db">, postcode: string, propertyType: ValuationAnswers["propertyType"]): Promise<MarketMedian | null> {
   const [place] = await ctx.db.select({ nisCode: postcodes.nisCode }).from(postcodes).where(and(eq(postcodes.postcode, postcode), isNotNull(postcodes.nisCode))).limit(1);
   if (!place?.nisCode) return null;
-  const [row] = await ctx.db
+  const rows = await ctx.db
     .select()
     .from(marketPrices)
-    .where(and(eq(marketPrices.nisCode, place.nisCode), eq(marketPrices.propertyType, propertyType), gte(marketPrices.transactions, 10)))
-    .orderBy(desc(marketPrices.year))
-    .limit(1);
-  return row ? { municipality: row.municipality, propertyType: row.propertyType, year: row.year, median: row.median, transactions: row.transactions, p25: row.p25, p75: row.p75 } : null;
+    .where(and(eq(marketPrices.nisCode, place.nisCode), eq(marketPrices.propertyType, propertyType)))
+    .orderBy(desc(marketPrices.year), desc(marketPrices.quarter))
+    .limit(8);
+  const quarterly = rows.filter((r) => r.quarter > 0);
+  let used = quarterly.slice(0, 4);
+  if (used.filter((r) => r.median != null).length < 2) used = quarterly.slice(0, 8);
+  if (used.filter((r) => r.median != null).length === 0) {
+    // Yearly files (quarter 0): the latest year with a published median.
+    const yearly = rows.find((r) => r.quarter === 0 && r.median != null && r.transactions >= 10);
+    return yearly
+      ? { municipality: yearly.municipality, propertyType: yearly.propertyType, year: yearly.year, median: yearly.median!, transactions: yearly.transactions, p25: yearly.p25, p75: yearly.p75 }
+      : null;
+  }
+  const priced = used.filter((r) => r.median != null);
+  const weight = priced.reduce((n, r) => n + r.transactions, 0);
+  const avg = (k: "median" | "p25" | "p75") => {
+    const withValue = priced.filter((r) => r[k] != null);
+    const w = withValue.reduce((n, r) => n + r.transactions, 0);
+    return w ? Math.round(withValue.reduce((sum, r) => sum + r[k]! * r.transactions, 0) / w) : null;
+  };
+  const newest = used[0]!;
+  const oldest = used.at(-1)!;
+  return {
+    municipality: newest.municipality,
+    propertyType: newest.propertyType,
+    year: newest.year,
+    period: `Q${oldest.quarter} ${oldest.year} – Q${newest.quarter} ${newest.year}`,
+    median: avg("median")!,
+    p25: avg("p25"),
+    p75: avg("p75"),
+    // All sales in the period count, also those in quarters whose price was suppressed.
+    transactions: used.reduce((n, r) => n + r.transactions, 0) || weight,
+  };
 }
 
 /** The agency's own sales of the same type: same postcode first, then the surrounding area (same first two digits). */

@@ -110,19 +110,21 @@ export function estimate(options: {
   // Width: market spread (p25–p75) tells how varied the municipality is; few sales widen it.
   const spread = market?.p25 && market?.p75 ? (market.p75 - market.p25) / market.median / 4 : 0.1;
   let halfWidth = Math.min(0.12, Math.max(0.06, spread));
-  if (compValues.length < 3) halfWidth += 0.03;
+  if (compValues.length < 3) halfWidth += 0.02;
   if (!market || market.transactions < 30) halfWidth += 0.03;
   if (!answers.epcLabel) halfWidth += 0.01;
   halfWidth = Math.min(0.2, halfWidth);
 
-  const confidence: ValuationResult["confidence"] = halfWidth <= 0.09 ? "high" : halfWidth <= 0.13 ? "medium" : "low";
+  const confidence: ValuationResult["confidence"] = halfWidth <= 0.09 ? "high" : halfWidth <= 0.145 ? "medium" : "low";
   return {
     low: round(point * (1 - halfWidth)),
     high: round(point * (1 + halfWidth)),
     point: round(point),
     confidence,
     method,
-    marketMedian: market ? { municipality: market.municipality, propertyType: market.propertyType, year: market.year, median: market.median, transactions: market.transactions } : undefined,
+    marketMedian: market
+      ? { municipality: market.municipality, propertyType: market.propertyType, year: market.year, period: market.period, median: market.median, transactions: market.transactions }
+      : undefined,
     adjustments: adj.map((a) => ({ key: a.key, factor: Math.round(a.factor * 1000) / 1000 })),
     comparables: comps.map((c) => ({ street: c.street, city: c.city, propertyType: c.propertyType, livingArea: c.livingArea, price: c.price, soldAt: c.soldAt.toISOString() })),
   };

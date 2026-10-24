@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Valuation report", robots: { index: false } };
 
 const euro = (n: number) => new Intl.NumberFormat("nl-BE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+/** Statbel writes names in capitals ("SINT-MARTENS-LATEM"); show them as "Sint-Martens-Latem". */
+const titleCase = (name: string) => name.toLowerCase().replace(/(^|[\s\-'(])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
 const monthYear = (iso: string, lang: string) =>
   new Intl.DateTimeFormat({ nl: "nl-BE", fr: "fr-BE", en: "en-GB" }[lang], { month: "short", year: "numeric" }).format(new Date(iso));
 
@@ -65,7 +67,7 @@ export default async function ValuationReportPage({ params, searchParams }: { pa
           {r?.marketMedian ? (
             <p className="text-muted">
               <span className="font-medium text-fg tabular-nums">{euro(r.marketMedian.median)}</span> ·{" "}
-              {t.report.market(r.marketMedian.municipality, r.marketMedian.year, r.marketMedian.transactions)}
+              {t.report.market(titleCase(r.marketMedian.municipality), r.marketMedian.period ?? String(r.marketMedian.year), r.marketMedian.transactions)}
             </p>
           ) : (
             <p className="text-muted">{t.report.noMarket}</p>

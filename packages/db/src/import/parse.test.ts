@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateNames, isMunicipality, nameKey, parseBpost, parseStatbel, regionOf, statbelType } from "./parse";
+import { candidateNames, isMunicipality, provinceRegion, nameKey, parseBpost, parseStatbel, parseStatbelSheet, regionOf, statbelType } from "./parse";
 
 // Small hand-written samples in the shape of the public files; not real figures.
 describe("parseStatbel", () => {
@@ -77,5 +77,34 @@ describe("isMunicipality", () => {
   it("keeps municipalities and skips country, region, province and district totals", () => {
     expect(["11002", "21004", "44021", "62063", "92094"].every(isMunicipality)).toBe(true);
     expect(["01000", "02000", "04000", "10000", "20001", "21000", "44000"].some(isMunicipality)).toBe(false);
+  });
+});
+
+describe("parseStatbelSheet", () => {
+  // Layout of Statbel's "per commune per quarter" Excel file, with merged type headers; figures replaced.
+  const typeLabels = (label: string) => [label, label, label, label, null];
+  const sheet = [
+    ["Catégories immobilières", null, null, null, null],
+    [null, null, null, null, null, ...typeLabels("Toutes les maisons avec 2, 3, 4 ou plus de façades (excl. appartements)"), ...typeLabels("Maisons avec 2 ou 3 façades (type fermé + type demi-fermé)"), ...typeLabels("Appartements")],
+    ["refnis", "localité", "année", "période", null, ...Array(3).fill(["nombre transactions", "prix médian(€)", "prix premier quartile(€)", "prix troisième quartile(€)", null]).flat()],
+    ["11002", "ANVERS", "2026", "Q2", null, 9, 9, 9, 9, null, 40, 300, 250, 350, null, 12, null, null, null],
+    ["21000", "BRUXELLES (ARR.)", "2026", "Q2", null, 9, 9, 9, 9, null, 40, 300, 250, 350, null, 12, 1, 1, 1],
+  ];
+  it("reads each type block, keeps suppressed prices empty, and skips non-municipalities", () => {
+    expect(parseStatbelSheet(sheet).map((r) => [r.nisCode, r.municipalityFr, r.quarter, r.propertyType, r.transactions, r.median, r.p25, r.p75])).toEqual([
+      ["11002", "ANVERS", 2, "house", 40, 300, 250, 350],
+      ["11002", "ANVERS", 2, "apartment", 12, null, null, null],
+    ]);
+  });
+});
+
+describe("provinceRegion", () => {
+  it("maps bpost provinces in both languages", () => {
+    expect(provinceRegion("ANVERS")).toBe("flanders");
+    expect(provinceRegion("FLANDRE-ORIENTALE")).toBe("flanders");
+    expect(provinceRegion("BRUXELLES")).toBe("brussels");
+    expect(provinceRegion("LUIK")).toBe("wallonia");
+    expect(provinceRegion("BRABANT WALLON")).toBe("wallonia");
+    expect(provinceRegion("")).toBeNull();
   });
 });

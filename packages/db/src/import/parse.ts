@@ -67,9 +67,9 @@ export function statbelType(label: string): MarketPropertyType | null {
  * little between releases, so each field accepts a few names. Verify against
  * the downloaded file before importing: run with --dry-run first.
  */
-export function parseStatbel(text: string) {
+export function parseStatbel(text: string): MarketRow[] {
   const rows = parseDelimited(text);
-  const out = [];
+  const out: MarketRow[] = [];
   for (const row of rows) {
     const period = pick(row, ["CD_PERIOD", "PERIOD", "PERIODE"]);
     if (period && !/^(y|year|jaar|année|annee|0)$/i.test(period)) continue; // annual figures only
@@ -81,11 +81,15 @@ export function parseStatbel(text: string) {
     const year = toInt(pick(row, ["CD_YEAR", "YEAR", "JAAR"]));
     const median = toInt(pick(row, ["MS_P_50", "MS_P50", "MS_P_50_MEDIAN", "MEDIAN", "MEDIAAN"]));
     const transactions = toInt(pick(row, ["MS_TRANSACTIONS", "MS_TOTAL_TRANSACTIONS", "MS_TRANS", "TRANSACTIONS"])) ?? 0;
-    if (!nisCode || !isMunicipality(nisCode) || !type || !year || !median) continue;
+    if (!nisCode || !isMunicipality(nisCode) || !type || !year) continue;
+    const municipalityNl = pick(row, ["CD_REFNIS_NL", "TX_REFNIS_NL", "TX_MUNTY_DESCR_NL"]) ?? null;
+    const municipalityFr = pick(row, ["CD_REFNIS_FR", "TX_REFNIS_FR", "TX_MUNTY_DESCR_FR"]) ?? null;
     out.push({
       nisCode,
-      municipality: pick(row, ["CD_REFNIS_NL", "TX_REFNIS_NL", "TX_MUNTY_DESCR_NL", "CD_REFNIS_FR", "TX_REFNIS_FR", "MUNICIPALITY"]) ?? nisCode,
-      municipalityFr: pick(row, ["CD_REFNIS_FR", "TX_REFNIS_FR", "TX_MUNTY_DESCR_FR"]) ?? null,
+      municipality: municipalityNl ?? municipalityFr ?? nisCode,
+      municipalityNl,
+      municipalityFr,
+      quarter: 0,
       region: regionOf(nisCode),
       propertyType: type,
       year,
@@ -107,7 +111,9 @@ export function parseStatbel(text: string) {
 export function candidateNames(locality: string, municipality: string | null) {
   const names = [locality, municipality ?? ""];
   if (municipality?.includes("-")) names.push(...municipality.split("-"));
-  return [...new Set(names.filter(Boolean).map(nameKey))];
+  const keys = names.filter(Boolean).map(nameKey);
+  for (const k of [...keys]) if (GERMAN_NAMES[k]) keys.push(nameKey(GERMAN_NAMES[k]!));
+  return [...new Set(keys)];
 }
 
 /** bpost postcode list (exported to CSV): postcode, locality, main municipality, province. */
@@ -130,3 +136,112 @@ export const nameKey = (name: string) =>
     .toLowerCase()
     .replace(/\(.*?\)/g, "")
     .replace(/[^a-z]/g, "");
+
+const MEASURES: [RegExp, "transactions" | "median" | "p25" | "p75"][] = [
+  [/nombre|aantal|number/i, "transactions"],
+  [/m[ée]dia/i, "median"],
+  [/premier|eerste|first/i, "p25"],
+  [/troisi[èe]me|derde|third/i, "p75"],
+];
+
+export type MarketRow = {
+  nisCode: string;
+  municipality: string;
+  municipalityNl: string | null;
+  municipalityFr: string | null;
+  quarter: number;
+  region: Region | null;
+  propertyType: MarketPropertyType;
+  year: number;
+  transactions: number;
+  p25: number | null;
+  /** Empty when Statbel suppresses it (fewer than 10 sales). */
+  median: number | null;
+  p75: number | null;
+};
+
+/**
+ * Statbel's Excel "sales per municipality per quarter" (Dutch or French): one
+ * row per municipality and quarter, the property types side by side, each with
+ * transactions, median, first and third quartile. Header rows are found by name.
+ */
+export function parseStatbelSheet(rows: unknown[][]): MarketRow[] {
+  const cell = (v: unknown) => (v == null ? "" : String(v).trim());
+  const headerIndex = rows.findIndex((r) => r.some((c) => /^refnis$/i.test(cell(c))));
+  if (headerIndex < 1) return [];
+  const header = rows[headerIndex]!.map(cell);
+  const typeRow = rows[headerIndex - 1]!.map(cell);
+  const lang = header.some((h) => /nombre|localit|ann[ée]e/i.test(h)) ? "fr" : "nl";
+  const col = (re: RegExp) => header.findIndex((h) => re.test(h));
+  const refnisCol = col(/^refnis$/i);
+  const nameCol = col(/localit|gemeente|plaats|commune|naam/i);
+  const yearCol = col(/ann[ée]e|^jaar$|^year$/i);
+  const periodCol = col(/p[ée]riode|period/i);
+
+  // Each property type label starts a block of measure columns.
+  const blocks: { type: MarketPropertyType; columns: Partial<Record<(typeof MEASURES)[number][1], number>> }[] = [];
+  let current: (typeof blocks)[number] | null = null;
+  header.forEach((h, c) => {
+    // Merged header cells repeat the label over every column they span: a block starts where the label changes.
+    if (typeRow[c] && typeRow[c] !== typeRow[c - 1]) {
+      const type = statbelType(typeRow[c]!);
+      current = type ? { type, columns: {} } : null;
+      if (current) blocks.push(current);
+    }
+    const measure = MEASURES.find(([re]) => re.test(h))?.[1];
+    if (current && measure && current.columns[measure] === undefined) current.columns[measure] = c;
+  });
+
+  const out: MarketRow[] = [];
+  for (const r of rows.slice(headerIndex + 1)) {
+    const nisCode = cell(r[refnisCol]);
+    const year = toInt(cell(r[yearCol]));
+    const period = cell(r[periodCol]);
+    const quarter = /^q?[1-4]$/i.test(period) ? Number(period.slice(-1)) : /^(y|year|jaar|ann[ée]e)?$/i.test(period) ? 0 : null;
+    if (!isMunicipality(nisCode) || !year || quarter === null) continue;
+    const name = cell(r[nameCol]) || nisCode;
+    for (const b of blocks) {
+      const value = (k: keyof typeof b.columns) => (b.columns[k] === undefined ? null : toInt(cell(r[b.columns[k]!])));
+      const transactions = value("transactions");
+      if (transactions == null) continue;
+      out.push({
+        nisCode,
+        municipality: name,
+        municipalityNl: lang === "nl" ? name : null,
+        municipalityFr: lang === "fr" ? name : null,
+        quarter,
+        region: regionOf(nisCode),
+        propertyType: b.type,
+        year,
+        transactions,
+        p25: value("p25"),
+        median: value("median"),
+        p75: value("p75"),
+      });
+    }
+  }
+  return out;
+}
+
+/** Official French names of the German-speaking municipalities, which bpost lists in German. */
+export const GERMAN_NAMES: Record<string, string> = {
+  amel: "Amblève",
+  bullingen: "Bullange",
+  butgenbach: "Butgenbach",
+  burgreuland: "Burg-Reuland",
+  eupen: "Eupen",
+  kelmis: "La Calamine",
+  lontzen: "Lontzen",
+  raeren: "Raeren",
+  sanktvith: "Saint-Vith",
+};
+
+/** Region of a bpost province name (Dutch or French), to reject links to a municipality in another region. */
+export function provinceRegion(province: string | null): Region | null {
+  const k = nameKey(province ?? "");
+  if (!k) return null;
+  if (/brussel|bruxelles/.test(k)) return "brussels";
+  if (/^(antwerpen|anvers|limburg|limbourg|oostvlaanderen|flandreorientale|westvlaanderen|flandreoccidentale|vlaamsbrabant|brabantflamand)$/.test(k)) return "flanders";
+  if (/^(henegouwen|hainaut|luik|liege|luxemburg|luxembourg|namen|namur|waalsbrabant|brabantwallon)$/.test(k)) return "wallonia";
+  return null;
+}

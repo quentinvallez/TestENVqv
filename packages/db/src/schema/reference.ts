@@ -23,23 +23,26 @@ export const postcodes = pgTable(
   (t) => [primaryKey({ columns: [t.postcode, t.locality] }), index().on(t.nisCode)],
 );
 
-/** Sale prices per municipality, property type and year. Source: Statbel (registered deeds). */
+/** Sale prices per municipality, property type and quarter (0 = whole year). Source: Statbel (registered deeds). */
 export const marketPrices = pgTable(
   "market_prices",
   {
     nisCode: text().notNull(),
+    // Display name; Statbel publishes Dutch and French files and postcodes are matched on both.
     municipality: text().notNull(),
-    // Statbel names every municipality in Dutch and French; postcodes are matched on both.
+    municipalityNl: text(),
     municipalityFr: text(),
     region: text().$type<Region>(),
     propertyType: text().$type<MarketPropertyType>().notNull(),
     year: smallint().notNull(),
+    quarter: smallint().notNull().default(0),
     transactions: integer().notNull(),
+    // Statbel leaves prices empty below 10 sales in a period.
     p25: integer(),
-    median: integer().notNull(),
+    median: integer(),
     p75: integer(),
     source: text().notNull().default("statbel"),
     importedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.nisCode, t.propertyType, t.year] })],
+  (t) => [primaryKey({ columns: [t.nisCode, t.propertyType, t.year, t.quarter] })],
 );

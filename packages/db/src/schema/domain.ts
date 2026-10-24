@@ -270,7 +270,8 @@ export type ValuationResult = {
   point: number;
   confidence: "high" | "medium" | "low";
   method: "market_and_comparables" | "market" | "comparables";
-  marketMedian?: { municipality: string; propertyType: string; year: number; median: number; transactions: number };
+  /** Statbel figures used; `period` like "Q3 2025 – Q2 2026" for the last four quarters. */
+  marketMedian?: { municipality: string; propertyType: string; year: number; period?: string; median: number; transactions: number };
   adjustments: { key: string; factor: number }[];
   comparables: { street: string; city: string; propertyType: string; livingArea: number | null; price: number; soldAt: string }[];
 };

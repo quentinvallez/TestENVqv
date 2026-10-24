@@ -19,7 +19,14 @@ describe.skipIf(!process.env.DATABASE_URL)("valuations", () => {
     await db.insert(schema.postcodes).values({ postcode: "9999", locality: "Testdorp", nisCode: "99999", municipality: "Testdorp", region: "flanders" }).onConflictDoNothing();
     await db
       .insert(schema.marketPrices)
-      .values({ nisCode: "99999", municipality: "Testdorp", region: "flanders", propertyType: "house", year: 2025, transactions: 200, p25: 250000, median: 300000, p75: 360000 })
+      .values([
+        // Four quarters, one with its price suppressed (under 10 sales).
+        { nisCode: "99999", municipality: "Testdorp", region: "flanders" as const, propertyType: "house" as const, year: 2026, quarter: 2, transactions: 60, p25: 260000, median: 310000, p75: 370000 },
+        { nisCode: "99999", municipality: "Testdorp", region: "flanders" as const, propertyType: "house" as const, year: 2026, quarter: 1, transactions: 40, p25: 240000, median: 290000, p75: 350000 },
+        { nisCode: "99999", municipality: "Testdorp", region: "flanders" as const, propertyType: "house" as const, year: 2025, quarter: 4, transactions: 8, p25: null, median: null, p75: null },
+        { nisCode: "99999", municipality: "Testdorp", region: "flanders" as const, propertyType: "house" as const, year: 2025, quarter: 3, transactions: 50, p25: 250000, median: 300000, p75: 360000 },
+        { nisCode: "99999", municipality: "Testdorp", region: "flanders" as const, propertyType: "house" as const, year: 2025, quarter: 2, transactions: 50, p25: 1, median: 1, p75: 1 },
+      ])
       .onConflictDoNothing();
   });
 
@@ -42,7 +49,9 @@ describe.skipIf(!process.env.DATABASE_URL)("valuations", () => {
     const started = await request("2600", "0470 22 22 22");
     const done = await runTool(tools.verifyValuation, client, { token: started.token, code: started.demoCode!, useAi: false });
     expect(done.verified).toBe(true);
-    expect(done.result?.method).toBe("comparables"); // no Statbel data for 2600 in the test database
+    // The agency's demo sales in 2600 are used; Statbel figures too if the database has them.
+    expect(["comparables", "market_and_comparables"]).toContain(done.result?.method);
+    expect(done.result!.comparables.length).toBeGreaterThan(0);
     expect(done.result!.low).toBeLessThan(done.result!.high);
 
     const saved = await runTool(tools.getValuation, ctx, { token: started.token });
@@ -69,5 +78,9 @@ describe.skipIf(!process.env.DATABASE_URL)("valuations", () => {
     const done = await runTool(tools.verifyValuation, client, { token: started.token, code: started.demoCode!, useAi: false });
     expect(done.result?.method).toBe("market");
     expect(done.result?.marketMedian?.municipality).toBe("Testdorp");
+    // Last four quarters only, weighted by sales: (310k·60 + 290k·40 + 300k·50) / 150; the suppressed quarter's 8 sales still count.
+    expect(done.result?.marketMedian?.median).toBe(301333);
+    expect(done.result?.marketMedian?.transactions).toBe(158);
+    expect(done.result?.marketMedian?.period).toBe("Q3 2025 – Q2 2026");
   });
 });

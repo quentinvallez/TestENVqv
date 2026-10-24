@@ -46,6 +46,11 @@ describe("estimate", () => {
     expect(withComps.comparables).toHaveLength(4);
   });
 
+  it("labels a well-documented market estimate as medium, and a thin one as low", () => {
+    expect(estimate({ answers: house, market, comparables: [], now })!.confidence).toBe("medium");
+    expect(estimate({ answers: house, market: { ...market, transactions: 12 }, comparables: [], now })!.confidence).toBe("low");
+  });
+
   it("ignores old sales and other property types", () => {
     const comps = [sold(900000, 150, 48), { ...sold(200000, 80), propertyType: "apartment" }];
     expect(estimate({ answers: house, market, comparables: comps, now })!.method).toBe("market");
