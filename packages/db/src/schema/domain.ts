@@ -232,6 +232,7 @@ export type Channel = "email" | "whatsapp" | "sms";
 /** Where a conversation lives: the agent's mailbox provider or the business WhatsApp number. */
 export type ChannelProvider = "outlook" | "gmail" | "whatsapp_business" | "sms";
 export type ConversationCategory =
+  | "booking"
   | "viewing_request"
   | "reschedule"
   | "cancellation"

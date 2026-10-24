@@ -1,12 +1,15 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { Code2, ExternalLink, ListChecks, Sparkles } from "lucide-react";
-import { AiPill, PageHeader, Panel } from "@/components/ui";
+import { PageHeader, Panel } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { address } from "@/lib/format";
 
 export default async function WidgetPage() {
   const { agency } = await getSession();
+  const h = await headers();
+  const appOrigin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const listings = await runTool(tools.listListings, await getToolContext(), { status: "active" });
   const first = listings[0];
 
@@ -79,14 +82,14 @@ export default async function WidgetPage() {
             <div className="mb-2 flex items-center gap-2 text-[12px] text-muted">
               <Code2 className="size-3.5" />
               Embed code
-              <AiPill>Phase 2</AiPill>
             </div>
             <pre className="overflow-x-auto rounded-md bg-hover p-3 font-mono text-[12px] text-muted">
-              {`<script src="https://cdn.viewing.app/widget.js"\n        data-agency="${agency.slug}" async></script>`}
+              {`<!-- Where the widget should appear, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- Once per page -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>`}
             </pre>
-            <p className="mt-2 flex items-center gap-1.5 text-[12px] text-faint">
-              <Sparkles className="size-3.5" />
-              The script detects the listing on each page and loads the same widget you see on the demo site.
+            <p className="mt-2 flex items-start gap-1.5 text-[12px] text-faint">
+              <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+              The script reads the agent&apos;s name on the page (for example &quot;Uw makelaar: Sofie Peeters&quot;) and books in that agent&apos;s
+              calendar. If no agent name is found, it uses the responsible agent set on the listing here.
             </p>
           </Panel>
         </div>

@@ -31,3 +31,8 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Offered times always come from the booking engine and are appended by `composeMessage`; the AI never writes times or links itself.
 - Outbound messages are stored with `delivery: "simulated"` until Outlook/Gmail/WhatsApp are connected. Never present them as sent.
 - Client-facing text exists in NL, FR and EN (`planner/language.ts`, `apps/web/lib/widget-i18n.ts`).
+- Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it.
+
+## Website widget
+
+- `apps/web/app/widget.js/route.ts` is the embed script agencies put on their site. It resolves the listing by reference (`/api/widget/resolve`) and picks the agent whose name appears first on the page; the booking goes to that agent, else to the listing's responsible agent.

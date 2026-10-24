@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { bookableListing } from "@viewing/core/public";
-import { BedDouble, Bath, ChevronLeft, Leaf, Ruler, Trees } from "lucide-react";
+import { bookableListing, listingAgent } from "@viewing/core/public";
+import { BedDouble, Bath, ChevronLeft, Leaf, Mail, Phone, Ruler, Trees } from "lucide-react";
 import { DemoSiteFooter, DemoSiteHeader, demoAccent } from "@/components/demo-site";
-import { EmbedFrame } from "@/components/embed-frame";
 import { ListingPhoto } from "@/components/listing-photo";
 import { address, formatPrice } from "@/lib/format";
 
@@ -17,6 +15,7 @@ export default async function DemoListingPage({ params, searchParams }: { params
   const found = await bookableListing(listingId);
   if (!found || found.listing.agencyId !== agencyId) notFound();
   const { listing, agencyName } = found;
+  const agent = await listingAgent(listing.id);
 
   const facts = [
     listing.bedrooms != null && { icon: BedDouble, label: `${listing.bedrooms} ${listing.bedrooms === 1 ? "slaapkamer" : "slaapkamers"}` },
@@ -30,10 +29,10 @@ export default async function DemoListingPage({ params, searchParams }: { params
     <>
       <DemoSiteHeader agencyId={agencyId} agencyName={agencyName} />
       <main className="mx-auto max-w-[1120px] px-4 py-6">
-        <Link href={`/demo-site/${agencyId}`} className="flex items-center gap-1 text-[14px] text-black/60 hover:text-black">
+        <a href={`/demo-site/${agencyId}`} className="flex items-center gap-1 text-[14px] text-black/60 hover:text-black">
           <ChevronLeft className="size-4" />
           Terug naar het aanbod
-        </Link>
+        </a>
         <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_400px]">
           <div className="min-w-0">
             <ListingPhoto src={listing.photos[0]?.url} alt={listing.title ?? listing.reference} className="aspect-[16/10] w-full rounded-lg" />
@@ -59,12 +58,41 @@ export default async function DemoListingPage({ params, searchParams }: { params
             </p>
           </div>
 
-          <aside id="plan-bezoek" className="lg:sticky lg:top-6 lg:self-start">
+          <aside id="plan-bezoek" className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
+            {agent && (
+              // How agency sites usually show the agent. widget.js reads this name to pick the agent's calendar.
+              <div className="flex items-center gap-3 rounded-xl border border-black/10 p-4">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold text-white" style={{ background: agent.color ?? demoAccent }}>
+                  {agent.name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .join("")
+                    .slice(0, 2)}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12px] text-black/50">Uw makelaar</div>
+                  <div className="font-semibold">{agent.name}</div>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-black/60">
+                    {agent.phone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="size-3.5" />
+                        {agent.phone}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Mail className="size-3.5" />
+                      {agent.email}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-black/10 shadow-sm">
               <div className="px-4 pt-4 font-serif text-[19px] font-semibold">Plan een bezoek</div>
-              <EmbedFrame src={`/embed/${listing.id}?lang=${lang}`} title="Plan een bezoek" />
+              <div data-viewing-widget data-listing={listing.reference} data-lang={lang} />
             </div>
-            <p className="mt-2 text-center text-[11px] text-black/40">Widget geladen via één regel code op de website van het kantoor</p>
+            <p className="text-center text-[11px] text-black/40">Widget geladen via één regel code op de website van het kantoor</p>
+            <script src="/widget.js" data-agency={agencyId} async />
           </aside>
         </div>
       </main>

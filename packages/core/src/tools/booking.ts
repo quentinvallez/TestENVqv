@@ -30,6 +30,14 @@ export async function resolveAgentForListing(ctx: ToolContext, listing: Listing)
   return agent;
 }
 
+async function activeAgent(ctx: ToolContext, agentId: string) {
+  const [agent] = await ctx.db
+    .select()
+    .from(agents)
+    .where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, agentId), eq(agents.active, true)));
+  return agent;
+}
+
 async function getListing(ctx: ToolContext, listingId: string) {
   const [listing] = await ctx.db
     .select()
@@ -103,8 +111,9 @@ export const availableSlots = defineTool({
   run: async (ctx, input) => {
     let agent: Agent | undefined;
     if (input.agentId) {
-      [agent] = await ctx.db.select().from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
-    } else if (input.listingId) {
+      agent = await activeAgent(ctx, input.agentId);
+    }
+    if (!agent && input.listingId) {
       agent = await resolveAgentForListing(ctx, await getListing(ctx, input.listingId));
     }
     if (!agent) throw new Error("Pass a listingId or agentId");
@@ -132,6 +141,7 @@ export const bookViewing = defineTool({
   input: z.object({
     listingId: z.string(),
     startsAt: z.coerce.date(),
+    agentId: z.string().optional().describe("Book with this agent instead of the listing's own, e.g. the agent named on the website page"),
     contact: contactInput,
     message: z.string().trim().max(2000).optional(),
     source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
@@ -141,7 +151,7 @@ export const bookViewing = defineTool({
     const result = await ctx.db.transaction(async (tx) => {
       const txCtx = { ...ctx, db: tx };
       const listing = await getListing(txCtx, input.listingId);
-      const agent = await resolveAgentForListing(txCtx, listing);
+      const agent = (input.agentId && (await activeAgent(txCtx, input.agentId))) || (await resolveAgentForListing(txCtx, listing));
       await lockAgent(txCtx, agent.id);
 
       const dayStart = startOfZonedDay(input.startsAt);
@@ -223,6 +233,10 @@ export const bookViewing = defineTool({
     if (externalEventId) {
       await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, result.appointment.id));
     }
+    if (ctx.actor.type === "contact") {
+      const { noteClientAction } = await import("../planner/agent");
+      await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
+    }
     return {
       appointmentId: result.appointment.id,
       manageToken: result.appointment.manageToken,
@@ -281,8 +295,8 @@ export const cancelAppointment = defineTool({
     });
     await syncAppointmentToCalendar(ctx, appointment.agentId, appointment.externalEventId, null);
     if (ctx.actor.type === "contact") {
-      const { noteAppointmentChange } = await import("../planner/agent");
-      await noteAppointmentChange(ctx, appointment.id, { kind: "cancelled" });
+      const { noteClientAction } = await import("../planner/agent");
+      await noteClientAction(ctx, appointment.id, { kind: "cancelled" });
     }
     return { changed: true };
   },
@@ -333,8 +347,8 @@ export const rescheduleAppointment = defineTool({
       await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, updated.id));
     }
     if (ctx.actor.type === "contact") {
-      const { noteAppointmentChange } = await import("../planner/agent");
-      await noteAppointmentChange(ctx, updated.id, { kind: "rescheduled", from: previousStart });
+      const { noteClientAction } = await import("../planner/agent");
+      await noteClientAction(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     }
     return { appointmentId: updated.id, startsAt: updated.startsAt, endsAt: updated.endsAt };
   },

@@ -5,11 +5,13 @@ import { aiAvailable, AiUnavailableError, generateStructured } from "../ai/clien
 import { availableSlots } from "../tools/booking";
 import { AGENCY_TIMEZONE } from "../time";
 import { runTool, type ToolContext } from "../tool";
-import { composeMessage, formatSlot, linkLabels, signature, templates, toLang, type Lang } from "./language";
+import { composeMessage, detailLabels, formatSlot, linkLabels, signature, templates, toLang, type Lang } from "./language";
 
 const { conversations, messages, contacts, listings, agents, appointments, leads, organization, proposals } = schema;
 
+/** What the planner can classify an incoming message as. "booking" is only set by the system for widget bookings. */
 export const categories = ["viewing_request", "reschedule", "cancellation", "question", "offer", "feedback", "confirmation", "other"] as const;
+type TriageCategory = (typeof categories)[number];
 
 /** Everything the planner knows about a conversation before it acts. */
 async function loadThread(ctx: ToolContext, conversationId: string) {
@@ -94,7 +96,7 @@ Categories: viewing_request (wants to visit), reschedule (wants another time for
 Priority: high when money or a deadline is involved (offers, a viewing within 24 hours that is being changed), low for plain thanks or confirmations, otherwise normal.
 Language is the language the client writes in.`;
 
-const keywordRules: [ConversationCategory, RegExp][] = [
+const keywordRules: [TriageCategory, RegExp][] = [
   ["offer", /\b(bod|offre|offer|kopen|acheter|compromis)\b/i],
   ["reschedule", /(verplaats|ander moment|volgende week|kan het later|déplacer|autre moment|semaine prochaine|reschedul|another time|next week)/i],
   ["cancellation", /(annul|kan (toch )?niet komen|niet meer|cancel|can't make|ne pourrai pas)/i],
@@ -112,7 +114,7 @@ function triageByRules(thread: Thread): Triage {
   const language: Lang = /\b(je|vous|merci|bonjour|nous)\b/i.test(text) ? "fr" : /\b(the|you|would|thanks|hi)\b/i.test(text) ? "en" : toLang(thread.contact?.language);
   const negative = /(te klein|trop petit|too small|niet voor ons|pas pour nous|not for us)/i.test(text);
   const priority: Priority = category === "offer" ? "high" : category === "confirmation" || category === "other" ? "low" : "normal";
-  const summaries: Record<ConversationCategory, string> = {
+  const summaries: Record<TriageCategory, string> = {
     viewing_request: "Asks to visit the property.",
     reschedule: "Wants to move the viewing to another time.",
     cancellation: "Cancels the viewing.",
@@ -182,6 +184,7 @@ type DraftPlan = {
   purpose: string;
   templateKey: keyof typeof templates;
   slots: Date[];
+  details?: { label: string; value: string }[];
   link?: { url: string; label: string };
   cancelAppointmentId?: string;
   leadStage?: "invited" | "offer" | "follow_up";
@@ -307,7 +310,7 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
           `Client: ${thread.contact?.firstName ?? ""} ${thread.contact?.lastName ?? ""}. Write in: ${lang}.`,
           `Listing: ${listingFacts(thread.listing)}`,
           thread.lead?.qualification?.answers.length ? `What the client told us: ${JSON.stringify(thread.lead.qualification.answers)}` : "",
-          plan.slots.length ? `${plan.slots.length} times will be listed after your text.` : "No times will be offered.",
+          plan.slots.length ? `${plan.slots.length} times will be listed after your text.` : plan.details?.length ? "The confirmed time, place and agent are listed after your text; do not repeat them." : "No times will be offered.",
           `Your task: ${plan.purpose}`,
           `Conversation so far:\n${transcript(thread) || "(no messages yet: this is a first follow-up after the viewing)"}`,
         ]
@@ -336,6 +339,7 @@ async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: 
     lang,
     body,
     slots: plan.slots,
+    details: plan.details,
     link: plan.link && { ...plan.link, url: absoluteUrl(plan.link.url) },
     signature: signature(lang, thread.agent?.name ?? thread.agencyName, thread.agencyName, thread.conversation.channel),
   });
@@ -448,20 +452,18 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
   return { proposalId: proposal.id, conversationId: conversation!.id };
 }
 
+export type ClientAction = { kind: "booked" } | { kind: "cancelled" } | { kind: "rescheduled"; from: Date };
+
 /**
- * When a client cancels or moves a viewing through their link, the agency hears
- * about it in the inbox like any message. A cancellation also gets a draft
- * offering new times.
+ * When a client books through the widget, or moves or cancels through their
+ * link, the agency sees it in the inbox like a message, on the channel the
+ * client prefers (WhatsApp if they opted in, otherwise email), with a draft
+ * reply waiting for approval: a confirmation, or new times after a cancellation.
  */
-export async function noteAppointmentChange(
-  ctx: ToolContext,
-  appointmentId: string,
-  change: { kind: "cancelled" } | { kind: "rescheduled"; from: Date },
-  options: { useAi?: boolean } = {},
-) {
+export async function noteClientAction(ctx: ToolContext, appointmentId: string, action: ClientAction, options: { useAi?: boolean } = {}) {
   const appointment = await ctx.db.query.appointments.findFirst({
     where: and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.id, appointmentId)),
-    with: { contact: true, listing: true },
+    with: { contact: true, listing: true, agent: true },
   });
   if (!appointment?.contact) return null;
   const contact = appointment.contact;
@@ -480,55 +482,88 @@ export async function noteAppointmentChange(
         agencyId: ctx.agencyId,
         contactId: contact.id,
         leadId: appointment.leadId,
-        listingId: appointment.listingId,
-        agentId: appointment.agentId,
         channel,
         provider: channel === "whatsapp" ? "whatsapp_business" : "outlook",
+        subject: channel === "email" ? (appointment.listing?.title ?? null) : null,
       })
       .returning()
   )[0]!;
 
   const place = addressOf(appointment.listing);
   const when = (d: Date) => formatSlot(d, "en");
-  const body =
-    change.kind === "cancelled"
-      ? `Cancelled the viewing at ${place} (${when(appointment.startsAt)}) using their booking link.`
-      : `Moved the viewing at ${place} from ${when(change.from)} to ${when(appointment.startsAt)} using their booking link.`;
-  const soon = appointment.startsAt.getTime() - Date.now() < 48 * 3600 * 1000;
-  const priority: Priority = change.kind === "cancelled" ? (soon ? "high" : "normal") : "low";
-  const category: ConversationCategory = change.kind === "cancelled" ? "cancellation" : "reschedule";
+  const note = {
+    booked: () => `Booked a viewing at ${place} for ${when(appointment.startsAt)} on the website.`,
+    cancelled: () => `Cancelled the viewing at ${place} (${when(appointment.startsAt)}) using their booking link.`,
+    rescheduled: () => `Moved the viewing at ${place} from ${when((action as { from: Date }).from)} to ${when(appointment.startsAt)} using their booking link.`,
+  }[action.kind]();
+  const soon = appointment.startsAt.getTime() - Date.now() < (action.kind === "cancelled" ? 48 : 24) * 3600 * 1000;
+  const category: ConversationCategory = { booked: "booking", cancelled: "cancellation", rescheduled: "reschedule" }[action.kind] as ConversationCategory;
+  const priority: Priority = soon ? "high" : "normal";
 
   const [message] = await ctx.db
     .insert(messages)
-    .values({ agencyId: ctx.agencyId, conversationId: conversation.id, direction: "inbound", authorType: "system", body, intent: category })
+    .values({ agencyId: ctx.agencyId, conversationId: conversation.id, direction: "inbound", authorType: "system", body: note, intent: category })
     .returning();
   await ctx.db
     .update(conversations)
     .set({
       category,
       priority,
-      summary: change.kind === "cancelled" ? "Cancelled their viewing via the booking link." : "Moved their viewing via the booking link.",
-      status: change.kind === "cancelled" ? "open" : "waiting",
+      summary: {
+        booked: "Booked a viewing on the website.",
+        cancelled: "Cancelled their viewing via the booking link.",
+        rescheduled: "Moved their viewing via the booking link.",
+      }[action.kind],
+      status: "open",
       unread: true,
       lastMessageAt: message!.sentAt,
       listingId: appointment.listingId ?? conversation.listingId,
+      agentId: appointment.agentId,
     })
     .where(eq(conversations.id, conversation.id));
 
-  if (change.kind === "rescheduled") return { conversationId: conversation.id, proposalId: null };
-
-  // The viewing is already cancelled; offer new times without pushing.
   const thread = await loadThread(ctx, conversation.id);
   const lang = toLang(contact.language);
-  const planned = await planFor(ctx, thread, { category: "cancellation", priority, language: lang, summary: body, sentiment: "neutral", by: "rules" });
-  // Nothing left to cancel: the client already did, and any other viewing they have stays.
-  const plan = planned && {
-    ...planned,
-    templateKey: "cancelled_by_client",
-    purpose: "The client cancelled the viewing themselves through their booking link. Acknowledge it kindly in one sentence, and without pushing offer the times below in case they still want to come.",
-    cancelAppointmentId: undefined,
-    summary: `Offer ${contact.firstName ?? "the client"} new times after the cancellation`,
-  };
-  const proposal = plan ? await propose(ctx, thread, plan, lang, body, options.useAi ?? true) : null;
+  const name = contact.firstName ?? "the client";
+  const confirmedDetails = [
+    { label: detailLabels.when[lang], value: formatSlot(appointment.startsAt, lang) },
+    { label: detailLabels.where[lang], value: appointment.location ?? place },
+    { label: detailLabels.with[lang], value: appointment.agent?.name ?? "" },
+  ];
+  const changeLink = { url: `/a/${appointment.manageToken}`, label: linkLabels.change[lang] };
+
+  let plan: DraftPlan | null;
+  if (action.kind === "cancelled") {
+    const planned = await planFor(ctx, thread, { category: "cancellation", priority, language: lang, summary: note, sentiment: "neutral", by: "rules" });
+    // Nothing left to cancel: the client already did, and any other viewing they have stays.
+    plan = planned && {
+      ...planned,
+      templateKey: "cancelled_by_client",
+      purpose: "The client cancelled the viewing themselves through their booking link. Acknowledge it kindly in one sentence, and without pushing offer the times below in case they still want to come.",
+      cancelAppointmentId: undefined,
+      summary: `Offer ${name} new times after the cancellation`,
+    };
+  } else if (action.kind === "booked") {
+    plan = {
+      kind: "reply",
+      purpose: "The client just booked a viewing on the website. Thank them warmly and confirm it. Mention, if useful, one practical thing from the listing data (for example where to meet). Keep it short.",
+      templateKey: "booking_confirmation",
+      slots: [],
+      details: confirmedDetails,
+      link: changeLink,
+      summary: `Confirm ${name}'s viewing`,
+    };
+  } else {
+    plan = {
+      kind: "reply",
+      purpose: "The client moved their viewing to a new time themselves. Confirm the new time kindly in one or two sentences.",
+      templateKey: "reschedule_confirmation",
+      slots: [],
+      details: confirmedDetails,
+      link: changeLink,
+      summary: `Confirm ${name}'s new viewing time`,
+    };
+  }
+  const proposal = plan ? await propose(ctx, thread, plan, lang, note, options.useAi ?? true) : null;
   return { conversationId: conversation.id, proposalId: proposal?.id ?? null };
 }

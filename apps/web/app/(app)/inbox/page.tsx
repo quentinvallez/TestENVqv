@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { aiAvailable, inboxFolders, runTool, tools, type InboxFolder } from "@viewing/core";
-import { ArrowLeft, Building2, CalendarX2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, CalendarCheck2, CalendarX2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
 import { ChannelMark, providerMeta, providerOf } from "@/components/channel";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -23,7 +23,7 @@ const folderGroups: { title?: string; folders: { id: InboxFolder; label: string;
   {
     title: "Type",
     folders: [
-      { id: "viewing_request", label: "Viewing requests", dot: categoryMeta.viewing_request!.color },
+      { id: "viewing_request", label: "Bookings & requests", dot: categoryMeta.viewing_request!.color },
       { id: "changes", label: "Changes & cancellations", dot: categoryMeta.reschedule!.color },
       { id: "question", label: "Questions", dot: categoryMeta.question!.color },
       { id: "offer", label: "Offers", dot: categoryMeta.offer!.color },
@@ -131,7 +131,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {c.subject && <div className="mt-0.5 truncate text-[12px]">{c.subject}</div>}
                   <p className="mt-0.5 line-clamp-2 text-[12px] text-muted">
                     {c.lastMessage?.direction === "outbound" && <span className="text-faint">You: </span>}
-                    {c.lastMessage?.authorType === "system" && <span className="text-faint">Booking link: </span>}
+                    {c.lastMessage?.authorType === "system" && <span className="text-faint">{c.category === "booking" ? "Website: " : "Booking link: "}</span>}
                     {c.lastMessage?.body}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -254,7 +254,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
             if (m.authorType === "system") {
               return (
                 <div key={m.id} className="flex items-center justify-center gap-2 py-1 text-center text-[12px] text-muted">
-                  <CalendarX2 className="size-3.5 shrink-0" />
+                  {m.intent === "cancellation" ? <CalendarX2 className="size-3.5 shrink-0" /> : <CalendarCheck2 className="size-3.5 shrink-0" />}
                   <span>
                     <span className="font-medium text-fg">{name}</span> {m.body.charAt(0).toLowerCase() + m.body.slice(1)}
                   </span>

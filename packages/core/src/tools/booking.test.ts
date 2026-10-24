@@ -73,6 +73,52 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     expect(full?.draft?.input.cancelAppointmentId).toBeUndefined();
   });
 
+  it("puts a website booking and a move in the inbox as drafts, without sending anything", async () => {
+    const clientCtx: ToolContext = { ...ctx, actor: { type: "contact", id: null } };
+    const { slots } = await runTool(tools.availableSlots, ctx, { listingId });
+    const booked = await runTool(tools.bookViewing, clientCtx, {
+      listingId,
+      startsAt: slots[14]!.start,
+      contact: { firstName: "Wout", email: "wout@example.com", phone: "+32 470 00 00 07", language: "nl", whatsappOptIn: true },
+    });
+
+    const { items } = await runTool(tools.listInbox, ctx, { folder: "viewing_request" });
+    const conversation = items.find((c) => c.contact?.email === "wout@example.com")!;
+    expect(conversation.category).toBe("booking");
+    expect(conversation.channel).toBe("whatsapp"); // opted in, so the confirmation goes by WhatsApp
+    const full = await runTool(tools.getConversation, ctx, { conversationId: conversation.id });
+    expect(String(full!.draft!.input.body)).toContain("Wanneer:");
+    expect(String(full!.draft!.input.body)).toContain(`/a/${booked.manageToken}`);
+    expect(full!.messages.filter((m) => m.direction === "outbound")).toHaveLength(0);
+
+    await runTool(tools.rescheduleAppointment, clientCtx, { appointmentId: booked.appointmentId, startsAt: slots[16]!.start });
+    const moved = await runTool(tools.getConversation, ctx, { conversationId: conversation.id });
+    expect(moved!.category).toBe("reschedule");
+    expect(moved!.draft!.summary).toContain("new viewing time");
+    expect(moved!.messages.filter((m) => m.direction === "outbound")).toHaveLength(0);
+  });
+
+  it("books with the agent named on the website when one is given", async () => {
+    const agents = await runTool(tools.listAgents, ctx, {});
+    const listing = await runTool(tools.getListing, ctx, { id: listingId });
+    const other = agents.find((a) => a.id !== listing!.agentId)!;
+    const { slots, agent } = await runTool(tools.availableSlots, ctx, { listingId, agentId: other.id });
+    expect(agent.id).toBe(other.id);
+    const booked = await runTool(tools.bookViewing, ctx, { listingId, agentId: other.id, startsAt: slots[2]!.start, contact: contact(8) });
+    expect(booked.agentName).toBe(other.name);
+  });
+
+  it("reassigns a listing and moves its open leads", async () => {
+    const agents = await runTool(tools.listAgents, ctx, {});
+    const listing = await runTool(tools.getListing, ctx, { id: listingId });
+    const other = agents.find((a) => a.id !== listing!.agentId)!;
+    const result = await runTool(tools.assignListingAgent, ctx, { listingId, agentId: other.id });
+    expect(result.changed).toBe(true);
+    const after = await runTool(tools.getListing, ctx, { id: listingId });
+    expect(after!.agentId).toBe(other.id);
+    expect(after!.leads.filter((l) => l.stage === "new" || l.stage === "invited").every((l) => l.agentId === other.id)).toBe(true);
+  });
+
   it("executes an approved proposal", async () => {
     const [proposal] = await runTool(tools.listProposals, ctx, {});
     const decided = await runTool(tools.decideProposal, { ...ctx, actor: { type: "user", id: null } }, { proposalId: proposal!.id, decision: "approved" });

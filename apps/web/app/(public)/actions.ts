@@ -48,7 +48,7 @@ const widgetErrors = {
 };
 
 /** Booking from the widget: stays on the page (it may be inside an iframe) and returns the confirmation. */
-export async function bookFromWidgetAction(listingId: string, langValue: string, _state: WidgetState, form: FormData): Promise<WidgetState> {
+export async function bookFromWidgetAction(listingId: string, langValue: string, agentId: string, _state: WidgetState, form: FormData): Promise<WidgetState> {
   const lang = toWidgetLang(langValue);
   const errors = widgetErrors[lang];
   if (form.get("website")) return { error: errors.generic };
@@ -62,6 +62,7 @@ export async function bookFromWidgetAction(listingId: string, langValue: string,
   try {
     const result = await runTool(tools.bookViewing, publicContext(found.listing.agencyId), {
       listingId,
+      agentId,
       startsAt: String(form.get("startsAt") ?? ""),
       source: "website",
       message: String(form.get("message") ?? "") || undefined,
