@@ -44,3 +44,21 @@ export async function appointmentByManageToken(token: string) {
     .where(eq(schema.appointments.manageToken, token));
   return row ?? null;
 }
+
+export async function publicAgency(agencyId: string) {
+  const [row] = await db
+    .select({ id: schema.organization.id, name: schema.organization.name, branding: schema.agencySettings.branding })
+    .from(schema.organization)
+    .leftJoin(schema.agencySettings, eq(schema.agencySettings.agencyId, schema.organization.id))
+    .where(eq(schema.organization.id, agencyId));
+  return row ?? null;
+}
+
+/** Listings an agency shows on its public website. */
+export async function publicListings(agencyId: string) {
+  return db
+    .select()
+    .from(schema.listings)
+    .where(and(eq(schema.listings.agencyId, agencyId), inArray(schema.listings.status, ["active", "under_offer"])))
+    .orderBy(schema.listings.createdAt);
+}

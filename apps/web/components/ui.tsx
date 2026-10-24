@@ -36,8 +36,8 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-line px-5">
-      <nav className="flex min-w-0 items-center gap-1.5 text-[13px]">
+    <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-line px-4 md:px-5">
+      <nav className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px]">
         {crumbs.map((crumb, i) => (
           <span key={i} className="flex min-w-0 items-center gap-1.5">
             {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-faint" />}
@@ -51,7 +51,7 @@ export function PageHeader({
           </span>
         ))}
       </nav>
-      <div className="flex items-center gap-2">{actions}</div>
+      <div className="flex shrink-0 items-center gap-2">{actions}</div>
     </header>
   );
 }
