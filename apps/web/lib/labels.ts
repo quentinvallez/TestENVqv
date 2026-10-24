@@ -34,6 +34,7 @@ export const sourceLabel: Record<string, string> = {
   whatsapp: "WhatsApp",
   phone: "Phone",
   manual: "Manual",
+  valuation: "Valuation",
 };
 
 export const propertyTypeLabel: Record<string, string> = {
@@ -55,6 +56,9 @@ export const eventLabel: Record<string, string> = {
   "proposal.rejected": "Proposal dismissed",
   "message.sent": "Reply sent",
   "listing.agent_changed": "Responsible agent changed",
+  "valuation.requested": "Valuation started",
+  "planner.recommended": "Planner suggested properties",
+  "valuation.completed": "Valuation completed",
   "appointment.booked_by_client": "Booked on the website",
   "planner.drafted": "Planner drafted a reply",
   "planner.follow_up_drafted": "Planner drafted a follow-up",
@@ -64,6 +68,7 @@ export const eventLabel: Record<string, string> = {
 };
 
 export const categoryMeta: Record<string, { label: string; color: string }> = {
+  valuation: { label: "Seller lead", color: "#0e7490" },
   booking: { label: "New booking", color: "#16a34a" },
   viewing_request: { label: "Viewing request", color: "#3b82f6" },
   reschedule: { label: "Reschedule", color: "#f59e0b" },
@@ -80,3 +85,11 @@ export const temperatureMeta = {
   warm: { label: "Warm lead", color: "#f59e0b" },
   cold: { label: "Cold lead", color: "#60a5fa" },
 } as const;
+
+export const reasonLabel: Record<string, string> = {
+  type: "same type",
+  price: "similar price",
+  size: "similar size",
+  bedrooms: "same bedrooms",
+  area: "same area",
+};

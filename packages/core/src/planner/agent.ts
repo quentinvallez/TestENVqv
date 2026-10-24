@@ -180,16 +180,19 @@ If times will be offered, end your text by inviting the client to pick one of th
 For WhatsApp keep it conversational and a little shorter than email.`;
 
 type DraftPlan = {
-  kind: "reply" | "follow_up";
+  kind: "reply" | "follow_up" | "recommendation";
   purpose: string;
   templateKey: keyof typeof templates;
   slots: Date[];
   details?: { label: string; value: string }[];
+  lines?: string[];
   link?: { url: string; label: string };
   cancelAppointmentId?: string;
   leadStage?: "invited" | "offer" | "follow_up";
   summary: string;
   otherListing?: string;
+  /** Address to talk about when it isn't a listing, e.g. the owner's home for a valuation. */
+  address?: string;
 };
 
 async function planFor(ctx: ToolContext, thread: Thread, t: Triage): Promise<DraftPlan | null> {
@@ -310,7 +313,7 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
           `Client: ${thread.contact?.firstName ?? ""} ${thread.contact?.lastName ?? ""}. Write in: ${lang}.`,
           `Listing: ${listingFacts(thread.listing)}`,
           thread.lead?.qualification?.answers.length ? `What the client told us: ${JSON.stringify(thread.lead.qualification.answers)}` : "",
-          plan.slots.length ? `${plan.slots.length} times will be listed after your text.` : plan.details?.length ? "The confirmed time, place and agent are listed after your text; do not repeat them." : "No times will be offered.",
+          plan.lines?.length ? `These items are listed after your text (do not repeat them): ${plan.lines.join("; ")}` : plan.slots.length ? `${plan.slots.length} times will be listed after your text.` : plan.details?.length ? "The confirmed time, place and agent are listed after your text; do not repeat them." : "No times will be offered.",
           `Your task: ${plan.purpose}`,
           `Conversation so far:\n${transcript(thread) || "(no messages yet: this is a first follow-up after the viewing)"}`,
         ]
@@ -326,7 +329,7 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
   }
   const body = templates[plan.templateKey]![lang]({
     name: thread.contact?.firstName ?? "",
-    address: addressOf(thread.listing) || { nl: "het pand", fr: "le bien", en: "the property" }[lang],
+    address: plan.address || addressOf(thread.listing) || { nl: "het pand", fr: "le bien", en: "the property" }[lang],
     agentName: thread.agent?.name ?? thread.agencyName,
     other: plan.otherListing,
   });
@@ -339,6 +342,7 @@ async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: 
     lang,
     body,
     slots: plan.slots,
+    lines: plan.lines,
     details: plan.details,
     link: plan.link && { ...plan.link, url: absoluteUrl(plan.link.url) },
     signature: signature(lang, thread.agent?.name ?? thread.agencyName, thread.agencyName, thread.conversation.channel),
@@ -489,16 +493,18 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       .returning()
   )[0]!;
 
-  const place = addressOf(appointment.listing);
+  const isValuation = appointment.type === "valuation";
+  const place = addressOf(appointment.listing) || appointment.location || "";
   const when = (d: Date) => formatSlot(d, "en");
   const note = {
-    booked: () => `Booked a viewing at ${place} for ${when(appointment.startsAt)} on the website.`,
-    cancelled: () => `Cancelled the viewing at ${place} (${when(appointment.startsAt)}) using their booking link.`,
-    rescheduled: () => `Moved the viewing at ${place} from ${when((action as { from: Date }).from)} to ${when(appointment.startsAt)} using their booking link.`,
+    booked: () => (isValuation ? `Booked a valuation visit at ${place} for ${when(appointment.startsAt)}.` : `Booked a viewing at ${place} for ${when(appointment.startsAt)} on the website.`),
+    cancelled: () => `Cancelled the ${isValuation ? "valuation visit" : "viewing"} at ${place} (${when(appointment.startsAt)}) using their booking link.`,
+    rescheduled: () => `Moved the ${isValuation ? "valuation visit" : "viewing"} at ${place} from ${when((action as { from: Date }).from)} to ${when(appointment.startsAt)} using their booking link.`,
   }[action.kind]();
   const soon = appointment.startsAt.getTime() - Date.now() < (action.kind === "cancelled" ? 48 : 24) * 3600 * 1000;
-  const category: ConversationCategory = { booked: "booking", cancelled: "cancellation", rescheduled: "reschedule" }[action.kind] as ConversationCategory;
-  const priority: Priority = soon ? "high" : "normal";
+  // A seller's conversation stays in "Seller leads" whatever they do with the visit.
+  const category: ConversationCategory = isValuation ? "valuation" : ({ booked: "booking", cancelled: "cancellation", rescheduled: "reschedule" }[action.kind] as ConversationCategory);
+  const priority: Priority = soon || isValuation ? "high" : "normal";
 
   const [message] = await ctx.db
     .insert(messages)
@@ -509,7 +515,9 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
     .set({
       category,
       priority,
-      summary: {
+      summary: isValuation
+        ? { booked: "Booked a valuation visit.", cancelled: "Cancelled the valuation visit.", rescheduled: "Moved the valuation visit." }[action.kind]
+        : {
         booked: "Booked a viewing on the website.",
         cancelled: "Cancelled their viewing via the booking link.",
         rescheduled: "Moved their viewing via the booking link.",
@@ -546,12 +554,15 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   } else if (action.kind === "booked") {
     plan = {
       kind: "reply",
-      purpose: "The client just booked a viewing on the website. Thank them warmly and confirm it. Mention, if useful, one practical thing from the listing data (for example where to meet). Keep it short.",
-      templateKey: "booking_confirmation",
+      purpose: isValuation
+        ? "The owner just booked a free valuation visit at their home. Thank them and confirm it in one or two sentences; say the agent will look at the home and the market with them."
+        : "The client just booked a viewing on the website. Thank them warmly and confirm it. Mention, if useful, one practical thing from the listing data (for example where to meet). Keep it short.",
+      templateKey: isValuation ? "valuation_visit_confirmation" : "booking_confirmation",
       slots: [],
       details: confirmedDetails,
       link: changeLink,
-      summary: `Confirm ${name}'s viewing`,
+      summary: isValuation ? `Confirm ${name}'s valuation visit` : `Confirm ${name}'s viewing`,
+      address: place,
     };
   } else {
     plan = {
@@ -566,4 +577,113 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   }
   const proposal = plan ? await propose(ctx, thread, plan, lang, note, options.useAi ?? true) : null;
   return { conversationId: conversation.id, proposalId: proposal?.id ?? null };
+}
+
+/**
+ * After an owner verified their phone for a valuation: an inbox note on their
+ * WhatsApp conversation, and a draft offering a free valuation visit with free
+ * times of the agent. The estimate itself is added as a fixed line.
+ */
+export async function draftValuationFollowUp(ctx: ToolContext, valuationId: string, options: { useAi?: boolean } = {}) {
+  const valuation = await ctx.db.query.valuations.findFirst({
+    where: and(eq(schema.valuations.agencyId, ctx.agencyId), eq(schema.valuations.id, valuationId)),
+  });
+  if (!valuation?.contactId) return null;
+  const channel = valuation.verificationMethod === "sms" ? "sms" : "whatsapp";
+
+  let [conversation] = await ctx.db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, valuation.contactId), eq(conversations.channel, channel)))
+    .orderBy(desc(conversations.lastMessageAt))
+    .limit(1);
+  conversation ??= (
+    await ctx.db
+      .insert(conversations)
+      .values({ agencyId: ctx.agencyId, contactId: valuation.contactId, leadId: valuation.leadId, channel, provider: channel === "sms" ? "sms" : "whatsapp_business" })
+      .returning()
+  )[0]!;
+
+  const place = [[valuation.street, valuation.houseNumber].filter(Boolean).join(" "), valuation.city].join(", ");
+  const euro = (n: number) => new Intl.NumberFormat("nl-BE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+  const result = valuation.result;
+  const note = result
+    ? `Requested a home valuation for ${place}: estimate ${euro(result.low)} – ${euro(result.high)}.`
+    : `Requested a home valuation for ${place}; not enough market data for an online estimate.`;
+  const sellSoon = valuation.answers.plans === "sell_soon";
+
+  const [message] = await ctx.db
+    .insert(messages)
+    .values({ agencyId: ctx.agencyId, conversationId: conversation.id, direction: "inbound", authorType: "system", body: note, intent: "valuation" })
+    .returning();
+  await ctx.db
+    .update(conversations)
+    .set({
+      category: "valuation",
+      priority: sellSoon ? "high" : "normal",
+      summary: sellSoon ? "Owner wants to sell soon; valuation requested." : "Owner requested a valuation.",
+      status: "open",
+      unread: true,
+      lastMessageAt: message!.sentAt,
+      agentId: valuation.agentId,
+      leadId: valuation.leadId,
+    })
+    .where(eq(conversations.id, conversation.id));
+
+  const thread = await loadThread(ctx, conversation.id);
+  const lang = toLang(valuation.language);
+  const slots = valuation.agentId
+    ? pickSpreadSlots((await runTool(availableSlots, ctx, { agentId: valuation.agentId, days: 10, minutes: 60 })).slots)
+    : [];
+  const plan: DraftPlan = {
+    kind: "reply",
+    purpose: `The owner of ${place} requested an online estimate of their home${sellSoon ? " and wants to sell soon" : ""}. Thank them, say briefly that an online estimate is indicative, and offer a free, no-obligation valuation visit by the agent at one of the times below. Do not mention any amount: the estimate is added after your text.`,
+    templateKey: "valuation_follow_up",
+    slots,
+    details: result ? [{ label: detailLabels.estimate[lang], value: `${euro(result.low)} – ${euro(result.high)}` }] : [],
+    link: { url: `/v/${valuation.token}`, label: linkLabels.report[lang] },
+    summary: `Offer ${valuation.firstName ?? "the owner"} a free valuation visit`,
+    address: place,
+  };
+  const proposal = await propose(ctx, thread, plan, lang, note, options.useAi ?? true);
+  return { conversationId: conversation.id, proposalId: proposal.id };
+}
+
+/** Drafts a message suggesting listings to a known client, on their preferred channel. */
+export async function draftRecommendation(
+  ctx: ToolContext,
+  contactId: string,
+  suggestions: { id: string; label: string; reasons: string[] }[],
+  basedOn: { street: string | null; houseNumber: string | null; city: string | null },
+  options: { useAi?: boolean } = {},
+) {
+  const [contact] = await ctx.db.select().from(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.id, contactId)));
+  if (!contact || suggestions.length === 0) return null;
+  const channel = contact.whatsappOptIn && contact.phone ? "whatsapp" : "email";
+  let [conversation] = await ctx.db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, contactId), eq(conversations.channel, channel)))
+    .orderBy(desc(conversations.lastMessageAt))
+    .limit(1);
+  conversation ??= (
+    await ctx.db
+      .insert(conversations)
+      .values({ agencyId: ctx.agencyId, contactId, channel, provider: channel === "whatsapp" ? "whatsapp_business" : "outlook", subject: channel === "email" ? "Panden voor u" : null, status: "open", unread: false, lastMessageAt: new Date() })
+      .returning()
+  )[0]!;
+  const thread = await loadThread(ctx, conversation.id);
+  const lang = toLang(contact.language);
+  const place = addressOf(basedOn as Thread["listing"]);
+  const plan: DraftPlan = {
+    kind: "recommendation",
+    purpose: `Suggest a few properties of the agency to a client who earlier showed interest in ${place}. Mention briefly why they could fit (${suggestions.map((s) => `${s.label}: ${s.reasons.join(", ")}`).join("; ")}). Invite them to plan a viewing. Do not invent features.`,
+    templateKey: "recommendation",
+    slots: [],
+    lines: suggestions.map((s) => `${s.label}: ${absoluteUrl(`/book/${s.id}`)}`),
+    summary: `Suggest ${suggestions.length} ${suggestions.length === 1 ? "property" : "properties"} to ${contact.firstName ?? "the client"}`,
+    address: place,
+  };
+  const proposal = await propose(ctx, thread, plan, lang, `Similar to ${place}.`, options.useAi ?? true);
+  return { conversationId: conversation.id, proposalId: proposal.id };
 }

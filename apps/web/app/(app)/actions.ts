@@ -68,3 +68,15 @@ export async function assignAgentAction(listingId: string, _state: AssignState, 
     return { error: "Could not change the agent" };
   }
 }
+
+export async function suggestListingsAction(contactId: string) {
+  const { conversationId } = await runTool(tools.suggestListings, await getToolContext(), { contactId });
+  revalidatePath("/", "layout");
+  redirect(conversationId ? `/inbox?c=${conversationId}` : `/contacts/${contactId}`);
+}
+
+export async function suggestToMatchesAction(listingId: string) {
+  await runTool(tools.suggestListingToMatches, await getToolContext(), { listingId });
+  revalidatePath("/", "layout");
+  redirect("/inbox?f=drafts");
+}

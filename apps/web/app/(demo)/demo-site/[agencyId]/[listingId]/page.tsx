@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { bookableListing, listingAgent } from "@viewing/core/public";
+import { runTool, tools } from "@viewing/core";
+import { bookableListing, listingAgent, publicContext } from "@viewing/core/public";
 import { BedDouble, Bath, ChevronLeft, Leaf, Mail, Phone, Ruler, Trees } from "lucide-react";
 import { DemoSiteFooter, DemoSiteHeader, demoAccent } from "@/components/demo-site";
+import { WidgetSlot } from "@/components/widget-slot";
 import { ListingPhoto } from "@/components/listing-photo";
 import { address, formatPrice } from "@/lib/format";
 
@@ -15,7 +17,7 @@ export default async function DemoListingPage({ params, searchParams }: { params
   const found = await bookableListing(listingId);
   if (!found || found.listing.agencyId !== agencyId) notFound();
   const { listing, agencyName } = found;
-  const agent = await listingAgent(listing.id);
+  const [agent, similar] = await Promise.all([listingAgent(listing.id), runTool(tools.similarListings, publicContext(listing.agencyId), { listingId: listing.id })]);
 
   const facts = [
     listing.bedrooms != null && { icon: BedDouble, label: `${listing.bedrooms} ${listing.bedrooms === 1 ? "slaapkamer" : "slaapkamers"}` },
@@ -89,12 +91,29 @@ export default async function DemoListingPage({ params, searchParams }: { params
             )}
             <div className="overflow-hidden rounded-xl border border-black/10 shadow-sm">
               <div className="px-4 pt-4 font-serif text-[19px] font-semibold">Plan een bezoek</div>
-              <div data-viewing-widget data-listing={listing.reference} data-lang={lang} />
+              <WidgetSlot attributes={{ "data-viewing-widget": "", "data-listing": listing.reference, "data-lang": lang }} agencyId={agencyId} />
             </div>
             <p className="text-center text-[11px] text-black/40">Widget geladen via één regel code op de website van het kantoor</p>
-            <script src="/widget.js" data-agency={agencyId} async />
           </aside>
         </div>
+        {similar.length > 0 && (
+          // Based on this page only: no tracking of the visitor, so no cookie consent needed.
+          <section className="mt-14">
+            <h2 className="font-serif text-[22px] font-semibold">Ook interessant</h2>
+            <div className="mt-4 grid gap-6 sm:grid-cols-3">
+              {similar.map((l) => (
+                <a key={l.id} href={`/demo-site/${agencyId}/${l.id}`} className="group overflow-hidden rounded-lg border border-black/10">
+                  <ListingPhoto src={l.photos[0]?.url} alt={l.title ?? l.reference} className="aspect-[4/3] w-full" />
+                  <div className="p-3">
+                    <div className="font-medium group-hover:underline">{l.title}</div>
+                    <div className="text-[13px] text-black/60">{address(l.street, l.houseNumber, l.city)}</div>
+                    <div className="mt-1 font-semibold">{formatPrice(l.price, l.transaction)}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
       <DemoSiteFooter agencyName={agencyName} />
     </>

@@ -1,6 +1,8 @@
 import { eq, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { draftFollowUp, handleConversation } from "../planner/agent";
+import { runTool } from "../tool";
+import { requestValuation, verifyValuation } from "./valuations";
 import { zonedDay, zonedTime } from "../time";
 import { defineTool } from "../tool";
 
@@ -25,6 +27,19 @@ export const seedDemoData = defineTool({
       .where(eq(listings.agencyId, agencyId));
     if ((existing?.n ?? 0) > 0) return { seeded: false, reason: "Agency already has listings" };
 
+    const monthsAgo = (m: number) => new Date(Date.now() - m * 30 * 24 * 3600 * 1000);
+    const soldHistory: { type: "house" | "apartment" | "villa"; street: string; number: string; postcode: string; city: string; asking: number; price: number; months: number; area: number; bedrooms: number; epc: string; condition: string }[] = [
+      { type: "house", street: "Statiestraat", number: "41", postcode: "2600", city: "Berchem", asking: 489000, price: 475000, months: 4, area: 165, bedrooms: 3, epc: "C", condition: "good" },
+      { type: "house", street: "Driekoningenstraat", number: "88", postcode: "2600", city: "Berchem", asking: 529000, price: 520000, months: 9, area: 178, bedrooms: 4, epc: "B", condition: "renovated" },
+      { type: "house", street: "Diepestraat", number: "12", postcode: "2600", city: "Berchem", asking: 399000, price: 382000, months: 14, area: 140, bedrooms: 3, epc: "E", condition: "to_renovate" },
+      { type: "apartment", street: "Grote Steenweg", number: "205", postcode: "2600", city: "Berchem", asking: 289000, price: 281000, months: 6, area: 85, bedrooms: 2, epc: "B", condition: "good" },
+      { type: "apartment", street: "Cogels-Osylei", number: "71", postcode: "2600", city: "Berchem", asking: 365000, price: 355000, months: 11, area: 102, bedrooms: 2, epc: "C", condition: "renovated" },
+      { type: "house", street: "Koningsstraat", number: "9", postcode: "9000", city: "Gent", asking: 595000, price: 580000, months: 5, area: 190, bedrooms: 4, epc: "C", condition: "good" },
+      { type: "house", street: "Sint-Pietersnieuwstraat", number: "120", postcode: "9000", city: "Gent", asking: 455000, price: 440000, months: 8, area: 150, bedrooms: 3, epc: "D", condition: "good" },
+      { type: "house", street: "Hundelgemsesteenweg", number: "322", postcode: "9820", city: "Merelbeke", asking: 419000, price: 405000, months: 7, area: 160, bedrooms: 3, epc: "D", condition: "good" },
+      { type: "house", street: "Gaversesteenweg", number: "15", postcode: "9820", city: "Merelbeke", asking: 375000, price: 362000, months: 13, area: 145, bedrooms: 3, epc: "E", condition: "to_renovate" },
+      { type: "apartment", street: "Kortrijksesteenweg", number: "180", postcode: "9000", city: "Gent", asking: 269000, price: 262000, months: 3, area: 78, bedrooms: 2, epc: "B", condition: "good" },
+    ];
     const seeded = await ctx.db.transaction(async (tx) => {
       const [antwerp, ghent] = await tx
         .insert(offices)
@@ -62,7 +77,28 @@ export const seedDemoData = defineTool({
           { agencyId, officeId: ghent!.id, agentId: lien!.id, reference: "GNT-2014", status: "active", transaction: "rent", propertyType: "apartment", title: "Studio vlakbij Gent-Sint-Pieters", street: "Kortrijksesteenweg", houseNumber: "210", postcode: "9000", city: "Gent", price: 795, bedrooms: 0, bathrooms: 1, livingArea: 38, epcScore: 190, epcLabel: "C", photos: [{ url: photo("1522708323590-d24dbb6b0267") }] },
           { agencyId, officeId: ghent!.id, agentId: maxime!.id, reference: "GNT-2020", status: "active", transaction: "sale", propertyType: "house", title: "Halfopen bebouwing met grote tuin", street: "Hundelgemsesteenweg", houseNumber: "480", postcode: "9820", city: "Merelbeke", price: 435000, bedrooms: 3, bathrooms: 1, livingArea: 165, plotArea: 640, epcScore: 310, epcLabel: "D", photos: [{ url: photo("1570129477492-45c003edd2be") }], portalRefs: { immoweb: "21005177" } },
           { agencyId, officeId: ghent!.id, agentId: maxime!.id, reference: "GNT-2023", status: "draft", transaction: "sale", propertyType: "land", title: "Bouwgrond voor open bebouwing", street: "Pontstraat", houseNumber: "12", postcode: "9831", city: "Sint-Martens-Latem", price: 389000, plotArea: 1100, photos: [{ url: photo("1500382017468-9049fed747ef") }] },
-          { agencyId, officeId: antwerp!.id, agentId: sofie!.id, reference: "ANT-0998", status: "sold", transaction: "sale", propertyType: "apartment", title: "Appartement aan het Zuid", street: "Vlaamsekaai", houseNumber: "16", postcode: "2000", city: "Antwerpen", price: 425000, bedrooms: 2, bathrooms: 1, livingArea: 104, epcScore: 120, epcLabel: "B", photos: [{ url: photo("1493809842364-78817add7ffb") }] },
+          { agencyId, officeId: antwerp!.id, agentId: sofie!.id, reference: "ANT-0998", status: "sold", transaction: "sale", propertyType: "apartment", title: "Appartement aan het Zuid", street: "Vlaamsekaai", houseNumber: "16", postcode: "2000", city: "Antwerpen", price: 425000, soldPrice: 418000, soldAt: monthsAgo(3), bedrooms: 2, bathrooms: 1, livingArea: 104, epcScore: 120, epcLabel: "B", photos: [{ url: photo("1493809842364-78817add7ffb") }] },
+          // Earlier sales of the demo agency; valuations use them as nearby comparables.
+          ...soldHistory.map((h, i) => ({
+            agencyId,
+            officeId: h.postcode.startsWith("2") ? antwerp!.id : ghent!.id,
+            agentId: (h.postcode.startsWith("2") ? sofie! : lien!).id,
+            reference: `SOLD-${100 + i}`,
+            status: "sold" as const,
+            transaction: "sale" as const,
+            propertyType: h.type,
+            street: h.street,
+            houseNumber: h.number,
+            postcode: h.postcode,
+            city: h.city,
+            price: h.asking,
+            soldPrice: h.price,
+            soldAt: monthsAgo(h.months),
+            livingArea: h.area,
+            bedrooms: h.bedrooms,
+            epcLabel: h.epc,
+            features: { condition: h.condition },
+          })),
         ])
         .returning();
       const byRef = Object.fromEntries(listingRows.map((l) => [l.reference, l]));
@@ -323,6 +359,23 @@ export const seedDemoData = defineTool({
     for (const conversationId of toHandle) await handleConversation(plannerCtx, conversationId, { useAi: false });
     const viewedYesterday = appointmentRows.find((a) => a.status === "completed" && a.contactId === contactRows[8]!.id);
     if (viewedYesterday) await draftFollowUp(plannerCtx, viewedYesterday.id, { useAi: false });
+
+    // An owner who asked for an estimate on the demo website yesterday.
+    const valuation = await runTool(requestValuation, { ...ctx, actor: { type: "contact", id: null } }, {
+      street: "Diepestraat",
+      houseNumber: "30",
+      postcode: "2600",
+      city: "Berchem",
+      firstName: "Katrien",
+      email: "katrien.vermeiren@example.com",
+      phone: "+32 475 98 76 54",
+      language: "nl",
+      consent: true,
+      answers: { propertyType: "house", livingArea: 155, plotArea: 180, bedrooms: 3, bathrooms: 1, condition: "good", epcLabel: "D", kitchen: "standard", extras: ["garden"], plans: "sell_soon" },
+    });
+    if (valuation.demoCode) {
+      await runTool(verifyValuation, { ...ctx, actor: { type: "contact", id: null } }, { token: valuation.token, code: valuation.demoCode, useAi: false });
+    }
 
     return { seeded: true, listings: seeded.listingRows.length, leads: leadRows.length, appointments: appointmentRows.length, conversations: threads.length };
   },

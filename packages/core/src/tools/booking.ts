@@ -10,6 +10,7 @@ import { defineTool, type ToolContext } from "../tool";
 const { agents, appointments, availabilityRules, contacts, leads, listings } = schema;
 
 const MINUTE = 60_000;
+export const VALUATION_MINUTES = 60;
 const BOOKING_HORIZON_DAYS = 21;
 
 type Agent = typeof agents.$inferSelect;
@@ -30,7 +31,7 @@ export async function resolveAgentForListing(ctx: ToolContext, listing: Listing)
   return agent;
 }
 
-async function activeAgent(ctx: ToolContext, agentId: string) {
+export async function activeAgent(ctx: ToolContext, agentId: string) {
   const [agent] = await ctx.db
     .select()
     .from(agents)
@@ -48,7 +49,7 @@ async function getListing(ctx: ToolContext, listingId: string) {
 }
 
 /** Free slots for an agent between two instants, against their appointments and connected calendars. */
-async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to: Date, excludeAppointmentId?: string): Promise<Interval[]> {
+export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to: Date, excludeAppointmentId?: string, slotMinutes = agent.slotMinutes): Promise<Interval[]> {
   const margin = agent.bufferMinutes * MINUTE;
   // Sequential on purpose: this often runs inside a transaction, which is a single connection.
   const rules = await ctx.db
@@ -74,13 +75,13 @@ async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to: Date, 
     busy: [...booked, ...external],
     from,
     to,
-    slotMinutes: agent.slotMinutes,
+    slotMinutes,
     bufferMinutes: agent.bufferMinutes,
   });
 }
 
 /** Serialises bookings per agent so two people can never take the same slot. */
-async function lockAgent(ctx: ToolContext, agentId: string) {
+export async function lockAgent(ctx: ToolContext, agentId: string) {
   await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtext(${agentId}))`);
 }
 
@@ -107,6 +108,7 @@ export const availableSlots = defineTool({
     from: z.coerce.date().optional(),
     days: z.number().int().min(1).max(BOOKING_HORIZON_DAYS).default(14),
     excludeAppointmentId: z.string().optional().describe("Ignore this appointment, e.g. when rescheduling it"),
+    minutes: z.number().int().min(15).max(240).optional().describe("Length of the appointment, if not the agent's usual viewing length"),
   }),
   run: async (ctx, input) => {
     let agent: Agent | undefined;
@@ -119,8 +121,9 @@ export const availableSlots = defineTool({
     if (!agent) throw new Error("Pass a listingId or agentId");
     const from = input.from ?? new Date();
     const to = startOfZonedDay(from, input.days);
-    const slots = await agentSlots(ctx, agent, from, to, input.excludeAppointmentId);
-    return { agent: { id: agent.id, name: agent.name }, slotMinutes: agent.slotMinutes, slots };
+    const minutes = input.minutes ?? agent.slotMinutes;
+    const slots = await agentSlots(ctx, agent, from, to, input.excludeAppointmentId, minutes);
+    return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots };
   },
 });
 
@@ -404,5 +407,52 @@ export const getAgentAvailability = defineTool({
       .where(and(eq(availabilityRules.agencyId, ctx.agencyId), eq(availabilityRules.agentId, agent.id)))
       .orderBy(asc(availabilityRules.weekday), asc(availabilityRules.startMinute));
     return { agent, workingHours };
+  },
+});
+
+export const bookValuationVisit = defineTool({
+  name: "appointments_book_valuation",
+  description: "Book a valuation visit at the owner's home after an online estimate, with the agent assigned to that valuation.",
+  mutates: true,
+  input: z.object({ valuationToken: z.string(), startsAt: z.coerce.date() }),
+  run: async (ctx, input) => {
+    const result = await ctx.db.transaction(async (tx) => {
+      const txCtx = { ...ctx, db: tx };
+      const [valuation] = await tx
+        .select()
+        .from(schema.valuations)
+        .where(and(eq(schema.valuations.agencyId, ctx.agencyId), eq(schema.valuations.token, input.valuationToken)));
+      if (!valuation?.verifiedAt || !valuation.agentId || !valuation.contactId) throw new Error("This valuation can't be booked yet");
+      const agent = await activeAgent(txCtx, valuation.agentId);
+      if (!agent) throw new Error("Agent not available");
+      await lockAgent(txCtx, agent.id);
+      // A valuation takes longer than a viewing: the whole hour must be free.
+      const slots = await agentSlots(txCtx, agent, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), undefined, VALUATION_MINUTES);
+      const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
+      if (!slot) throw new SlotUnavailableError();
+      const endsAt = slot.end;
+      const [appointment] = await tx
+        .insert(appointments)
+        .values({
+          agencyId: ctx.agencyId,
+          agentId: agent.id,
+          contactId: valuation.contactId,
+          leadId: valuation.leadId,
+          type: "valuation",
+          status: "confirmed",
+          startsAt: slot.start,
+          endsAt,
+          location: [[valuation.street, valuation.houseNumber].filter(Boolean).join(" "), `${valuation.postcode} ${valuation.city}`].join(", "),
+        })
+        .returning();
+      if (valuation.leadId) await tx.update(leads).set({ stage: "booked" }).where(eq(leads.id, valuation.leadId));
+      await recordEvent(txCtx, { type: "appointment.booked", subjectType: "appointment", subjectId: appointment!.id, data: { type: "valuation", agentId: agent.id } });
+      return { appointment: appointment!, agent };
+    });
+    if (ctx.actor.type === "contact") {
+      const { noteClientAction } = await import("../planner/agent");
+      await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
+    }
+    return { appointmentId: result.appointment.id, manageToken: result.appointment.manageToken, startsAt: result.appointment.startsAt, agentName: result.agent.name };
   },
 });

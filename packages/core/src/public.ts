@@ -91,3 +91,15 @@ export async function listingAgent(listingId: string) {
     .where(eq(schema.listings.id, listingId));
   return row ?? null;
 }
+
+/** Agency behind a valuation report link. */
+export async function valuationAgency(token: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return null;
+  const [row] = await db
+    .select({ agencyId: schema.valuations.agencyId, agencyName: schema.organization.name, branding: schema.agencySettings.branding })
+    .from(schema.valuations)
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.valuations.agencyId))
+    .leftJoin(schema.agencySettings, eq(schema.agencySettings.agencyId, schema.valuations.agencyId))
+    .where(eq(schema.valuations.token, token));
+  return row ?? null;
+}

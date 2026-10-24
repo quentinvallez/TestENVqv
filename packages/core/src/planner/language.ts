@@ -20,12 +20,15 @@ export function composeMessage(options: {
   lang: Lang;
   body: string;
   slots?: Date[];
+  /** Bullet lines, e.g. suggested listings. */
+  lines?: string[];
   /** Fixed facts such as the confirmed time and place, one per line. */
   details?: { label: string; value: string }[];
   link?: { url: string; label: string };
   signature: string;
 }) {
   const parts = [options.body.trim()];
+  if (options.lines?.length) parts.push(options.lines.map((l) => `• ${l}`).join("\n"));
   if (options.details?.length) parts.push(options.details.map((d) => `${d.label}: ${d.value}`).join("\n"));
   if (options.slots?.length) {
     parts.push(options.slots.map((slot) => `• ${formatSlot(slot, options.lang)}`).join("\n"));
@@ -37,10 +40,12 @@ export function composeMessage(options: {
 
 export const linkLabels = {
   book: { nl: "Kies zelf een moment", fr: "Choisissez votre moment", en: "Pick a time yourself" },
+  report: { nl: "Uw rapport en een moment kiezen", fr: "Votre rapport et choisir un moment", en: "Your report and pick a time" },
   change: { nl: "Uw bezoek verplaatsen", fr: "Modifier votre visite", en: "Change your viewing" },
 } satisfies Record<string, Record<Lang, string>>;
 
 export const detailLabels = {
+  estimate: { nl: "Geschatte waarde", fr: "Valeur estimée", en: "Estimated value" },
   when: { nl: "Wanneer", fr: "Quand", en: "When" },
   where: { nl: "Waar", fr: "Où", en: "Where" },
   with: { nl: "Met", fr: "Avec", en: "With" },
@@ -70,6 +75,21 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     nl: (v) => `Beste ${v.name},\n\nBedankt om ons te verwittigen. We hebben uw bezoek aan ${v.address} geannuleerd. Wilt u later toch nog komen kijken? Deze momenten zijn vrij:`,
     fr: (v) => `Bonjour ${v.name},\n\nMerci de nous avoir prévenus. Nous avons annulé votre visite de ${v.address}. Si vous souhaitez tout de même venir plus tard, voici les moments disponibles :`,
     en: (v) => `Dear ${v.name},\n\nThanks for letting us know. We've cancelled your viewing at ${v.address}. If you'd still like to come later, these times are free:`,
+  },
+  recommendation: {
+    nl: (v) => `Beste ${v.name},\n\nU toonde onlangs interesse in ${v.address}. Misschien zijn deze panden ook iets voor u:`,
+    fr: (v) => `Bonjour ${v.name},\n\nVous vous êtes récemment intéressé(e) à ${v.address}. Ces biens pourraient également vous plaire :`,
+    en: (v) => `Dear ${v.name},\n\nYou were recently interested in ${v.address}. These properties might suit you too:`,
+  },
+  valuation_follow_up: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw schattingsaanvraag voor ${v.address}. Een online schatting blijft een indicatie: wilt u een gratis en vrijblijvende waardebepaling ter plaatse? ${v.agentName} komt graag langs op een van deze momenten:`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre demande d'estimation pour ${v.address}. Une estimation en ligne reste indicative : souhaitez-vous une évaluation gratuite et sans engagement sur place ? ${v.agentName} passera volontiers à l'un de ces moments :`,
+    en: (v) => `Dear ${v.name},\n\nThank you for requesting an estimate for ${v.address}. An online estimate is only indicative: would you like a free, no-obligation valuation on site? ${v.agentName} would be happy to come by at one of these times:`,
+  },
+  valuation_visit_confirmation: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt! Uw gratis waardebepaling is bevestigd. ${v.agentName} komt langs in ${v.address} en bekijkt samen met u de woning en de markt.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci ! Votre estimation gratuite est confirmée. ${v.agentName} passera à ${v.address} pour examiner avec vous le bien et le marché.`,
+    en: (v) => `Dear ${v.name},\n\nThank you! Your free valuation visit is confirmed. ${v.agentName} will come to ${v.address} to go through the home and the market with you.`,
   },
   booking_confirmation: {
     nl: (v) => `Beste ${v.name},\n\nBedankt voor uw boeking! Uw bezoek aan ${v.address} is bevestigd. ${v.agentName} ontvangt u graag ter plaatse.`,

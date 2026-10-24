@@ -149,6 +149,9 @@ export const listings = pgTable(
     websiteUrl: text(),
     // External references such as { immoweb: "11223344" }, used to match portal leads.
     portalRefs: jsonb().$type<Record<string, string>>().notNull().default({}),
+    // For sold or rented listings: when, and the final price, used as comparables in valuations.
+    soldAt: timestamp({ withTimezone: true }),
+    soldPrice: integer(),
     ...timestamps,
   },
   (t) => [index().on(t.agencyId, t.status), uniqueIndex().on(t.agencyId, t.reference)],
@@ -178,7 +181,9 @@ export type Qualification = {
   temperature?: "hot" | "warm" | "cold";
 };
 
-export type LeadSource = "immoweb" | "zimmo" | "immovlan" | "website" | "whatsapp" | "phone" | "manual";
+export type LeadSource = "immoweb" | "zimmo" | "immovlan" | "website" | "whatsapp" | "phone" | "manual" | "valuation";
+/** What the client wants from the agency: buy or rent a listing, or sell their own property. */
+export type LeadIntent = "buy" | "rent" | "sell";
 export type LeadStage = "new" | "invited" | "booked" | "visited" | "follow_up" | "offer" | "won" | "lost";
 
 export const leads = pgTable(
@@ -192,6 +197,7 @@ export const leads = pgTable(
     listingId: text().references(() => listings.id, { onDelete: "set null" }),
     agentId: text().references(() => agents.id, { onDelete: "set null" }),
     source: text().$type<LeadSource>().notNull(),
+    intent: text().$type<LeadIntent>().notNull().default("buy"),
     stage: text().$type<LeadStage>().notNull().default("new"),
     message: text(),
     qualification: jsonb().$type<Qualification>(),
@@ -232,6 +238,7 @@ export type Channel = "email" | "whatsapp" | "sms";
 /** Where a conversation lives: the agent's mailbox provider or the business WhatsApp number. */
 export type ChannelProvider = "outlook" | "gmail" | "whatsapp_business" | "sms";
 export type ConversationCategory =
+  | "valuation"
   | "booking"
   | "viewing_request"
   | "reschedule"
@@ -242,6 +249,63 @@ export type ConversationCategory =
   | "confirmation"
   | "other";
 export type Priority = "high" | "normal" | "low";
+
+export type ValuationAnswers = {
+  propertyType: "house" | "apartment" | "villa";
+  livingArea: number;
+  plotArea?: number;
+  bedrooms: number;
+  bathrooms: number;
+  yearBuilt?: number;
+  condition: "to_renovate" | "good" | "renovated" | "new";
+  epcLabel?: "A+" | "A" | "B" | "C" | "D" | "E" | "F";
+  kitchen?: "basic" | "standard" | "high_end";
+  extras: ("garage" | "garden" | "terrace" | "pool" | "solar")[];
+  plans?: "sell_soon" | "sell_later" | "curious";
+};
+
+export type ValuationResult = {
+  low: number;
+  high: number;
+  point: number;
+  confidence: "high" | "medium" | "low";
+  method: "market_and_comparables" | "market" | "comparables";
+  /** Statbel figures used; `period` like "Q3 2025 – Q2 2026" for the last four quarters. */
+  marketMedian?: { municipality: string; propertyType: string; year: number; period?: string; median: number; transactions: number };
+  adjustments: { key: string; factor: number }[];
+  comparables: { street: string; city: string; propertyType: string; livingArea: number | null; price: number; soldAt: string }[];
+};
+
+/** A home valuation requested through the website widget; becomes a seller lead once the phone is verified. */
+export const valuations = pgTable(
+  "valuations",
+  {
+    id: id("val"),
+    agencyId: agencyId(),
+    contactId: text().references(() => contacts.id, { onDelete: "set null" }),
+    leadId: text().references(() => leads.id, { onDelete: "set null" }),
+    agentId: text().references(() => agents.id, { onDelete: "set null" }),
+    token: text()
+      .notNull()
+      .unique()
+      .$defaultFn(() => crypto.randomUUID()),
+    street: text().notNull(),
+    houseNumber: text(),
+    postcode: text().notNull(),
+    city: text().notNull(),
+    answers: jsonb().$type<ValuationAnswers>().notNull(),
+    firstName: text(),
+    email: text(),
+    phone: text().notNull(),
+    language: text().$type<Language>().notNull().default("nl"),
+    verificationCode: text().notNull(),
+    verificationMethod: text().$type<"whatsapp" | "sms" | "demo">(),
+    verifiedAt: timestamp({ withTimezone: true }),
+    result: jsonb().$type<ValuationResult>(),
+    ...timestamps,
+  },
+  (t) => [index().on(t.agencyId, t.createdAt)],
+);
 
 export const conversations = pgTable(
   "conversations",

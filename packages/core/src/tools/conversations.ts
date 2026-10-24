@@ -12,6 +12,7 @@ export const inboxFolders = [
   "priority",
   "drafts",
   "needs_reply",
+  "sellers",
   "viewing_request",
   "changes",
   "question",
@@ -50,6 +51,7 @@ const inFolder: Record<InboxFolder, (c: InboxItem) => boolean> = {
   priority: (c) => c.status !== "done" && c.priority === "high",
   drafts: (c) => c.pendingDraft !== null,
   needs_reply: (c) => c.status === "open" && c.lastMessage?.direction === "inbound",
+  sellers: (c) => c.status !== "done" && c.category === "valuation",
   viewing_request: (c) => c.status !== "done" && (c.category === "viewing_request" || c.category === "booking"),
   changes: (c) => c.status !== "done" && (c.category === "reschedule" || c.category === "cancellation"),
   question: (c) => c.status !== "done" && c.category === "question",
@@ -252,6 +254,11 @@ export const receiveMessage = defineTool({
       { type: "message.received", subjectType: "conversation", subjectId: conversation.id, data: { channel: input.channel } },
     );
 
+    // "Code 123456" from the owner's own WhatsApp verifies a pending home valuation.
+    if (input.channel === "whatsapp" && input.from.phone) {
+      const { verifyFromWhatsApp } = await import("./valuations");
+      if (await verifyFromWhatsApp(ctx, input.from.phone, input.body)) return { conversationId: conversation.id, triage: null, proposalId: null, verifiedValuation: true };
+    }
     const result = await handleConversation({ ...ctx, actor: { type: "agent", id: "planner" } }, conversation.id, { useAi: input.useAi });
     if (result.proposalId) {
       await recordEvent(

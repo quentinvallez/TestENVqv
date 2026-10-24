@@ -15,6 +15,34 @@
       "when": 1792781286398,
       "tag": "0001_inbox_triage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792879551384,
+      "tag": "0002_valuations",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792879719158,
+      "tag": "0003_listing_sale",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792881447248,
+      "tag": "0004_market_names_fr",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792882035106,
+      "tag": "0005_market_quarters",
+      "breakpoints": true
     }
   ]
 }

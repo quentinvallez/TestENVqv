@@ -10,3 +10,4 @@ export type { TimelineEntry } from "./tools/contacts";
 export { aiAvailable } from "./ai/client";
 export { qualificationQuestions, type QualificationQuestion } from "./planner/qualification";
 export { formatSlot, toLang, type Lang } from "./planner/language";
+export { verificationMethod } from "./tools/valuations";

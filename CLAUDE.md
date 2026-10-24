@@ -36,3 +36,11 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 ## Website widget
 
 - `apps/web/app/widget.js/route.ts` is the embed script agencies put on their site. It resolves the listing by reference (`/api/widget/resolve`) and picks the agent whose name appears first on the page; the booking goes to that agent, else to the listing's responsible agent.
+
+## Valuations and recommendations
+
+- The estimate is computed by `packages/core/src/valuation/model.ts` (pure, tested): Statbel municipality median × adjustments, blended with the agency's own sales nearby. AI never produces the amounts.
+- Reference data (`market_prices`, `postcodes`) is shared by all agencies and filled by `packages/db/src/import`; see docs/data-import.md.
+- The phone must be verified before an estimate is shown. With `WHATSAPP_VERIFY_NUMBER` set, owners send a prefilled code from WhatsApp; without it the code is shown on screen as a demo.
+- Comparables are shown by street only, never with house number.
+- Recommendations use plain scoring (`planner/similarity.ts`); suggestions to clients are drafts in the inbox like everything else.

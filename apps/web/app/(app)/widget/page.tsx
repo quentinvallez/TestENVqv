@@ -24,7 +24,7 @@ export default async function WidgetPage() {
             cancel themselves; the planner handles the rest.
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <Link href={`/demo-site/${agency.id}`} target="_blank" className="group">
               <Panel className="h-full p-4 transition-colors group-hover:border-line-strong">
                 <div className="flex items-center gap-2 font-medium">
@@ -32,6 +32,15 @@ export default async function WidgetPage() {
                   Open the demo agency website
                 </div>
                 <p className="mt-1 text-muted">Your listings on a sample agency site, with the widget on every listing page.</p>
+              </Panel>
+            </Link>
+            <Link href={`/demo-site/${agency.id}/verkopen`} target="_blank" className="group">
+              <Panel className="h-full p-4 transition-colors group-hover:border-line-strong">
+                <div className="flex items-center gap-2 font-medium">
+                  <ExternalLink className="size-4 text-muted" />
+                  Home valuation
+                </div>
+                <p className="mt-1 text-muted">Owners estimate their home; you get a verified seller lead in the inbox.</p>
               </Panel>
             </Link>
             {first && (
@@ -84,7 +93,7 @@ export default async function WidgetPage() {
               Embed code
             </div>
             <pre className="overflow-x-auto rounded-md bg-hover p-3 font-mono text-[12px] text-muted">
-              {`<!-- Where the widget should appear, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- Once per page -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>`}
+              {`<!-- On a listing page: booking, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- On your "Sell" page: home valuation for owners -->\n<div data-viewing-valuation></div>\n\n<!-- Once per page -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>`}
             </pre>
             <p className="mt-2 flex items-start gap-1.5 text-[12px] text-faint">
               <Sparkles className="mt-0.5 size-3.5 shrink-0" />

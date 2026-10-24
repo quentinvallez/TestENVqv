@@ -17,6 +17,7 @@ const folderGroups: { title?: string; folders: { id: InboxFolder; label: string;
       { id: "all", label: "All open" },
       { id: "priority", label: "Priority", dot: "#dc2626" },
       { id: "drafts", label: "AI drafts", ai: true },
+      { id: "sellers", label: "Seller leads", dot: categoryMeta.valuation!.color },
       { id: "needs_reply", label: "Needs reply" },
     ],
   },
@@ -131,7 +132,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {c.subject && <div className="mt-0.5 truncate text-[12px]">{c.subject}</div>}
                   <p className="mt-0.5 line-clamp-2 text-[12px] text-muted">
                     {c.lastMessage?.direction === "outbound" && <span className="text-faint">You: </span>}
-                    {c.lastMessage?.authorType === "system" && <span className="text-faint">{c.category === "booking" ? "Website: " : "Booking link: "}</span>}
+                    {c.lastMessage?.authorType === "system" && <span className="text-faint">{c.category === "booking" || c.category === "valuation" ? "Website: " : "Booking link: "}</span>}
                     {c.lastMessage?.body}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">

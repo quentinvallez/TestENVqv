@@ -3,7 +3,7 @@ import { runTool, tools } from "@viewing/core";
 import { CalendarDays, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link";
-import { assignAgentAction } from "../../actions";
+import { assignAgentAction, suggestToMatchesAction } from "../../actions";
 import { AgentPicker } from "./agent-picker";
 import { ListingPhoto } from "@/components/listing-photo";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Pill, StatusDot, Tabs } from "@/components/ui";
@@ -19,7 +19,11 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   const { tab: tabParam } = await searchParams;
   const tab: TabId = tabIds.includes(tabParam as TabId) ? (tabParam as TabId) : "viewings";
   const ctx = await getToolContext();
-  const [listing, agents] = await Promise.all([runTool(tools.getListing, ctx, { id }), runTool(tools.listAgents, ctx, {})]);
+  const [listing, agents, matches] = await Promise.all([
+    runTool(tools.getListing, ctx, { id }),
+    runTool(tools.listAgents, ctx, {}),
+    runTool(tools.findMatchingClients, ctx, { listingId: id }),
+  ]);
   if (!listing) notFound();
 
   const base = `/listings/${listing.id}`;
@@ -117,6 +121,24 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
             </Panel>
           )}
 
+          {tab === "leads" && matches.length > 0 && listing.status === "active" && (
+            <Panel className="mb-4 border-ai-line p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <Sparkles className="size-4 text-ai" />
+                <span className="flex-1">
+                  <span className="font-medium">
+                    {matches.length} {matches.length === 1 ? "client" : "clients"} looked at similar properties
+                  </span>
+                  <span className="text-muted"> · {matches.slice(0, 4).map((m) => fullName(m.contact.firstName, m.contact.lastName)).join(", ")}</span>
+                </span>
+                <form action={suggestToMatchesAction.bind(null, listing.id)}>
+                  <Button size="sm" variant="ai">
+                    Draft a suggestion for each
+                  </Button>
+                </form>
+              </div>
+            </Panel>
+          )}
           {tab === "leads" && (
             <Panel className="divide-y divide-line">
               {listing.leads.length === 0 && <EmptyState icon={<MessageSquare className="size-5" />} title="No leads yet" description="Portal and website requests for this listing appear here." />}
