@@ -73,6 +73,7 @@ export function parseStatbel(text: string) {
     out.push({
       nisCode,
       municipality: pick(row, ["CD_REFNIS_NL", "TX_REFNIS_NL", "TX_MUNTY_DESCR_NL", "CD_REFNIS_FR", "TX_REFNIS_FR", "MUNICIPALITY"]) ?? nisCode,
+      municipalityFr: pick(row, ["CD_REFNIS_FR", "TX_REFNIS_FR", "TX_MUNTY_DESCR_FR"]) ?? null,
       region: regionOf(nisCode),
       propertyType: type,
       year,
@@ -83,6 +84,18 @@ export function parseStatbel(text: string) {
     });
   }
   return out;
+}
+
+/**
+ * Names to try, in order, when linking a bpost row to a Statbel municipality:
+ * the locality, the main municipality, and each part of a merged name
+ * ("Merelbeke-Melle" since 2025), since Statbel's figures use the municipalities
+ * as they were when the sales happened.
+ */
+export function candidateNames(locality: string, municipality: string | null) {
+  const names = [locality, municipality ?? ""];
+  if (municipality?.includes("-")) names.push(...municipality.split("-"));
+  return [...new Set(names.filter(Boolean).map(nameKey))];
 }
 
 /** bpost postcode list (exported to CSV): postcode, locality, main municipality, province. */

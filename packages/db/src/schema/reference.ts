@@ -29,6 +29,8 @@ export const marketPrices = pgTable(
   {
     nisCode: text().notNull(),
     municipality: text().notNull(),
+    // Statbel names every municipality in Dutch and French; postcodes are matched on both.
+    municipalityFr: text(),
     region: text().$type<Region>(),
     propertyType: text().$type<MarketPropertyType>().notNull(),
     year: smallint().notNull(),

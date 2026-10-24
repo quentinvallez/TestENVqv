@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { db } from "../index";
 import { marketPrices, postcodes } from "../schema/reference";
-import { nameKey, parseBpost, parseStatbel, regionOf } from "./parse";
+import { candidateNames, nameKey, parseBpost, parseStatbel, regionOf } from "./parse";
 
 const [kind, file, flag] = process.argv.slice(2);
 const dryRun = flag === "--dry-run";
@@ -34,17 +34,23 @@ if (kind === "market") {
         .values(rows.slice(i, i + 500))
         .onConflictDoUpdate({
           target: [marketPrices.nisCode, marketPrices.propertyType, marketPrices.year],
-          set: { transactions: sql`excluded.transactions`, p25: sql`excluded.p25`, median: sql`excluded.median`, p75: sql`excluded.p75`, importedAt: sql`now()` },
+          set: { municipalityFr: sql`excluded.municipality_fr`, transactions: sql`excluded.transactions`, p25: sql`excluded.p25`, median: sql`excluded.median`, p75: sql`excluded.p75`, importedAt: sql`now()` },
         });
     }
     console.log("imported");
   }
 } else if (kind === "postcodes") {
   const rows = parseBpost(text);
-  const municipalities = await db.selectDistinct({ nisCode: marketPrices.nisCode, municipality: marketPrices.municipality }).from(marketPrices);
-  const byName = new Map(municipalities.map((m) => [nameKey(m.municipality), m]));
+  const municipalities = await db
+    .selectDistinct({ nisCode: marketPrices.nisCode, municipality: marketPrices.municipality, municipalityFr: marketPrices.municipalityFr })
+    .from(marketPrices);
+  const byName = new Map<string, (typeof municipalities)[number]>();
+  for (const m of municipalities) {
+    byName.set(nameKey(m.municipality), m);
+    if (m.municipalityFr) byName.set(nameKey(m.municipalityFr), m);
+  }
   const linked = rows.map((r) => {
-    const match = byName.get(nameKey(r.municipality ?? r.locality));
+    const match = candidateNames(r.locality, r.municipality).map((n) => byName.get(n)).find(Boolean);
     return { ...r, nisCode: match?.nisCode ?? null, municipality: match?.municipality ?? r.municipality, region: match ? regionOf(match.nisCode) : null };
   });
   const unmatched = linked.filter((r) => !r.nisCode);

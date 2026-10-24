@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nameKey, parseBpost, parseStatbel, regionOf, statbelType } from "./parse";
+import { candidateNames, nameKey, parseBpost, parseStatbel, regionOf, statbelType } from "./parse";
 
 // Small hand-written samples in the shape of the public files; not real figures.
 describe("parseStatbel", () => {
@@ -40,10 +40,18 @@ describe("regions and names", () => {
     expect(nameKey("Liège")).toBe(nameKey("Liege"));
   });
   it("reads a bpost CSV export", () => {
-    const rows = parseBpost("Postcode;Plaatsnaam;Hoofdgemeente;Provincie\n2600;Berchem;Antwerpen;Antwerpen\n1000;Brussel;Brussel;Brussel");
+    // Same columns as bpost's 2025 file, including "Deelgemeente".
+    const rows = parseBpost("Postcode;Plaatsnaam;Deelgemeente;Hoofdgemeente;Provincie\n612;Sinterklaas;;Sinterklaas;\n2600;Berchem;Ja;ANTWERPEN;ANTWERPEN\n1000;Brussel;Neen;BRUSSEL;BRUSSEL");
     expect(rows).toEqual([
-      { postcode: "2600", locality: "Berchem", municipality: "Antwerpen", province: "Antwerpen" },
-      { postcode: "1000", locality: "Brussel", municipality: "Brussel", province: "Brussel" },
+      { postcode: "2600", locality: "Berchem", municipality: "ANTWERPEN", province: "ANTWERPEN" },
+      { postcode: "1000", locality: "Brussel", municipality: "BRUSSEL", province: "BRUSSEL" },
     ]);
+  });
+});
+
+describe("candidateNames", () => {
+  it("tries the locality, the main municipality and the parts of a merged one", () => {
+    expect(candidateNames("Bottelare", "MERELBEKE-MELLE")).toEqual(["bottelare", "merelbekemelle", "merelbeke", "melle"]);
+    expect(candidateNames("Liège", "LIÈGE")).toEqual(["liege"]);
   });
 });
