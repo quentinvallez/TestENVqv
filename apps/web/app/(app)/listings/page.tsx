@@ -17,7 +17,7 @@ export default async function ListingsPage() {
         actions={
           <Button variant="primary" size="sm" disabled title="Coming with listing management">
             <Plus className="size-3.5" />
-            New listing
+            <span className="hidden sm:inline">New listing</span>
           </Button>
         }
       />
@@ -25,7 +25,39 @@ export default async function ListingsPage() {
         {listings.length === 0 ? (
           <EmptyState icon={<Building2 className="size-5" />} title="No listings yet" description="Listings imported from your website will appear here." />
         ) : (
-          <table className="w-full min-w-[860px] text-left">
+          <>
+          <ul className="divide-y divide-line md:hidden">
+            {listings.map((l) => (
+              <li key={l.id}>
+                <Link href={`/listings/${l.id}`} className="flex gap-3 px-4 py-3 active:bg-hover">
+                  <ListingPhoto src={l.photo} alt={l.title ?? l.reference} className="h-16 w-20 shrink-0 rounded-md border border-line" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{address(l.street, l.houseNumber, l.city)}</div>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
+                      <StatusDot color={listingStatusMeta[l.status].color} className="size-1.5" />
+                      {listingStatusMeta[l.status].label} · {formatPrice(l.price, l.transaction)}
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 text-[12px] text-muted">
+                      <span className="inline-flex items-center gap-1">
+                        <MessageSquare className="size-3.5" />
+                        {l.openLeads}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarDays className="size-3.5" />
+                        {l.upcomingViewings}
+                      </span>
+                      {l.agentName && (
+                        <span className="ml-auto flex items-center gap-1.5">
+                          <Avatar name={l.agentName} color={l.agentColor} size={18} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <table className="hidden w-full min-w-[860px] text-left md:table">
             <thead className="sticky top-0 z-10 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
                 <th className="py-2 pr-3 pl-5 font-normal">Property</th>
@@ -88,6 +120,7 @@ export default async function ListingsPage() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </>

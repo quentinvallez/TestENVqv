@@ -22,7 +22,6 @@ export function BookingShell({ agencyName, branding, children }: { agencyName: s
         )}
       </div>
       <div className="overflow-hidden rounded-xl border border-line bg-panel">{children}</div>
-      <p className="mt-4 text-center text-[11px] text-faint">Your details are only shared with {agencyName}.</p>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { MessageCircle, UserRound } from "lucide-react";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
@@ -13,7 +14,25 @@ export default async function ContactsPage() {
         {contacts.length === 0 ? (
           <EmptyState icon={<UserRound className="size-5" />} title="No contacts yet" description="Everyone who sends a request or books a viewing is added here automatically." />
         ) : (
-          <table className="w-full min-w-[760px] text-left">
+          <>
+          <ul className="divide-y divide-line md:hidden">
+            {contacts.map((c) => (
+              <li key={c.id}>
+                <Link href={`/contacts/${c.id}`} className="flex items-center gap-3 px-4 py-3 active:bg-hover">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{fullName(c.firstName, c.lastName)}</span>
+                      {c.language && <Pill>{c.language.toUpperCase()}</Pill>}
+                      {c.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label="WhatsApp opt-in" />}
+                    </div>
+                    <div className="truncate text-[12px] text-muted">{c.email ?? c.phone}</div>
+                  </div>
+                  {c.openLeads > 0 && <span className="text-[12px] text-muted tabular-nums">{c.openLeads} open</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <table className="hidden w-full min-w-[760px] text-left md:table">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
                 <th className="py-2 pr-3 pl-5 font-normal">Name</th>
@@ -27,7 +46,11 @@ export default async function ContactsPage() {
             <tbody className="divide-y divide-line">
               {contacts.map((c) => (
                 <tr key={c.id}>
-                  <td className="py-2.5 pr-3 pl-5 font-medium">{fullName(c.firstName, c.lastName)}</td>
+                  <td className="py-2.5 pr-3 pl-5 font-medium">
+                    <Link href={`/contacts/${c.id}`} className="hover:underline">
+                      {fullName(c.firstName, c.lastName)}
+                    </Link>
+                  </td>
                   <td className="px-3 text-muted">{c.email}</td>
                   <td className="px-3 whitespace-nowrap text-muted">
                     <span className="flex items-center gap-1.5">
@@ -42,6 +65,7 @@ export default async function ContactsPage() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </>

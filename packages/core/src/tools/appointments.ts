@@ -31,6 +31,8 @@ export const listAppointments = defineTool({
         agentColor: agents.color,
         contactFirstName: contacts.firstName,
         contactLastName: contacts.lastName,
+        contactPhone: contacts.phone,
+        contactId: contacts.id,
         listingId: listings.id,
         listingReference: listings.reference,
         listingStreet: listings.street,

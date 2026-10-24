@@ -171,6 +171,13 @@ export const contacts = pgTable(
   (t) => [index().on(t.agencyId, t.email), index().on(t.agencyId, t.phone)],
 );
 
+/** Answers a client gave to the widget's qualifying questions. */
+export type Qualification = {
+  answers: { id: string; question: string; answer: string }[];
+  /** Rule-based: hot = ready to act soon, warm = interested, cold = early or unlikely. */
+  temperature?: "hot" | "warm" | "cold";
+};
+
 export type LeadSource = "immoweb" | "zimmo" | "immovlan" | "website" | "whatsapp" | "phone" | "manual";
 export type LeadStage = "new" | "invited" | "booked" | "visited" | "follow_up" | "offer" | "won" | "lost";
 
@@ -187,6 +194,7 @@ export const leads = pgTable(
     source: text().$type<LeadSource>().notNull(),
     stage: text().$type<LeadStage>().notNull().default("new"),
     message: text(),
+    qualification: jsonb().$type<Qualification>(),
     ...timestamps,
   },
   (t) => [index().on(t.agencyId, t.stage), index().on(t.listingId)],
@@ -221,6 +229,18 @@ export const appointments = pgTable(
 );
 
 export type Channel = "email" | "whatsapp" | "sms";
+/** Where a conversation lives: the agent's mailbox provider or the business WhatsApp number. */
+export type ChannelProvider = "outlook" | "gmail" | "whatsapp_business" | "sms";
+export type ConversationCategory =
+  | "viewing_request"
+  | "reschedule"
+  | "cancellation"
+  | "question"
+  | "offer"
+  | "feedback"
+  | "confirmation"
+  | "other";
+export type Priority = "high" | "normal" | "low";
 
 export const conversations = pgTable(
   "conversations",
@@ -229,7 +249,17 @@ export const conversations = pgTable(
     agencyId: agencyId(),
     contactId: text().references(() => contacts.id, { onDelete: "set null" }),
     leadId: text().references(() => leads.id, { onDelete: "set null" }),
+    agentId: text().references(() => agents.id, { onDelete: "set null" }),
+    listingId: text().references(() => listings.id, { onDelete: "set null" }),
     channel: text().$type<Channel>().notNull(),
+    provider: text().$type<ChannelProvider>(),
+    subject: text(),
+    // Filled by the planner agent when a message comes in.
+    category: text().$type<ConversationCategory>(),
+    priority: text().$type<Priority>().notNull().default("normal"),
+    summary: text(),
+    status: text().$type<"open" | "waiting" | "done">().notNull().default("open"),
+    unread: boolean().notNull().default(true),
     externalThreadId: text(),
     lastMessageAt: timestamp({ withTimezone: true }),
     ...timestamps,
@@ -246,6 +276,9 @@ export const messages = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
     direction: text().$type<"inbound" | "outbound">().notNull(),
+    // Outbound only: "simulated" until the channel is connected, then "sent" or "failed".
+    delivery: text().$type<"simulated" | "sent" | "failed">(),
+    authorType: text().$type<ActorType>(),
     subject: text(),
     body: text().notNull(),
     // Filled by the AI: e.g. "cancel", "reschedule", "question", "confirm".
@@ -290,6 +323,9 @@ export const proposals = pgTable(
     id: id("prp"),
     agencyId: agencyId(),
     agentName: text().notNull(), // which AI agent, e.g. "planner"
+    conversationId: text().references(() => conversations.id, { onDelete: "cascade" }),
+    kind: text(), // e.g. "reply", "follow_up"
+    generatedBy: text().$type<"ai" | "template">(),
     toolName: text().notNull(),
     input: jsonb().$type<Record<string, unknown>>().notNull(),
     summary: text().notNull(), // one line for the inbox
