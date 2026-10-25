@@ -36,6 +36,7 @@ const folderGroups: { title?: string; folders: { id: InboxFolder; label: string;
     folders: [
       { id: "outlook", label: "Outlook", provider: "outlook" },
       { id: "gmail", label: "Gmail", provider: "gmail" },
+      { id: "email", label: "Agency email", provider: "email" },
       { id: "whatsapp_business", label: "WhatsApp", provider: "whatsapp_business" },
     ],
   },
@@ -279,11 +280,11 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                     <span className="ml-auto shrink-0 tabular-nums">{formatDateTime(m.sentAt)}</span>
                   </header>
                   <div className="px-4 py-3 whitespace-pre-line">{m.body}</div>
-                  {(m.intent || m.delivery === "simulated" || sentAutomatically(m)) && (
+                  {(m.intent || m.delivery) && (
                     <footer className="flex items-center gap-2 px-4 pb-3">
                       {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
                       {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
-                      {m.delivery === "simulated" && <span className="text-[11px] text-faint">Not delivered: Outlook/Gmail not connected yet</span>}
+                      <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="email" />
                     </footer>
                   )}
                 </article>
@@ -298,7 +299,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                   {formatTime(m.sentAt)}
                   {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
                   {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
-                  {m.delivery === "simulated" && <span>not delivered · WhatsApp not connected yet</span>}
+                  <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="whatsapp" />
                 </div>
               </div>
             );
@@ -315,18 +316,52 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
               slots={draftSlots}
               generatedBy={draft.generatedBy}
               kind={draft.kind}
-              channelLabel={channelLabel}
+              channelLabel={c.route.ready ? c.route.via : channelLabel}
+              ready={c.route.ready}
               send={sendDraftAction.bind(null, draft.id)}
               dismiss={dismissDraftAction.bind(null, draft.id)}
               redraft={redraftAction.bind(null, c.id)}
               aiEnabled={ai}
             />
           ) : (
-            <ReplyBox send={replyAction.bind(null, c.id)} channelLabel={channelLabel} />
+            <ReplyBox send={replyAction.bind(null, c.id)} channelLabel={c.route.ready ? c.route.via : channelLabel} />
           )}
         </div>
       </div>
       </div>
     </>
+  );
+}
+
+const transportLabel: Record<string, string> = { gmail: "Gmail", outlook: "Outlook", mailgun: "agency email", whatsapp_cloud: "WhatsApp" };
+const failureLabel: Record<string, string> = {
+  no_email: "no email address for this client",
+  no_phone: "no phone number for this client",
+  whatsapp_window_closed: "WhatsApp only allows templates 24 hours after the client's last message",
+};
+
+/** Whether an outbound message really left: sent, failed (with why) or only stored because the channel isn't connected. */
+function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null; metadata: Record<string, unknown>; channel: "email" | "whatsapp" }) {
+  if (!delivery) return null;
+  if (delivery === "simulated") {
+    return <span className="text-[11px] text-faint">Not delivered: {channel === "email" ? "email" : "WhatsApp"} not connected yet</span>;
+  }
+  if (delivery === "failed") {
+    const error = String(metadata.error ?? "");
+    return (
+      <span className="flex items-center gap-1.5 text-[11px] text-danger" title={error}>
+        <StatusDot color="var(--danger)" />
+        Not delivered: {failureLabel[error] ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it")}
+      </span>
+    );
+  }
+  const status = typeof metadata.status === "string" && metadata.status !== "sent" ? ` · ${metadata.status}` : "";
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-faint">
+      <StatusDot color="var(--success)" />
+      Sent via {transportLabel[String(metadata.transport)] ?? channel}
+      {metadata.template ? " template" : ""}
+      {status}
+    </span>
   );
 }

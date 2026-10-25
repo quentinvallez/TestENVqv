@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 export const providerMeta = {
   outlook: { label: "Outlook", color: "#0f6cbd", icon: Mail },
   gmail: { label: "Gmail", color: "#d93025", icon: Mail },
+  email: { label: "Agency email", color: "#52525b", icon: Mail },
   whatsapp_business: { label: "WhatsApp", color: "#1fa855", icon: MessageCircle },
   sms: { label: "SMS", color: "#6b7280", icon: MessageSquareText },
 } as const;

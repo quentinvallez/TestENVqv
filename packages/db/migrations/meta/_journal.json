@@ -57,6 +57,13 @@
       "when": 1792934022668,
       "tag": "0007_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792937120015,
+      "tag": "0008_channels",
+      "breakpoints": true
     }
   ]
 }

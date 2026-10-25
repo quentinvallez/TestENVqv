@@ -86,6 +86,31 @@ export async function setValuationLauncherAction(on: boolean) {
   revalidatePath("/widget");
 }
 
+export async function disconnectCalendarAction(agentId: string, connectionId: string) {
+  await runTool(tools.disconnectCalendar, await getToolContext(), { connectionId });
+  revalidatePath(`/agents/${agentId}`);
+}
+
+export type WhatsAppState = { error?: string; saved?: boolean } | undefined;
+
+export async function connectWhatsAppAction(_state: WhatsAppState, form: FormData): Promise<WhatsAppState> {
+  try {
+    await runTool(tools.connectWhatsApp, await getToolContext(), {
+      phoneNumberId: String(form.get("phoneNumberId") ?? ""),
+      displayNumber: String(form.get("displayNumber") ?? ""),
+      accessToken: String(form.get("accessToken") ?? ""),
+    });
+  } catch (error) {
+    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : "Check the phone number id, number and token." };
+  }
+  revalidatePath("/settings");
+  return { saved: true };
+}
+
+export async function disconnectWhatsAppAction() {
+  await runTool(tools.connectWhatsApp, await getToolContext(), { disconnect: true });
+  revalidatePath("/settings");
+}
 export async function updateAutomationsAction(change: {
   reminders?: boolean;
   followUps?: boolean;

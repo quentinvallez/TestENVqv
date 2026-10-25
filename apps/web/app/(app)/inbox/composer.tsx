@@ -19,6 +19,7 @@ export function DraftComposer({
   generatedBy,
   kind,
   channelLabel,
+  ready,
   send,
   dismiss,
   redraft,
@@ -29,6 +30,8 @@ export function DraftComposer({
   generatedBy: "ai" | "template" | null;
   kind?: string | null;
   channelLabel: string;
+  /** Whether the channel is connected, so sending really delivers. */
+  ready: boolean;
   send: (state: DraftState, form: FormData) => Promise<DraftState>;
   dismiss: () => Promise<void>;
   redraft: () => Promise<void>;
@@ -81,7 +84,7 @@ export function DraftComposer({
           <X className="size-3.5" />
           Dismiss
         </Button>
-        <span className="w-full text-[11px] text-faint sm:ml-auto sm:w-auto">Saved to the conversation; delivery starts when {channelLabel} is connected.</span>
+        <span className="w-full text-[11px] text-faint sm:ml-auto sm:w-auto">{ready ? "Delivered to the client as soon as you send." : `Saved to the conversation, not delivered: ${channelLabel} isn't connected yet.`}</span>
       </div>
     </form>
   );

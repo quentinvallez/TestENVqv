@@ -11,6 +11,7 @@ import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, get
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
 import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
+import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import type { Tool } from "./tool";
 
@@ -61,6 +62,14 @@ export const tools = {
   listAutomationRuns,
   markAttendance,
   seedDemoData,
+  receivePortalLead,
+  receiveEmail,
+  receiveWhatsApp,
+  listConnections,
+  connectCalendar,
+  disconnectCalendar,
+  channelsStatus,
+  connectWhatsApp,
 };
 
 /** Tools by their public name, as agents and proposals refer to them. */

@@ -4,16 +4,27 @@ import { CalendarPlus } from "lucide-react";
 import { Avatar, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { formatDay, formatTime } from "@/lib/format";
-import { saveAvailabilityAction } from "../../actions";
+import { cn } from "@/lib/cn";
+import { disconnectCalendarAction, saveAvailabilityAction } from "../../actions";
 import { AvailabilityForm } from "./availability-form";
 
-export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
+const connectNotice: Record<string, string> = {
+  ok: "Connected.",
+  denied: "Access was not granted.",
+  failed: "Connecting failed. Try again, and allow calendar access.",
+};
+
+export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ connect?: string }> }) {
   const { id } = await params;
+  const { connect } = await searchParams;
   const ctx = await getToolContext();
   const availability = await runTool(tools.getAgentAvailability, ctx, { agentId: id }).catch(() => null);
   if (!availability) notFound();
   const { agent, workingHours } = availability;
-  const { slots } = await runTool(tools.availableSlots, ctx, { agentId: id, days: 7 });
+  const [{ slots }, { connections, available }] = await Promise.all([
+    runTool(tools.availableSlots, ctx, { agentId: id, days: 7 }),
+    runTool(tools.listConnections, ctx, { agentId: id }),
+  ]);
 
   return (
     <>
@@ -42,13 +53,47 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
             <Panel className="p-4">
               <div className="flex items-center gap-2 font-medium">
                 <CalendarPlus className="size-4 text-muted" />
-                Calendar
+                Calendar and mailbox
               </div>
-              <p className="mt-1 flex items-center gap-1.5 text-muted">
-                <StatusDot color="var(--line-strong)" />
-                Google / Outlook not connected yet
+              {connectNotice[connect ?? ""] && <p className={cn("mt-2 text-[12px]", connect === "ok" ? "text-success" : "text-danger")}>{connectNotice[connect!]}</p>}
+              {connections.length === 0 && (
+                <p className="mt-1 flex items-center gap-1.5 text-muted">
+                  <StatusDot color="var(--line-strong)" />
+                  Not connected
+                </p>
+              )}
+              <ul className="mt-2 flex flex-col gap-2">
+                {connections.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2">
+                    <StatusDot color={c.status === "active" ? "var(--success)" : "var(--warning)"} className="mt-1.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate">{c.accountEmail}</div>
+                      <div className="text-[12px] text-muted">
+                        {c.provider === "google" ? "Google" : "Outlook"} · {c.status === "active" ? [c.scopes.includes("calendar") && "calendar", c.scopes.includes("mail") && "sends email"].filter(Boolean).join(", ") : "expired, connect again"}
+                      </div>
+                    </div>
+                    <form action={disconnectCalendarAction.bind(null, agent.id, c.id)}>
+                      <button className="text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">Disconnect</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(["google", "microsoft"] as const)
+                  .filter((p) => !connections.some((c) => c.provider === p && c.status === "active"))
+                  .map((p) =>
+                    available[p] ? (
+                      <a key={p} href={`/api/calendar/${p}/start?agentId=${agent.id}`} className="inline-flex h-8 items-center rounded-md border border-line px-3 hover:bg-hover">
+                        Connect {p === "google" ? "Google" : "Outlook"}
+                      </a>
+                    ) : null,
+                  )}
+              </div>
+              <p className="mt-2 text-[12px] text-faint">
+                {available.google || available.microsoft
+                  ? "Busy times block bookings, viewings are added to the agenda, and approved replies go out from this mailbox."
+                  : "Connecting needs the Google and Microsoft app registrations (docs/setup-calendars.md)."}
               </p>
-              <p className="mt-2 text-[12px] text-faint">Connecting arrives once the Google and Microsoft apps are registered.</p>
             </Panel>
             <Panel className="p-4">
               <div className="font-medium">Next free times</div>

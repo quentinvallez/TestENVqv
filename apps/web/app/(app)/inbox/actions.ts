@@ -40,22 +40,34 @@ export async function setStatusAction(conversationId: string, status: "open" | "
 }
 
 export async function simulateMessageAction(_state: DraftState, form: FormData): Promise<DraftState> {
-  const provider = String(form.get("provider")) as "outlook" | "gmail" | "whatsapp_business";
+  const provider = String(form.get("provider")) as "outlook" | "gmail" | "whatsapp_business" | "immoweb" | "zimmo";
   const contact = String(form.get("contact") ?? "").trim();
   const body = String(form.get("body") ?? "").trim();
   if (!contact || !body) return { error: "Fill in who it's from and the message." };
   const isWhatsApp = provider === "whatsapp_business";
   let conversationId: string;
   try {
-    const result = await runTool(tools.receiveMessage, await getToolContext(), {
-      channel: isWhatsApp ? "whatsapp" : "email",
-      provider,
-      from: { name: String(form.get("name") ?? "").trim() || contact, ...(isWhatsApp ? { phone: contact } : { email: contact }) },
-      subject: isWhatsApp ? undefined : String(form.get("subject") ?? "").trim() || undefined,
-      body,
-      listingId: String(form.get("listingId") ?? "") || undefined,
-    });
-    conversationId = result.conversationId;
+    if (provider === "immoweb" || provider === "zimmo") {
+      const email = contact.includes("@");
+      const result = await runTool(tools.receivePortalLead, await getToolContext(), {
+        portal: provider,
+        name: String(form.get("name") ?? "").trim() || null,
+        ...(email ? { email: contact } : { phone: contact }),
+        message: body,
+        listingId: String(form.get("listingId") ?? "") || undefined,
+      });
+      conversationId = result.conversationId;
+    } else {
+      const result = await runTool(tools.receiveMessage, await getToolContext(), {
+        channel: isWhatsApp ? "whatsapp" : "email",
+        provider: provider as "outlook" | "gmail" | "whatsapp_business",
+        from: { name: String(form.get("name") ?? "").trim() || contact, ...(isWhatsApp ? { phone: contact } : { email: contact }) },
+        subject: isWhatsApp ? undefined : String(form.get("subject") ?? "").trim() || undefined,
+        body,
+        listingId: String(form.get("listingId") ?? "") || undefined,
+      });
+      conversationId = result.conversationId;
+    }
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Could not process the message" };
   }

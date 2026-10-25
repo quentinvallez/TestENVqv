@@ -35,6 +35,14 @@ export type WidgetSettings = {
   valuationLauncher?: boolean;
 };
 
+/**
+ * The agency's own messaging channels. Tokens are encrypted by the integration
+ * layer before they are stored here.
+ */
+export type ChannelSettings = {
+  whatsapp?: { phoneNumberId: string; displayNumber: string; accessToken: string };
+};
+
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */
 export type AutomationSettings = {
   /** Reminder the day before a viewing or valuation visit. Sent on its own only when autonomy.reminders is "act". */
@@ -63,6 +71,7 @@ export const agencySettings = pgTable("agency_settings", {
   branding: jsonb().$type<Branding>().notNull().default({}),
   autonomy: jsonb().$type<Autonomy>().notNull().default({}),
   widget: jsonb().$type<WidgetSettings>().notNull().default({}),
+  channels: jsonb().$type<ChannelSettings>().notNull().default({}),
   automations: jsonb().$type<AutomationSettings>().notNull().default({}),
   ...timestamps,
 });
@@ -133,11 +142,13 @@ export const calendarConnections = pgTable(
     accountEmail: text().notNull(),
     // Encrypted at rest by the integration layer, never stored in plain text.
     credentials: text().notNull(),
+    // What the agent allowed: "calendar" (busy times, viewings in their agenda) and "mail" (send from their mailbox).
+    scopes: jsonb().$type<("calendar" | "mail")[]>().notNull().default(["calendar"]),
     syncState: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     status: text().$type<"active" | "expired" | "revoked">().notNull().default("active"),
     ...timestamps,
   },
-  (t) => [index().on(t.agentId)],
+  (t) => [index().on(t.agentId), uniqueIndex().on(t.agentId, t.provider)],
 );
 
 export type ListingStatus = "draft" | "active" | "under_offer" | "sold" | "rented" | "archived";
@@ -257,8 +268,8 @@ export const appointments = pgTable(
 );
 
 export type Channel = "email" | "whatsapp" | "sms";
-/** Where a conversation lives: the agent's mailbox provider or the business WhatsApp number. */
-export type ChannelProvider = "outlook" | "gmail" | "whatsapp_business" | "sms";
+/** Where a conversation lives: the agent's mailbox, the agency's own address, or the business WhatsApp number. */
+export type ChannelProvider = "outlook" | "gmail" | "email" | "whatsapp_business" | "sms";
 export type ConversationCategory =
   | "valuation"
   | "booking"
@@ -371,9 +382,11 @@ export const messages = pgTable(
     // Filled by the AI: e.g. "cancel", "reschedule", "question", "confirm".
     intent: text(),
     metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    // Id at the provider (email Message-ID, WhatsApp message id), for threading, status updates and deduplication.
+    externalId: text(),
     sentAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index().on(t.conversationId, t.sentAt)],
+  (t) => [index().on(t.conversationId, t.sentAt), index().on(t.agencyId, t.externalId)],
 );
 
 export type ActorType = "user" | "agent" | "contact" | "system";

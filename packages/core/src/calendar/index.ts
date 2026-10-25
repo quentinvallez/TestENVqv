@@ -1,6 +1,8 @@
 import { and, eq, schema } from "@viewing/db";
 import type { Interval } from "../planner/availability";
 import type { ToolContext } from "../tool";
+import { google } from "./google";
+import { microsoft } from "./microsoft";
 
 type Connection = typeof schema.calendarConnections.$inferSelect;
 
@@ -15,22 +17,21 @@ export type CalendarEvent = {
 
 /** What the planner needs from an agent's Google or Outlook calendar. */
 export interface CalendarProvider {
-  busy(connection: Connection, from: Date, to: Date): Promise<Interval[]>;
-  createEvent(connection: Connection, event: CalendarEvent): Promise<string>;
-  updateEvent(connection: Connection, eventId: string, event: CalendarEvent): Promise<void>;
-  deleteEvent(connection: Connection, eventId: string): Promise<void>;
+  busy(ctx: ToolContext, connection: Connection, from: Date, to: Date): Promise<Interval[]>;
+  createEvent(ctx: ToolContext, connection: Connection, event: CalendarEvent): Promise<string>;
+  updateEvent(ctx: ToolContext, connection: Connection, eventId: string, event: CalendarEvent): Promise<void>;
+  deleteEvent(ctx: ToolContext, connection: Connection, eventId: string): Promise<void>;
 }
 
-// Google Calendar and Microsoft Graph implementations plug in here once the
-// OAuth apps are registered (see docs/setup-calendars.md).
-const providers: Partial<Record<Connection["provider"], CalendarProvider>> = {};
+// Google Calendar and Microsoft Graph; the OAuth apps are described in docs/setup-calendars.md.
+const providers: Partial<Record<Connection["provider"], CalendarProvider>> = { google, microsoft };
 
 export function registerCalendarProvider(name: Connection["provider"], provider: CalendarProvider) {
   providers[name] = provider;
 }
 
 async function activeConnections(ctx: ToolContext, agentId: string) {
-  return ctx.db
+  const rows = await ctx.db
     .select()
     .from(schema.calendarConnections)
     .where(
@@ -39,7 +40,9 @@ async function activeConnections(ctx: ToolContext, agentId: string) {
         eq(schema.calendarConnections.agentId, agentId),
         eq(schema.calendarConnections.status, "active"),
       ),
-    );
+    )
+    .orderBy(schema.calendarConnections.createdAt);
+  return rows.filter((c) => c.scopes.includes("calendar"));
 }
 
 /**
@@ -53,7 +56,7 @@ export async function externalBusy(ctx: ToolContext, agentId: string, from: Date
       const provider = providers[connection.provider];
       if (!provider) return [];
       try {
-        return await provider.busy(connection, from, to);
+        return await provider.busy(ctx, connection, from, to);
       } catch (error) {
         console.error(`Calendar busy lookup failed for ${connection.id}`, error);
         return [];
@@ -75,14 +78,14 @@ export async function syncAppointmentToCalendar(
   if (!connection || !provider) return externalEventId;
   try {
     if (!event) {
-      if (externalEventId) await provider.deleteEvent(connection, externalEventId);
+      if (externalEventId) await provider.deleteEvent(ctx, connection, externalEventId);
       return null;
     }
     if (externalEventId) {
-      await provider.updateEvent(connection, externalEventId, event);
+      await provider.updateEvent(ctx, connection, externalEventId, event);
       return externalEventId;
     }
-    return await provider.createEvent(connection, event);
+    return await provider.createEvent(ctx, connection, event);
   } catch (error) {
     console.error(`Calendar sync failed for ${connection.id}`, error);
     return externalEventId;

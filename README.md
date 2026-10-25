@@ -36,7 +36,12 @@ Sign up, then click **Load demo data** on the dashboard.
 
 - `/book/<listingId>`: public booking page. It finds the listing's agent and shows their free slots (working hours − appointments − calendar events − travel buffer).
 - `/a/<token>`: the client's own page to change or cancel; this link goes into every confirmation and reminder.
-- Calendar sync (Google, Outlook) plugs into `packages/core/src/calendar`; see [docs/setup-calendars.md](docs/setup-calendars.md).
+- Calendar sync (Google, Outlook) lives in `packages/core/src/calendar`; see [docs/setup-calendars.md](docs/setup-calendars.md).
+
+## Channels
+
+- Every outbound message goes through `sendMessage` (`packages/core/src/channels`): the agent's Gmail or Outlook, the agency's inbox address via Mailgun EU, or WhatsApp Cloud API. Without a provider it is stored as "simulated" and shown as not delivered.
+- Client replies, WhatsApp messages and Immoweb/Zimmo/Immovlan lead emails come in through `/api/channels/*` and land in the inbox with a planner draft. Setup: [docs/setup-channels.md](docs/setup-channels.md).
 
 ## Automatic jobs
 
