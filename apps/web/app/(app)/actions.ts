@@ -85,3 +85,31 @@ export async function setValuationLauncherAction(on: boolean) {
   await runTool(tools.updateWidgetSettings, await getToolContext(), { valuationLauncher: on });
   revalidatePath("/widget");
 }
+
+export async function updateAutomationsAction(change: {
+  reminders?: boolean;
+  followUps?: boolean;
+  noShows?: boolean;
+  nudges?: boolean;
+  nudgeAfterDays?: number;
+  sendRemindersAutomatically?: boolean;
+}) {
+  await runTool(tools.updateAutomationSettings, await getToolContext(), change);
+  revalidatePath("/settings");
+}
+
+export async function setNudgeDaysAction(form: FormData) {
+  await runTool(tools.updateAutomationSettings, await getToolContext(), { nudgeAfterDays: Number(form.get("nudgeAfterDays")) });
+  revalidatePath("/settings");
+}
+
+export async function runAutomationsAction() {
+  await runTool(tools.runAutomationsNow, await getToolContext(), {});
+  revalidatePath("/", "layout");
+}
+
+export async function markAttendanceAction(appointmentId: string, attended: boolean) {
+  const { conversationId } = await runTool(tools.markAttendance, await getToolContext(), { appointmentId, attended });
+  revalidatePath("/", "layout");
+  if (conversationId) redirect(`/inbox?c=${conversationId}`);
+}

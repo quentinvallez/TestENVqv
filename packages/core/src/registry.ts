@@ -11,6 +11,7 @@ import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, get
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
 import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
+import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
@@ -54,6 +55,11 @@ export const tools = {
   suggestListings,
   findMatchingClients,
   suggestListingToMatches,
+  getAutomationSettings,
+  updateAutomationSettings,
+  runAutomationsNow,
+  listAutomationRuns,
+  markAttendance,
   seedDemoData,
 };
 

@@ -105,7 +105,7 @@ export default async function DashboardPage() {
                     <ol className="relative">
                       {activity.map((event) => (
                         <li key={event.id} className="flex items-start gap-3 py-2">
-                          <StatusDot color={event.actorType === "agent" ? "var(--ai)" : "var(--line-strong)"} className="mt-1.5" />
+                          <StatusDot color={event.actorType === "agent" && event.actorId !== "automations" ? "var(--ai)" : "var(--line-strong)"} className="mt-1.5" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="truncate">{eventLabel[event.type] ?? event.type}</span>
@@ -114,7 +114,7 @@ export default async function DashboardPage() {
                               ) : null}
                             </div>
                             <div className="text-[12px] text-faint">
-                              {event.actorType === "contact" ? "by client" : event.actorType === "agent" ? "by planner agent" : event.actorType === "user" ? "by you" : "automatic"}
+                              {event.actorType === "contact" ? "by client" : event.actorId === "automations" ? "automatic job" : event.actorType === "agent" ? "by planner agent" : event.actorType === "user" ? "by you" : "automatic"}
                               {" · "}
                               {formatRelative(event.createdAt)}
                             </div>

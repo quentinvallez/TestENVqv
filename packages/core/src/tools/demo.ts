@@ -192,6 +192,8 @@ export const seedDemoData = defineTool({
               startsAt,
               endsAt: new Date(startsAt.getTime() + 30 * 60 * 1000),
               location: `${listing.street} ${listing.houseNumber}, ${listing.postcode} ${listing.city}`,
+              // Booked when the lead came in, so the day-before reminder applies.
+              createdAt: lead.createdAt,
             };
           }),
         )

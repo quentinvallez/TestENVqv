@@ -65,6 +65,21 @@ export const eventLabel: Record<string, string> = {
   "conversation.status_changed": "Conversation updated",
   "listing.created": "Listing created",
   "message.received": "Message received",
+  "appointment.completed": "Viewing done",
+  "appointment.no_show": "Client didn't show up",
+  "automation.reminder_sent": "Reminder sent",
+  "automation.reminder_drafted": "Reminder drafted",
+  "automation.follow_up_drafted": "Follow-up drafted",
+  "automation.nudge_drafted": "Check-in drafted",
+  "settings.automations_updated": "Automations changed",
+};
+
+/** What the automatic jobs did, for the settings page. */
+export const automationRuleLabel: Record<string, string> = {
+  reminder: "Reminder",
+  follow_up: "Follow-up",
+  no_show: "No-show message",
+  nudge: "Check-in",
 };
 
 export const categoryMeta: Record<string, { label: string; color: string }> = {

@@ -38,6 +38,12 @@ Sign up, then click **Load demo data** on the dashboard.
 - `/a/<token>`: the client's own page to change or cancel; this link goes into every confirmation and reminder.
 - Calendar sync (Google, Outlook) plugs into `packages/core/src/calendar`; see [docs/setup-calendars.md](docs/setup-calendars.md).
 
+## Automatic jobs
+
+`packages/core/src/automations` runs on a schedule for every agency: a reminder the evening before each viewing, viewings marked done an hour after they end, a follow-up draft the next day, a draft with new times when an agent marks a no-show, and a check-in when a lead hasn't answered for a few days. Each job happens once per subject (`automation_runs`), so running them often is harmless. Everything is a draft in the inbox, except reminders when the agency turns on "Send reminders automatically" in Settings.
+
+They run through Vercel Cron (`apps/web/vercel.json`, daily at 16:00 UTC, needs `CRON_SECRET`) and, once Inngest is connected, every 15 minutes (`automationsCron`). **Run now** in Settings runs them for your agency at once.
+
 ## Environments
 
 | Environment | Where | Database |
