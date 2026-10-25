@@ -133,7 +133,11 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                   {c.subject && <div className="mt-0.5 truncate text-[12px]">{c.subject}</div>}
                   <p className="mt-0.5 line-clamp-2 text-[12px] text-muted">
                     {c.lastMessage?.direction === "outbound" && <span className="text-faint">You: </span>}
-                    {c.lastMessage?.authorType === "system" && <span className="text-faint">{c.category === "booking" || c.category === "valuation" ? "Website: " : "Booking link: "}</span>}
+                    {c.lastMessage?.authorType === "system" && (
+                      <span className="text-faint">
+                        {c.lastMessage.metadata.kind === "no_show" ? "Agent noted: " : c.category === "booking" || c.category === "valuation" ? "Website: " : "Booking link: "}
+                      </span>
+                    )}
                     {c.lastMessage?.body}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -170,6 +174,9 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
     </>
   );
 }
+
+/** A message the automatic jobs sent without a human approving it (only reminders, when the agency allows it). */
+const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) => m.authorType === "agent" && m.metadata.kind === "reminder";
 
 type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.run>>>;
 
@@ -276,6 +283,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                   {(m.intent || m.delivery) && (
                     <footer className="flex items-center gap-2 px-4 pb-3">
                       {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
+                      {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
                       <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="email" />
                     </footer>
                   )}
@@ -290,6 +298,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-faint">
                   {formatTime(m.sentAt)}
                   {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
+                  {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
                   <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="whatsapp" />
                 </div>
               </div>
@@ -306,6 +315,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
               initialBody={draft.input.body}
               slots={draftSlots}
               generatedBy={draft.generatedBy}
+              kind={draft.kind}
               channelLabel={c.route.ready ? c.route.via : channelLabel}
               ready={c.route.ready}
               send={sendDraftAction.bind(null, draft.id)}

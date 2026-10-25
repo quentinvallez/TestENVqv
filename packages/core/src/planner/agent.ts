@@ -15,7 +15,7 @@ export const categories = ["viewing_request", "reschedule", "cancellation", "que
 type TriageCategory = (typeof categories)[number];
 
 /** Everything the planner knows about a conversation before it acts. */
-async function loadThread(ctx: ToolContext, conversationId: string) {
+export async function loadThread(ctx: ToolContext, conversationId: string) {
   const conversation = await ctx.db.query.conversations.findFirst({
     where: and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.id, conversationId)),
     with: { contact: true, messages: { orderBy: asc(messages.sentAt) } },
@@ -57,15 +57,15 @@ async function loadThread(ctx: ToolContext, conversationId: string) {
   return { conversation, contact: conversation.contact, listing, lead, agent, upcoming: upcoming ?? null, agencyName: agency?.name ?? "" };
 }
 
-type Thread = Awaited<ReturnType<typeof loadThread>>;
+export type Thread = Awaited<ReturnType<typeof loadThread>>;
 
 /** Public address of the app, so links in messages work outside it. */
-function absoluteUrl(path: string) {
+export function absoluteUrl(path: string) {
   const host = process.env.APP_URL ?? (process.env.VERCEL_BRANCH_URL ? `https://${process.env.VERCEL_BRANCH_URL}` : process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
   return new URL(path, host).toString();
 }
 
-const addressOf = (listing: Thread["listing"]) =>
+export const addressOf = (listing: Thread["listing"]) =>
   listing ? [[listing.street, listing.houseNumber].filter(Boolean).join(" "), listing.city].filter(Boolean).join(", ") : "";
 
 function transcript(thread: Thread) {
@@ -180,8 +180,8 @@ Only state facts about the property that appear in the listing data; never inven
 If times will be offered, end your text by inviting the client to pick one of the times below; do not write the times yourself.
 For WhatsApp keep it conversational and a little shorter than email.`;
 
-type DraftPlan = {
-  kind: "reply" | "follow_up" | "recommendation";
+export type DraftPlan = {
+  kind: "reply" | "follow_up" | "recommendation" | "no_show" | "nudge";
   purpose: string;
   templateKey: keyof typeof templates;
   slots: Date[];
@@ -190,6 +190,8 @@ type DraftPlan = {
   link?: { url: string; label: string };
   cancelAppointmentId?: string;
   leadStage?: "invited" | "offer" | "follow_up";
+  /** Stored on the sent message, e.g. "follow_up" or "nudge". */
+  messageKind?: string;
   summary: string;
   otherListing?: string;
   /** Address to talk about when it isn't a listing, e.g. the owner's home for a valuation. */
@@ -337,7 +339,7 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
   return { body, by: "template" };
 }
 
-async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: Lang, reasoning: string, useAi: boolean) {
+export async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: Lang, reasoning: string, useAi: boolean) {
   const { body, by } = await writeBody(thread, plan, lang, useAi);
   const text = composeMessage({
     lang,
@@ -370,6 +372,7 @@ async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: 
         offeredSlots: plan.slots.map((s) => s.toISOString()),
         cancelAppointmentId: plan.cancelAppointmentId,
         leadStage: plan.leadStage,
+        ...(plan.messageKind && { kind: plan.messageKind }),
       },
       summary: plan.summary,
       reasoning,
@@ -431,6 +434,7 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
   const lang = toLang(appointment.contact.language);
   const plan: DraftPlan = {
     kind: "follow_up",
+    messageKind: "follow_up",
     purpose:
       "Write a personal follow-up the day after the viewing. Mention one or two concrete things about this property that fit what the client told us. Ask how they liked it, and gently ask whether they would like a second visit or to discuss an offer.",
     templateKey: "follow_up",

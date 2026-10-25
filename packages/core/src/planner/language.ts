@@ -126,4 +126,36 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre visite de ${v.address}. Qu'en avez-vous pensé ? Si vous avez des questions, souhaitez une seconde visite ou envisagez une offre, n'hésitez pas à me le dire.`,
     en: (v) => `Dear ${v.name},\n\nThank you for viewing ${v.address}. How did you find it? If you have questions, would like a second viewing or are considering an offer, just let me know.`,
   },
+  // Sent by the automatic jobs; reminders are never written by the AI.
+  reminder: {
+    nl: (v) => `Beste ${v.name},\n\nEen korte herinnering aan uw bezoek aan ${v.address}. ${v.agentName} verwacht u graag. Past het toch niet meer? Verplaats of annuleer dan via de link hieronder.`,
+    fr: (v) => `Bonjour ${v.name},\n\nUn petit rappel de votre visite de ${v.address}. ${v.agentName} vous attend avec plaisir. Si le moment ne vous convient plus, vous pouvez le modifier ou l'annuler via le lien ci-dessous.`,
+    en: (v) => `Dear ${v.name},\n\nA quick reminder of your viewing at ${v.address}. ${v.agentName} looks forward to meeting you. If the time no longer suits you, you can move or cancel it with the link below.`,
+  },
+  valuation_reminder: {
+    nl: (v) => `Beste ${v.name},\n\nEen korte herinnering: ${v.agentName} komt langs voor de gratis waardebepaling van ${v.address}. Past het toch niet meer? Verplaats of annuleer dan via de link hieronder.`,
+    fr: (v) => `Bonjour ${v.name},\n\nUn petit rappel : ${v.agentName} passera pour l'estimation gratuite de ${v.address}. Si le moment ne vous convient plus, vous pouvez le modifier ou l'annuler via le lien ci-dessous.`,
+    en: (v) => `Dear ${v.name},\n\nA quick reminder: ${v.agentName} is coming by for the free valuation of ${v.address}. If the time no longer suits you, you can move or cancel it with the link below.`,
+  },
+  no_show: {
+    nl: (v) => `Beste ${v.name},\n\nWe hebben u gemist bij het bezoek aan ${v.address}. Geen probleem, er kan altijd iets tussenkomen. Wilt u het pand nog bekijken? Deze momenten zijn vrij:`,
+    fr: (v) => `Bonjour ${v.name},\n\nNous ne vous avons pas vu à la visite de ${v.address}. Aucun souci, un imprévu peut toujours arriver. Souhaitez-vous encore visiter le bien ? Voici les moments disponibles :`,
+    en: (v) => `Dear ${v.name},\n\nWe missed you at the viewing of ${v.address}. No problem, things come up. Would you still like to see it? These times are free:`,
+  },
+  nudge_invited: {
+    nl: (v) => `Beste ${v.name},\n\nIk wou even horen of u nog interesse heeft in ${v.address}. U bent welkom voor een bezoek op een van deze momenten:`,
+    fr: (v) => `Bonjour ${v.name},\n\nJe me permets de revenir vers vous : êtes-vous toujours intéressé(e) par ${v.address} ? Vous êtes le bienvenu pour une visite à l'un de ces moments :`,
+    en: (v) => `Dear ${v.name},\n\nI wanted to check whether you're still interested in ${v.address}. You're welcome to come and see it at one of these times:`,
+  },
+  nudge: {
+    nl: (v) => `Beste ${v.name},\n\nIk wou even horen hoe het met u gaat en of u nog vragen heeft over ${v.address}. Laat gerust iets weten, ook als het niets voor u is.`,
+    fr: (v) => `Bonjour ${v.name},\n\nJe me permets de revenir vers vous : avez-vous encore des questions sur ${v.address} ? N'hésitez pas à me le dire, même si le bien ne vous convient pas.`,
+    en: (v) => `Dear ${v.name},\n\nI wanted to check in and see whether you have any questions about ${v.address}. Just let me know, even if it isn't for you.`,
+  },
 };
+
+export const reminderSubject = {
+  nl: "Herinnering: uw bezoek",
+  fr: "Rappel : votre visite",
+  en: "Reminder: your viewing",
+} satisfies Record<Lang, string>;

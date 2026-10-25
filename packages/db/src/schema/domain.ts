@@ -43,6 +43,20 @@ export type ChannelSettings = {
   whatsapp?: { phoneNumberId: string; displayNumber: string; accessToken: string };
 };
 
+/** Which automatic jobs run for the agency. Every job is on unless turned off. */
+export type AutomationSettings = {
+  /** Reminder the day before a viewing or valuation visit. Sent on its own only when autonomy.reminders is "act". */
+  reminders?: boolean;
+  /** After a viewing that ended, mark it completed and draft a follow-up the next day. */
+  followUps?: boolean;
+  /** Draft a message with new times when an agent marks a client as a no-show. */
+  noShows?: boolean;
+  /** Draft a nudge when a lead has not answered our last message. */
+  nudges?: boolean;
+  /** Days without an answer before a nudge. */
+  nudgeAfterDays?: number;
+};
+
 /** How much an AI agent may do on its own, per capability. */
 export type Autonomy = Record<string, "suggest" | "act_and_notify" | "act">;
 
@@ -58,6 +72,7 @@ export const agencySettings = pgTable("agency_settings", {
   autonomy: jsonb().$type<Autonomy>().notNull().default({}),
   widget: jsonb().$type<WidgetSettings>().notNull().default({}),
   channels: jsonb().$type<ChannelSettings>().notNull().default({}),
+  automations: jsonb().$type<AutomationSettings>().notNull().default({}),
   ...timestamps,
 });
 
@@ -394,6 +409,31 @@ export const events = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index().on(t.agencyId, t.createdAt), index().on(t.subjectType, t.subjectId)],
+);
+
+export type AutomationRule = "reminder" | "follow_up" | "no_show" | "nudge";
+
+/**
+ * One row per thing an automatic job did, so each reminder, follow-up or nudge
+ * happens once however often the jobs run. `dueKey` tells repeats apart, e.g.
+ * the start time a reminder was for, so a moved viewing gets a new reminder.
+ */
+export const automationRuns = pgTable(
+  "automation_runs",
+  {
+    id: id("aut"),
+    agencyId: agencyId(),
+    rule: text().$type<AutomationRule>().notNull(),
+    subjectType: text().notNull(),
+    subjectId: text().notNull(),
+    dueKey: text().notNull(),
+    outcome: text().$type<"pending" | "sent" | "drafted" | "skipped" | "failed">().notNull().default("pending"),
+    proposalId: text(),
+    messageId: text(),
+    detail: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex().on(t.agencyId, t.rule, t.subjectId, t.dueKey), index().on(t.agencyId, t.createdAt)],
 );
 
 export type ProposalStatus = "pending" | "approved" | "rejected" | "executed" | "failed";
