@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, schema } from "@viewing/db";
 import { z } from "zod";
+import { sendMessage } from "../channels";
 import { recordEvent } from "../events";
 import { draftFollowUp, handleConversation } from "../planner/agent";
 import { defineTool, type ToolContext } from "../tool";
@@ -119,7 +120,7 @@ export const getConversation = defineTool({
 export const replyToConversation = defineTool({
   name: "conversations_reply",
   description:
-    "Send a reply in a conversation on its own channel. Can also cancel an appointment and move the lead to another stage in the same step. Offered times are informational; the client books them through the link in the message.",
+    "Send a reply in a conversation on its own channel (the agent's mailbox, the agency address or WhatsApp; stored as simulated when the channel isn't connected). Can also cancel an appointment and move the lead to another stage in the same step. Offered times are informational; the client books them through the link in the message.",
   mutates: true,
   input: z.object({
     conversationId: z.string(),
@@ -127,6 +128,13 @@ export const replyToConversation = defineTool({
     offeredSlots: z.array(z.string()).default([]),
     cancelAppointmentId: z.string().optional(),
     leadStage: z.enum(["invited", "booked", "visited", "follow_up", "offer"]).optional(),
+    subject: z.string().trim().max(300).optional(),
+    kind: z.string().max(40).optional().describe('What the message is for, e.g. "reply", "reminder", "no_show", "follow_up"'),
+    whatsappTemplate: z
+      .object({ name: z.string(), language: z.enum(["nl", "fr", "en"]), params: z.array(z.string()) })
+      .optional()
+      .describe("Approved WhatsApp template used when the 24-hour window is closed"),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
   run: async (ctx, input) => {
     const [conversation] = await ctx.db
@@ -138,23 +146,14 @@ export const replyToConversation = defineTool({
     if (input.cancelAppointmentId) {
       await cancelAppointment.run(ctx, { appointmentId: input.cancelAppointmentId, reason: "Client cancelled by message", reopenLead: true });
     }
-    // Real delivery arrives with the Outlook, Gmail and WhatsApp connections; until then the message is stored only.
-    const [message] = await ctx.db
-      .insert(messages)
-      .values({
-        agencyId: ctx.agencyId,
-        conversationId: conversation.id,
-        direction: "outbound",
-        body: input.body,
-        delivery: "simulated",
-        authorType: ctx.actor.type,
-        metadata: input.offeredSlots.length ? { offeredSlots: input.offeredSlots } : {},
-      })
-      .returning();
-    await ctx.db
-      .update(conversations)
-      .set({ status: "waiting", unread: false, lastMessageAt: message!.sentAt })
-      .where(eq(conversations.id, conversation.id));
+    const sent = await sendMessage(ctx, {
+      conversationId: conversation.id,
+      body: input.body,
+      subject: input.subject,
+      kind: input.kind,
+      whatsappTemplate: input.whatsappTemplate,
+      metadata: { ...input.metadata, ...(input.offeredSlots.length && { offeredSlots: input.offeredSlots }) },
+    });
     if (input.leadStage && conversation.contactId) {
       await ctx.db
         .update(leads)
@@ -167,13 +166,7 @@ export const replyToConversation = defineTool({
           ),
         );
     }
-    await recordEvent(ctx, {
-      type: "message.sent",
-      subjectType: "conversation",
-      subjectId: conversation.id,
-      data: { channel: conversation.channel, offeredSlots: input.offeredSlots.length, delivery: "simulated" },
-    });
-    return { messageId: message!.id, delivery: "simulated" as const };
+    return sent;
   },
 });
 

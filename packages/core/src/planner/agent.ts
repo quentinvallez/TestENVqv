@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, ne, schema } from "@viewing/db";
 import type { ConversationCategory, Priority } from "@viewing/db/schema";
 import { z } from "zod";
+import { conversationFor } from "../channels";
 import { aiAvailable, AiUnavailableError, generateStructured } from "../ai/client";
 import { availableSlots } from "../tools/booking";
 import { AGENCY_TIMEZONE } from "../time";
@@ -406,39 +407,24 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
     with: { contact: true },
   });
   if (!appointment?.contact) throw new Error("Appointment or contact not found");
-  const channel = appointment.contact.whatsappOptIn && appointment.contact.phone ? "whatsapp" : "email";
-
-  let [conversation] = await ctx.db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, appointment.contact.id), eq(conversations.channel, channel)))
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(1);
-  if (!conversation) {
-    [conversation] = await ctx.db
-      .insert(conversations)
-      .values({
-        agencyId: ctx.agencyId,
-        contactId: appointment.contact.id,
-        leadId: appointment.leadId,
-        listingId: appointment.listingId,
-        agentId: appointment.agentId,
-        channel,
-        provider: channel === "whatsapp" ? "whatsapp_business" : "outlook",
-        subject: channel === "email" ? "Uw bezoek" : null,
-        category: "feedback",
-        status: "open",
-        unread: false,
-        lastMessageAt: new Date(),
-      })
-      .returning();
-  }
+  const conversation = await conversationFor(ctx, {
+    contactId: appointment.contact.id,
+    leadId: appointment.leadId,
+    listingId: appointment.listingId,
+    agentId: appointment.agentId,
+    subject: "Uw bezoek",
+  });
 
   await ctx.db
     .update(conversations)
-    .set({ category: "feedback", summary: "Viewing done; no follow-up sent yet.", listingId: appointment.listingId ?? conversation!.listingId })
-    .where(eq(conversations.id, conversation!.id));
-  const thread = await loadThread(ctx, conversation!.id);
+    .set({
+      category: "feedback",
+      summary: "Viewing done; no follow-up sent yet.",
+      listingId: appointment.listingId ?? conversation.listingId,
+      ...(!conversation.lastMessageAt && { status: "open" as const, unread: false, lastMessageAt: new Date() }),
+    })
+    .where(eq(conversations.id, conversation.id));
+  const thread = await loadThread(ctx, conversation.id);
   thread.listing = appointment.listingId
     ? ((await ctx.db.query.listings.findFirst({ where: eq(listings.id, appointment.listingId) })) ?? thread.listing)
     : thread.listing;
@@ -453,7 +439,7 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
     summary: `Follow up with ${appointment.contact.firstName ?? "the client"} after the viewing`,
   };
   const proposal = await propose(ctx, thread, plan, lang, "Viewing completed; no follow-up sent yet.", useAi);
-  return { proposalId: proposal.id, conversationId: conversation!.id };
+  return { proposalId: proposal.id, conversationId: conversation.id };
 }
 
 export type ClientAction = { kind: "booked" } | { kind: "cancelled" } | { kind: "rescheduled"; from: Date };
@@ -471,27 +457,7 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   });
   if (!appointment?.contact) return null;
   const contact = appointment.contact;
-  const channel = contact.whatsappOptIn && contact.phone ? "whatsapp" : "email";
-
-  let [conversation] = await ctx.db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, contact.id), eq(conversations.channel, channel)))
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(1);
-  conversation ??= (
-    await ctx.db
-      .insert(conversations)
-      .values({
-        agencyId: ctx.agencyId,
-        contactId: contact.id,
-        leadId: appointment.leadId,
-        channel,
-        provider: channel === "whatsapp" ? "whatsapp_business" : "outlook",
-        subject: channel === "email" ? (appointment.listing?.title ?? null) : null,
-      })
-      .returning()
-  )[0]!;
+  const conversation = await conversationFor(ctx, { contactId: contact.id, leadId: appointment.leadId, agentId: appointment.agentId, subject: appointment.listing?.title ?? null });
 
   const isValuation = appointment.type === "valuation";
   const place = addressOf(appointment.listing) || appointment.location || "";
@@ -589,20 +555,12 @@ export async function draftValuationFollowUp(ctx: ToolContext, valuationId: stri
     where: and(eq(schema.valuations.agencyId, ctx.agencyId), eq(schema.valuations.id, valuationId)),
   });
   if (!valuation?.contactId) return null;
-  const channel = valuation.verificationMethod === "sms" ? "sms" : "whatsapp";
-
-  let [conversation] = await ctx.db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, valuation.contactId), eq(conversations.channel, channel)))
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(1);
-  conversation ??= (
-    await ctx.db
-      .insert(conversations)
-      .values({ agencyId: ctx.agencyId, contactId: valuation.contactId, leadId: valuation.leadId, channel, provider: channel === "sms" ? "sms" : "whatsapp_business" })
-      .returning()
-  )[0]!;
+  const conversation = await conversationFor(ctx, {
+    contactId: valuation.contactId,
+    channel: valuation.verificationMethod === "sms" ? "sms" : "whatsapp",
+    leadId: valuation.leadId,
+    agentId: valuation.agentId,
+  });
 
   const place = [[valuation.street, valuation.houseNumber].filter(Boolean).join(" "), valuation.city].join(", ");
   const euro = (n: number) => new Intl.NumberFormat("nl-BE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
@@ -659,19 +617,10 @@ export async function draftRecommendation(
 ) {
   const [contact] = await ctx.db.select().from(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.id, contactId)));
   if (!contact || suggestions.length === 0) return null;
-  const channel = contact.whatsappOptIn && contact.phone ? "whatsapp" : "email";
-  let [conversation] = await ctx.db
-    .select()
-    .from(conversations)
-    .where(and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.contactId, contactId), eq(conversations.channel, channel)))
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(1);
-  conversation ??= (
-    await ctx.db
-      .insert(conversations)
-      .values({ agencyId: ctx.agencyId, contactId, channel, provider: channel === "whatsapp" ? "whatsapp_business" : "outlook", subject: channel === "email" ? "Panden voor u" : null, status: "open", unread: false, lastMessageAt: new Date() })
-      .returning()
-  )[0]!;
+  const conversation = await conversationFor(ctx, { contactId, subject: "Panden voor u" });
+  if (!conversation.lastMessageAt) {
+    await ctx.db.update(conversations).set({ status: "open", unread: false, lastMessageAt: new Date() }).where(eq(conversations.id, conversation.id));
+  }
   const thread = await loadThread(ctx, conversation.id);
   const lang = toLang(contact.language);
   const place = addressOf(basedOn as Thread["listing"]);
