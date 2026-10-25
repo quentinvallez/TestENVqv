@@ -68,7 +68,7 @@ type Text = {
 
 export const valuationText: Record<WidgetLang, Text> = {
   nl: {
-    launcher: "Gratis waardebepaling",
+    launcher: "Gratis schatting",
     close: "Sluiten",
     title: "Wat is mijn woning waard?",
     intro: "Gratis schatting op basis van verkoopprijzen in uw gemeente en recente verkopen van ons kantoor.",

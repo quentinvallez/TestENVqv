@@ -67,7 +67,7 @@ export default async function WidgetPage() {
                 <span className="text-[12px] font-normal text-muted">{widget.valuationLauncher ? "On" : "Off"}</span>
               </div>
               <p className="mt-1 max-w-xl text-muted">
-                A &quot;Gratis waardebepaling&quot; button at the bottom right of every page with the script, in your colour. It opens the valuation in a
+                A &quot;Gratis schatting&quot; button at the bottom right of every page with the script, in your colour. It opens the valuation in a
                 panel, full screen on phones. Hidden on pages that already show the valuation.
               </p>
             </div>
