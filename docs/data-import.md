@@ -13,7 +13,9 @@ Statbel's building types map to ours: houses with 2 or 3 façades → `house`, 4
 
 ## Steps
 
-1. Download from statbel.fgov.be (Figures → Housing → Real estate → "per municipality, per quarter", `.xlsx`, both the Dutch and French version if you want every name to match) and the bpost postcode list (save it as CSV). The site blocks automated downloads, so this is done by hand.
+1. Download the files by hand (Statbel blocks automated downloads):
+   - **Statbel**, both languages so every name matches: statbel.fgov.be → Figures → Housing → Real estate → "per municipality, per quarter" (`.xlsx`). The files are called `NL_immo_statbel_kwartaal_per_gemeente.xlsx` and `FR_immo_statbel_trimestre_par_commune.xlsx`.
+   - **bpost**: bpost.be → Codes postaux / Postcodes → the list "by postcode", e.g. `https://www.bpost.be/sites/default/files/zipcodes/zipcodes_num_fr_2025.xls`. It is an old `.xls` file: open it in Excel and use Save as → CSV. The French list is the one tested; the Dutch one works too.
 2. Check the columns are read correctly; nothing is written:
    ```bash
    pnpm --filter @viewing/db import:market path/to/statbel-file.xlsx --dry-run
@@ -23,7 +25,7 @@ Statbel's building types map to ours: houses with 2 or 3 façades → `house`, 4
    ```bash
    DATABASE_URL=... pnpm --filter @viewing/db import:market path/to/statbel-nl.xlsx
    DATABASE_URL=... pnpm --filter @viewing/db import:market path/to/statbel-fr.xlsx
-   DATABASE_URL=... pnpm --filter @viewing/db import:postcodes path/to/bpost.csv
+   DATABASE_URL=... pnpm --filter @viewing/db import:postcodes path/to/bpost_fr.csv
    ```
    Import Statbel first. Postcodes are linked to municipalities by name (Dutch, French and German names, never across regions); the summary lists any names that didn't match. Re-run the postcode import after adding the other language of the Statbel file.
 
