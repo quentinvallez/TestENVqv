@@ -33,6 +33,15 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Client-facing text exists in NL, FR and EN (`planner/language.ts`, `apps/web/lib/widget-i18n.ts`).
 - Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it.
 
+## Channels
+
+- Messages leave the platform only through `sendMessage` (`packages/core/src/channels`); find or create a conversation with `conversationFor`. It stores the message with `delivery` "sent", "failed" or "simulated" and records `message.sent` / `message.failed`. Never insert outbound `messages` rows yourself.
+- Email goes from the agent's connected Gmail/Outlook (send-only scopes) or the agency's inbox address via Mailgun EU, always with Reply-To the inbox address. We never read mailboxes.
+- WhatsApp outside the 24-hour window needs a template (`whatsappTemplate`); names and texts are in docs/setup-channels.md.
+- Webhooks (`app/api/channels/*`) verify signatures, resolve the agency through `@viewing/core/inbound`, then call tools with `inboundContext(agencyId, …)`. Inbound handling deduplicates on the provider's message id.
+- Portal leads (Immoweb, Zimmo, Immovlan) arrive as forwarded emails, parsed by `channels/portals.ts` (pure, tested), and go through `portal_leads_receive`.
+- Tokens (OAuth, WhatsApp) are encrypted with `CALENDAR_TOKEN_KEY` (`crypto.ts`). Calendar events never invite the client.
+
 ## Website widget
 
 - `apps/web/app/widget.js/route.ts` is the embed script agencies put on their site. It resolves the listing by reference (`/api/widget/resolve`) and picks the agent whose name appears first on the page; the booking goes to that agent, else to the listing's responsible agent.

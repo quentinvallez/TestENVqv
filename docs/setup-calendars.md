@@ -1,6 +1,6 @@
-# Connecting Google and Outlook calendars: one-time setup
+# Connecting Google and Outlook calendars and mailboxes: one-time setup
 
-To read agents' free/busy time and write viewings into their calendars, the platform needs one app registration at Google and one at Microsoft. You do this once, for the whole platform (not per agency).
+To read agents' free/busy time, write viewings into their calendars and send approved replies from their own mailbox, the platform needs one app registration at Google and one at Microsoft. Agents then click **Connect Google** or **Connect Outlook** on their page under Agents. You do this once, for the whole platform (not per agency).
 
 Menu names change from time to time; if a label differs slightly, look for the closest match.
 
@@ -16,7 +16,7 @@ Google and Microsoft both want to see a real website for an app that other compa
 
 ## 1. Google (Google Calendar)
 
-Calendar access is a *sensitive* scope at Google, not a *restricted* one, so there is no paid security audit. Verification is a review by Google that usually takes a few days to a few weeks.
+Calendar access and `gmail.send` are *sensitive* scopes at Google, not *restricted* ones, so there is no paid security audit. (Reading mail would be restricted and need a yearly CASA audit; that's why client replies come back through the agency's inbox address instead of us reading the mailbox.) Verification is a review by Google that usually takes a few days to a few weeks.
 
 1. Go to https://console.cloud.google.com and sign in with the company Google account.
 2. **Create a project**: project picker at the top → **New project** → name it after the product → Create.
@@ -28,6 +28,7 @@ Calendar access is a *sensitive* scope at Google, not a *restricted* one, so the
 5. **Scopes**: *Data access* → **Add or remove scopes** → add:
    - `https://www.googleapis.com/auth/calendar.events` (create and update viewings)
    - `https://www.googleapis.com/auth/calendar.freebusy` (read when agents are busy)
+   - `https://www.googleapis.com/auth/gmail.send` (send approved replies from the agent's Gmail; send only, we never read the mailbox)
    - `openid`, `email`
    → Update → Save.
 6. **Test users** (while the app is in testing): *Audience* → **Add users** → add your own Gmail address and any pilot agents. In testing mode, a connection expires after 7 days; that's normal until the app is published.
@@ -56,6 +57,7 @@ Calendar access is a *sensitive* scope at Google, not a *restricted* one, so the
 4. **Authentication** → under Web redirect URIs, add `http://localhost:3000/api/calendar/microsoft/callback` → Save.
 5. **API permissions** → **Add a permission** → *Microsoft Graph* → **Delegated permissions** → tick:
    - `Calendars.ReadWrite`
+   - `Mail.Send` (send approved replies from the agent's mailbox)
    - `offline_access`
    - `User.Read`, `openid`, `email`
    → Add permissions. Do **not** click "Grant admin consent"; each agency gives consent for its own account.
@@ -67,16 +69,17 @@ Calendar access is a *sensitive* scope at Google, not a *restricted* one, so the
 
 ---
 
-## 3. One more variable
+## 3. Two more variables
 
-Calendar connection tokens are stored encrypted. Add to Vercel:
+Calendar, mailbox and WhatsApp tokens are stored encrypted. Add to Vercel:
 
-- `CALENDAR_TOKEN_KEY`: a random string of 32+ characters (for example from https://generate-secret.vercel.app/32).
-
-Changing it later disconnects all calendars, so set it once and keep it.
+- `CALENDAR_TOKEN_KEY`: a random string of 32+ characters (for example from https://generate-secret.vercel.app/32). Changing it later disconnects all calendars and mailboxes, so set it once and keep it.
+- `APP_URL`: `https://testenvqv.vercel.app` for Production. The redirect URI must match the registration exactly, so connecting works on this address and on localhost, not on preview URLs.
 
 ---
 
 ## When you're done
 
-Tell me which of the variables are set (names only, never the values). I then build the "Connect Google / Outlook" buttons and the sync, and test them with your own calendar.
+The **Connect Google / Connect Outlook** buttons appear on each agent's page as soon as the variables are set. Connect your own account first and book a test viewing: it should appear in your calendar, and an event in your calendar should remove that time from the booking page.
+
+The client is never added as an attendee of the calendar event, because Google and Outlook would then email them an invitation without anyone approving it.

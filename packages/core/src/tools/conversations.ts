@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, schema, sql } from "@viewing/db";
 import type { Language } from "@viewing/db/schema";
 import { z } from "zod";
-import { samePhone, sendMessage } from "../channels";
+import { deliveryRoute, samePhone, sendMessage } from "../channels";
 import { recordEvent } from "../events";
 import { draftFollowUp, handleConversation } from "../planner/agent";
 import { defineTool, type ToolContext } from "../tool";
@@ -22,6 +22,7 @@ export const inboxFolders = [
   "feedback",
   "outlook",
   "gmail",
+  "email",
   "whatsapp_business",
   "done",
 ] as const;
@@ -61,6 +62,7 @@ const inFolder: Record<InboxFolder, (c: InboxItem) => boolean> = {
   feedback: (c) => c.status !== "done" && c.category === "feedback",
   outlook: (c) => c.status !== "done" && c.provider === "outlook",
   gmail: (c) => c.status !== "done" && c.provider === "gmail",
+  email: (c) => c.status !== "done" && c.provider === "email",
   whatsapp_business: (c) => c.status !== "done" && c.provider === "whatsapp_business",
   done: (c) => c.status === "done",
 };
@@ -114,7 +116,7 @@ export const getConversation = defineTool({
           orderBy: desc(leads.updatedAt),
         })
       : null;
-    return { ...conversation, lead: lead ?? null, draft: conversation.proposals[0] ?? null };
+    return { ...conversation, lead: lead ?? null, draft: conversation.proposals[0] ?? null, route: await deliveryRoute(ctx, conversation) };
   },
 });
 

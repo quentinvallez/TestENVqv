@@ -19,6 +19,7 @@ export function SimulateMessage({
   const [provider, setProvider] = useState("whatsapp_business");
   const [state, formAction, pending] = useActionState(action, undefined);
   const whatsapp = provider === "whatsapp_business";
+  const portal = provider === "immoweb" || provider === "zimmo";
 
   return (
     <>
@@ -44,14 +45,16 @@ export function SimulateMessage({
                 <option value="whatsapp_business">WhatsApp Business</option>
                 <option value="outlook">Outlook</option>
                 <option value="gmail">Gmail</option>
+                <option value="immoweb">Immoweb lead</option>
+                <option value="zimmo">Zimmo lead</option>
               </select>
               <div className="grid grid-cols-2 gap-2">
                 <input name="name" placeholder="Name" className={field} required />
                 <input name="contact" placeholder={whatsapp ? "+32 470 12 34 56" : "client@example.com"} className={field} required />
               </div>
-              {!whatsapp && <input name="subject" placeholder="Subject" className={field} />}
-              <select name="listingId" className={field} defaultValue="">
-                <option value="">About which listing? (optional)</option>
+              {!whatsapp && !portal && <input name="subject" placeholder="Subject" className={field} />}
+              <select name="listingId" className={field} defaultValue="" required={portal}>
+                <option value="">{portal ? "Which listing?" : "About which listing? (optional)"}</option>
                 {listings.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.label}

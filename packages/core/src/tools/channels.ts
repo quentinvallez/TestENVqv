@@ -28,6 +28,7 @@ export const receivePortalLead = defineTool({
     message: z.string().trim().max(5000).nullish(),
     portalRef: z.string().trim().nullish().describe("The listing's code at the portal, e.g. Immoweb's 8-digit id"),
     agencyReference: z.string().trim().nullish(),
+    listingId: z.string().optional().describe("When the caller already knows the listing"),
     language: z.enum(["nl", "fr", "en"]).nullish(),
     externalId: z.string().max(500).optional(),
     useAi: z.boolean().default(true),
@@ -35,7 +36,9 @@ export const receivePortalLead = defineTool({
   run: async (ctx, input) => {
     if (!input.email && !input.phone) throw new Error("A portal lead needs an email address or a phone number");
     const refs = [input.portalRef, input.agencyReference].filter((r): r is string => Boolean(r));
-    const [listing] = refs.length
+    const [listing] = input.listingId
+      ? await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, input.listingId)))
+      : refs.length
       ? await ctx.db
           .select()
           .from(listings)

@@ -102,6 +102,15 @@ export async function conversationFor(
   return created!;
 }
 
+/** How a reply in this conversation would leave right now, for the composer: "Send via Gmail" or "not connected yet". */
+export async function deliveryRoute(ctx: ToolContext, conversation: { channel: Channel; agentId: string | null }): Promise<{ ready: boolean; via: string }> {
+  if (conversation.channel === "whatsapp") return { ready: Boolean(await whatsappConfig(ctx)), via: "WhatsApp" };
+  if (conversation.channel === "sms") return { ready: false, via: "SMS" };
+  const mailbox = await agentMailbox(ctx, conversation.agentId);
+  if (mailbox) return { ready: true, via: mailbox.provider === "google" ? `Gmail (${mailbox.accountEmail})` : `Outlook (${mailbox.accountEmail})` };
+  return { ready: mailgunConfigured() && Boolean(mailDomain()), via: "agency email" };
+}
+
 export type SendInput = {
   conversationId: string;
   body: string;
