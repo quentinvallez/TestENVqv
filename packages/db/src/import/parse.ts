@@ -174,7 +174,7 @@ export function parseStatbelSheet(rows: unknown[][]): MarketRow[] {
   const lang = header.some((h) => /nombre|localit|ann[ée]e/i.test(h)) ? "fr" : "nl";
   const col = (re: RegExp) => header.findIndex((h) => re.test(h));
   const refnisCol = col(/^refnis$/i);
-  const nameCol = col(/localit|gemeente|plaats|commune|naam/i);
+  const nameCol = col(/locali|lokali|gemeente|plaats|commune|naam/i);
   const yearCol = col(/ann[ée]e|^jaar$|^year$/i);
   const periodCol = col(/p[ée]riode|period/i);
 

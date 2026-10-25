@@ -96,6 +96,15 @@ describe("parseStatbelSheet", () => {
       ["11002", "ANVERS", 2, "apartment", 12, null, null, null],
     ]);
   });
+
+  it("reads the Dutch version of the file", () => {
+    const nl = [
+      [null, null, null, null, null, ...typeLabels("Huizen met 2 of 3 gevels (gesloten + halfopen bebouwing)")],
+      ["refnis", "lokaliteit", "jaar", "periode", null, "aantal transacties", "mediaan prijs(€)", "eerste kwartiel prijs(€)", "derde kwartiel prijs(€)", null],
+      ["11002", "ANTWERPEN", "2026", "Q2", null, 40, 300, 250, 350, null],
+    ];
+    expect(parseStatbelSheet(nl).map((r) => [r.municipalityNl, r.municipalityFr, r.propertyType, r.median])).toEqual([["ANTWERPEN", null, "house", 300]]);
+  });
 });
 
 describe("provinceRegion", () => {
