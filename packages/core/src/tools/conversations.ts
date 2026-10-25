@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, schema } from "@viewing/db";
+import { and, asc, desc, eq, schema, sql } from "@viewing/db";
+import type { Language } from "@viewing/db/schema";
 import { z } from "zod";
-import { sendMessage } from "../channels";
+import { samePhone, sendMessage } from "../channels";
 import { recordEvent } from "../events";
 import { draftFollowUp, handleConversation } from "../planner/agent";
 import { defineTool, type ToolContext } from "../tool";
@@ -186,6 +187,55 @@ export const updateConversation = defineTool({
   },
 });
 
+/**
+ * The agency's contact with this email address or phone number (written in any
+ * form), or a new one. Phones are compared on their last nine digits first,
+ * then exactly in international form.
+ */
+export async function findOrCreateContact(
+  ctx: ToolContext,
+  input: { name: string; email?: string | null; phone?: string | null; language?: Language | null; whatsappOptIn?: boolean },
+) {
+  let contact: typeof contacts.$inferSelect | undefined;
+  if (input.email) {
+    [contact] = await ctx.db.select().from(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.email, input.email.toLowerCase()))).limit(1);
+  }
+  if (!contact && input.phone && input.phone.replace(/\D/g, "").length >= 8) {
+    const tail = input.phone.replace(/\D/g, "").slice(-9);
+    const candidates = await ctx.db
+      .select()
+      .from(contacts)
+      .where(and(eq(contacts.agencyId, ctx.agencyId), sql`right(regexp_replace(${contacts.phone}, '\\D', '', 'g'), 9) = ${tail}`))
+      .limit(10);
+    contact = candidates.find((c) => samePhone(c.phone, input.phone));
+  }
+  if (contact) {
+    // Fill in what we learned, never overwrite what the agency entered.
+    const fill = {
+      ...(!contact.email && input.email && { email: input.email.toLowerCase() }),
+      ...(!contact.phone && input.phone && { phone: input.phone }),
+      ...(!contact.language && input.language && { language: input.language }),
+      ...(input.whatsappOptIn && !contact.whatsappOptIn && { whatsappOptIn: true }),
+    };
+    if (Object.keys(fill).length) [contact] = await ctx.db.update(contacts).set(fill).where(eq(contacts.id, contact.id)).returning();
+    return contact!;
+  }
+  const [firstName, ...rest] = input.name.trim().split(/\s+/);
+  const [created] = await ctx.db
+    .insert(contacts)
+    .values({
+      agencyId: ctx.agencyId,
+      firstName,
+      lastName: rest.join(" ") || null,
+      email: input.email?.toLowerCase(),
+      phone: input.phone,
+      language: input.language ?? undefined,
+      whatsappOptIn: input.whatsappOptIn ?? false,
+    })
+    .returning();
+  return created!;
+}
+
 export const receiveMessage = defineTool({
   name: "messages_receive",
   description:
@@ -193,23 +243,26 @@ export const receiveMessage = defineTool({
   mutates: true,
   input: z.object({
     channel: z.enum(["email", "whatsapp", "sms"]),
-    provider: z.enum(["outlook", "gmail", "whatsapp_business", "sms"]),
+    provider: z.enum(["outlook", "gmail", "email", "whatsapp_business", "sms"]),
     from: z.object({ name: z.string().trim().min(1), email: z.string().trim().toLowerCase().email().optional(), phone: z.string().trim().optional() }),
     subject: z.string().trim().optional(),
     body: z.string().trim().min(1).max(10000),
     listingId: z.string().optional(),
+    /** Id at the provider (email Message-ID, WhatsApp message id); a message seen before is ignored. */
+    externalId: z.string().max(500).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     useAi: z.boolean().default(true),
   }),
   run: async (ctx, input) => {
-    const [firstName, ...rest] = input.from.name.split(" ");
-    const match = input.from.email ? eq(contacts.email, input.from.email) : input.from.phone ? eq(contacts.phone, input.from.phone) : undefined;
-    let [contact] = match ? await ctx.db.select().from(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), match)) : [];
-    contact ??= (
-      await ctx.db
-        .insert(contacts)
-        .values({ agencyId: ctx.agencyId, firstName, lastName: rest.join(" ") || null, email: input.from.email, phone: input.from.phone, whatsappOptIn: input.channel === "whatsapp" })
-        .returning()
-    )[0]!;
+    if (input.externalId) {
+      const [seen] = await ctx.db
+        .select({ conversationId: messages.conversationId })
+        .from(messages)
+        .where(and(eq(messages.agencyId, ctx.agencyId), eq(messages.externalId, input.externalId)))
+        .limit(1);
+      if (seen) return { conversationId: seen.conversationId, triage: null, proposalId: null, duplicate: true };
+    }
+    const contact = await findOrCreateContact(ctx, { name: input.from.name, email: input.from.email, phone: input.from.phone, whatsappOptIn: input.channel === "whatsapp" });
 
     let [conversation] = await ctx.db
       .select()
@@ -230,13 +283,23 @@ export const receiveMessage = defineTool({
           channel: input.channel,
           provider: input.provider,
           subject: input.subject,
+          externalThreadId: input.channel === "email" ? input.externalId : undefined,
         })
         .returning()
     )[0]!;
 
     const [message] = await ctx.db
       .insert(messages)
-      .values({ agencyId: ctx.agencyId, conversationId: conversation.id, direction: "inbound", authorType: "contact", subject: input.subject, body: input.body })
+      .values({
+        agencyId: ctx.agencyId,
+        conversationId: conversation.id,
+        direction: "inbound",
+        authorType: "contact",
+        subject: input.subject,
+        body: input.body,
+        externalId: input.externalId,
+        metadata: input.metadata ?? {},
+      })
       .returning();
     await ctx.db
       .update(conversations)
@@ -244,7 +307,7 @@ export const receiveMessage = defineTool({
       .where(eq(conversations.id, conversation.id));
     await recordEvent(
       { ...ctx, actor: { type: "contact", id: contact.id } },
-      { type: "message.received", subjectType: "conversation", subjectId: conversation.id, data: { channel: input.channel } },
+      { type: "message.received", subjectType: "conversation", subjectId: conversation.id, data: { channel: input.channel, messageId: message!.id } },
     );
 
     // "Code 123456" from the owner's own WhatsApp verifies a pending home valuation.

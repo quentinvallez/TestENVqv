@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./time": "./src/time.ts",
     "./public": "./src/public.ts",
-    "./qualification": "./src/planner/qualification.ts"
+    "./qualification": "./src/planner/qualification.ts",
+    "./inbound": "./src/inbound.ts"
   },
   "scripts": {
     "typecheck": "tsc",
