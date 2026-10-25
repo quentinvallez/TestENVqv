@@ -6,7 +6,26 @@ import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
 import { address, formatDay, formatTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta } from "@/lib/labels";
-import { cancelAppointmentAction } from "../actions";
+import { cancelAppointmentAction, markAttendanceAction } from "../actions";
+
+/** After a viewing started the agent can say whether the client came; viewings nobody marks count as done. */
+function Attendance({ apt, now }: { apt: { id: string; status: string; startsAt: Date }; now: Date }) {
+  if (apt.startsAt > now || apt.status === "cancelled") return null;
+  return (
+    <span className="flex justify-end gap-3 text-[12px]">
+      {apt.status !== "completed" && (
+        <form action={markAttendanceAction.bind(null, apt.id, true)}>
+          <button className="py-1 text-muted hover:text-fg">{apt.status === "no_show" ? "Came after all" : "Came"}</button>
+        </form>
+      )}
+      {apt.status !== "no_show" && (
+        <form action={markAttendanceAction.bind(null, apt.id, false)}>
+          <button className="py-1 text-muted hover:text-danger">No-show</button>
+        </form>
+      )}
+    </span>
+  );
+}
 
 export default async function AppointmentsPage() {
   const now = new Date();
@@ -39,7 +58,10 @@ export default async function AppointmentsPage() {
                     {appointmentStatusMeta[apt.status].label}
                   </div>
                 </div>
-                <Avatar name={apt.agentName} color={apt.agentColor} />
+                <div className="flex flex-col items-end gap-1">
+                  <Avatar name={apt.agentName} color={apt.agentColor} />
+                  <Attendance apt={apt} now={now} />
+                </div>
               </li>
             ))}
           </ul>
@@ -88,6 +110,7 @@ export default async function AppointmentsPage() {
                         <button className="text-[12px] text-muted hover:text-danger">Cancel</button>
                       </form>
                     )}
+                    <Attendance apt={apt} now={now} />
                   </td>
                 </tr>
               ))}

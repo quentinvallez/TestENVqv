@@ -5,10 +5,19 @@ import { CalendarClock, RefreshCw, Send, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { DraftState } from "./actions";
 
+/** Drafts the automatic jobs prepare, by proposal kind. */
+const draftKindLabel: Record<string, string> = {
+  reminder: "Reminder",
+  follow_up: "Follow-up after the viewing",
+  no_show: "After a no-show",
+  nudge: "Check-in, no answer yet",
+};
+
 export function DraftComposer({
   initialBody,
   slots,
   generatedBy,
+  kind,
   channelLabel,
   send,
   dismiss,
@@ -18,6 +27,7 @@ export function DraftComposer({
   initialBody: string;
   slots: string[];
   generatedBy: "ai" | "template" | null;
+  kind?: string | null;
   channelLabel: string;
   send: (state: DraftState, form: FormData) => Promise<DraftState>;
   dismiss: () => Promise<void>;
@@ -31,8 +41,10 @@ export function DraftComposer({
     <form action={formAction} className="rounded-lg border border-ai-line bg-panel">
       <div className="flex flex-wrap items-center gap-2 border-b border-ai-line bg-ai-soft px-3 py-2 text-ai">
         <Sparkles className="size-3.5" />
-        <span className="font-medium">Planner draft</span>
-        <span className="text-[12px] opacity-80">{generatedBy === "ai" ? "written by AI" : "from a template (AI not configured)"}</span>
+        <span className="font-medium">{(kind && draftKindLabel[kind]) ?? "Planner draft"}</span>
+        <span className="text-[12px] opacity-80">
+          {kind === "reminder" ? "fixed template, never written by AI" : generatedBy === "ai" ? "written by AI" : "from a template (AI not configured)"}
+        </span>
       </div>
       {slots.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
@@ -59,7 +71,7 @@ export function DraftComposer({
           <Send className="size-3.5" />
           {pending ? "Sending…" : `Send via ${channelLabel}`}
         </Button>
-        {aiEnabled && (
+        {aiEnabled && kind !== "reminder" && (
           <Button type="button" size="sm" variant="ai" onClick={() => redraft()} className="h-10 sm:h-7">
             <RefreshCw className="size-3.5" />
             Rewrite with AI

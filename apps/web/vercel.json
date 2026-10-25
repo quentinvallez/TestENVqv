@@ -2,5 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "regions": ["fra1"],
-  "buildCommand": "pnpm --filter @viewing/db migrate && pnpm build"
+  "buildCommand": "pnpm --filter @viewing/db migrate && pnpm build",
+  "crons": [{ "path": "/api/cron/automations", "schedule": "0 16 * * *" }]
 }

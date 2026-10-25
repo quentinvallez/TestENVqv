@@ -11,3 +11,6 @@ export { aiAvailable } from "./ai/client";
 export { qualificationQuestions, type QualificationQuestion } from "./planner/qualification";
 export { formatSlot, toLang, type Lang } from "./planner/language";
 export { verificationMethod } from "./tools/valuations";
+export { runAutomationsForAllAgencies, type AutomationSummary } from "./automations/jobs";
+export { REMINDER_HOUR } from "./automations/rules";
+export { automationsCron } from "./automations/schedule";
