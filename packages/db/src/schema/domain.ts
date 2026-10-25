@@ -29,6 +29,12 @@ export type Branding = {
   detectedFrom?: string;
 };
 
+/** What widget.js shows on the agency's website besides the placeholders it fills. */
+export type WidgetSettings = {
+  /** Floating "free valuation" button at the bottom right of every page. On unless turned off. */
+  valuationLauncher?: boolean;
+};
+
 /** How much an AI agent may do on its own, per capability. */
 export type Autonomy = Record<string, "suggest" | "act_and_notify" | "act">;
 
@@ -42,6 +48,7 @@ export const agencySettings = pgTable("agency_settings", {
   timezone: text().notNull().default("Europe/Brussels"),
   branding: jsonb().$type<Branding>().notNull().default({}),
   autonomy: jsonb().$type<Autonomy>().notNull().default({}),
+  widget: jsonb().$type<WidgetSettings>().notNull().default({}),
   ...timestamps,
 });
 

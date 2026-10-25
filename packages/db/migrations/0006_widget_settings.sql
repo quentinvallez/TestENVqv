@@ -1,0 +1,1 @@
+ALTER TABLE "agency_settings" ADD COLUMN "widget" jsonb DEFAULT '{}'::jsonb NOT NULL;

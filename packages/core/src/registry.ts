@@ -10,11 +10,14 @@ import { decideProposal, listProposals } from "./tools/proposals";
 import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
+import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
 export const tools = {
   listListings,
+  getWidgetSettings,
+  updateWidgetSettings,
   getListing,
   createListing,
   assignListingAgent,

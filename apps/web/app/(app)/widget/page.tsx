@@ -1,16 +1,18 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
-import { Code2, ExternalLink, ListChecks, Sparkles } from "lucide-react";
-import { PageHeader, Panel } from "@/components/ui";
+import { Code2, ExternalLink, House, ListChecks, Sparkles } from "lucide-react";
+import { Button, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { address } from "@/lib/format";
+import { setValuationLauncherAction } from "../actions";
 
 export default async function WidgetPage() {
   const { agency } = await getSession();
   const h = await headers();
   const appOrigin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
-  const listings = await runTool(tools.listListings, await getToolContext(), { status: "active" });
+  const ctx = await getToolContext();
+  const [listings, widget] = await Promise.all([runTool(tools.listListings, ctx, { status: "active" }), runTool(tools.getWidgetSettings, ctx, {})]);
   const first = listings[0];
 
   return (
@@ -56,6 +58,24 @@ export default async function WidgetPage() {
             )}
           </div>
 
+          <Panel className="mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-medium">
+                <House className="size-4 text-muted" />
+                Valuation button on every page
+                <StatusDot color={widget.valuationLauncher ? "var(--success)" : "var(--line-strong)"} />
+                <span className="text-[12px] font-normal text-muted">{widget.valuationLauncher ? "On" : "Off"}</span>
+              </div>
+              <p className="mt-1 max-w-xl text-muted">
+                A &quot;Gratis waardebepaling&quot; button at the bottom right of every page with the script, in your colour. It opens the valuation in a
+                panel, full screen on phones. Hidden on pages that already show the valuation.
+              </p>
+            </div>
+            <form action={setValuationLauncherAction.bind(null, !widget.valuationLauncher)}>
+              <Button type="submit">{widget.valuationLauncher ? "Turn off" : "Turn on"}</Button>
+            </form>
+          </Panel>
+
           <Panel className="mt-5 p-4">
             <div className="mb-2 flex items-center gap-2 font-medium">
               <ListChecks className="size-4 text-muted" />
@@ -93,7 +113,7 @@ export default async function WidgetPage() {
               Embed code
             </div>
             <pre className="overflow-x-auto rounded-md bg-hover p-3 font-mono text-[12px] text-muted">
-              {`<!-- On a listing page: booking, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- On your "Sell" page: home valuation for owners -->\n<div data-viewing-valuation></div>\n\n<!-- Once per page -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>`}
+              {`<!-- On every page, once (shows the valuation button) -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>\n\n<!-- On a listing page: booking, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- Optional, on your "Sell" page: the valuation in the page itself -->\n<div data-viewing-valuation></div>`}
             </pre>
             <p className="mt-2 flex items-start gap-1.5 text-[12px] text-faint">
               <Sparkles className="mt-0.5 size-3.5 shrink-0" />

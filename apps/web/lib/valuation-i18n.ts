@@ -2,6 +2,9 @@ import type { WidgetLang } from "./widget-i18n";
 
 type Options = Record<string, string>;
 type Text = {
+  /** The floating button widget.js shows on every page of the agency's site. */
+  launcher: string;
+  close: string;
   title: string;
   intro: string;
   steps: [string, string, string, string];
@@ -65,6 +68,8 @@ type Text = {
 
 export const valuationText: Record<WidgetLang, Text> = {
   nl: {
+    launcher: "Gratis waardebepaling",
+    close: "Sluiten",
     title: "Wat is mijn woning waard?",
     intro: "Gratis schatting op basis van verkoopprijzen in uw gemeente en recente verkopen van ons kantoor.",
     steps: ["Adres", "Woning", "Staat", "Uw gegevens"],
@@ -126,6 +131,8 @@ export const valuationText: Record<WidgetLang, Text> = {
     },
   },
   fr: {
+    launcher: "Estimation gratuite",
+    close: "Fermer",
     title: "Combien vaut mon bien ?",
     intro: "Estimation gratuite basée sur les prix de vente dans votre commune et les ventes récentes de notre agence.",
     steps: ["Adresse", "Bien", "État", "Vos coordonnées"],
@@ -187,6 +194,8 @@ export const valuationText: Record<WidgetLang, Text> = {
     },
   },
   en: {
+    launcher: "Free valuation",
+    close: "Close",
     title: "What is my home worth?",
     intro: "Free estimate based on sale prices in your municipality and recent sales by our agency.",
     steps: ["Address", "Home", "Condition", "Your details"],

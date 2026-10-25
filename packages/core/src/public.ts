@@ -82,6 +82,17 @@ export async function widgetContext(agencyId: string, reference: string) {
   return { listingId: listing?.id ?? null, agents };
 }
 
+/** What widget.js shows on an agency's site on its own, without a placeholder. */
+export async function widgetConfig(agencyId: string) {
+  const [row] = await db
+    .select({ name: schema.organization.name, branding: schema.agencySettings.branding, widget: schema.agencySettings.widget })
+    .from(schema.organization)
+    .leftJoin(schema.agencySettings, eq(schema.agencySettings.agencyId, schema.organization.id))
+    .where(eq(schema.organization.id, agencyId));
+  if (!row) return null;
+  return { brand: row.branding?.primaryColor ?? null, valuationLauncher: row.widget?.valuationLauncher ?? true };
+}
+
 /** Public details of the agent responsible for a listing, as an agency site shows them. */
 export async function listingAgent(listingId: string) {
   const [row] = await db

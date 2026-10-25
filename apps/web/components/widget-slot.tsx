@@ -8,8 +8,8 @@ export function WidgetSlot({ attributes, agencyId }: { attributes: Record<string
     .join(" ");
   return (
     <>
-      <div dangerouslySetInnerHTML={{ __html: `<div ${attrs}></div>` }} />
-      <script src="/widget.js" data-agency={agencyId} async />
+      <div suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `<div ${attrs}></div>` }} />
+      <script src="/widget.js" data-agency={agencyId} data-lang="nl" async />
     </>
   );
 }
