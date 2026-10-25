@@ -80,3 +80,8 @@ export async function suggestToMatchesAction(listingId: string) {
   revalidatePath("/", "layout");
   redirect("/inbox?f=drafts");
 }
+
+export async function setValuationLauncherAction(on: boolean) {
+  await runTool(tools.updateWidgetSettings, await getToolContext(), { valuationLauncher: on });
+  revalidatePath("/widget");
+}

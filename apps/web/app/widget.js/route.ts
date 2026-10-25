@@ -11,10 +11,16 @@
  * The same script loads the home valuation for owners wherever the page has
  *
  *   <div data-viewing-valuation></div>
+ *
+ * and, on every other page, a floating "free valuation" button at the bottom
+ * right that opens it in a panel (full screen on phones). Agencies turn the
+ * button off in the back office, or per page with data-launcher="off" on the
+ * script tag. Placeholders added later (single-page sites) are picked up too.
  */
 const script = String.raw`(function () {
   var current = document.currentScript;
-  if (!current) return;
+  if (!current || window.__viewingWidget) return;
+  window.__viewingWidget = true;
   var origin = new URL(current.src).origin;
   var agency = current.getAttribute("data-agency");
 
@@ -88,9 +94,90 @@ const script = String.raw`(function () {
     if (agency) frame(container, origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + lang);
   }
 
+  function pageLang() {
+    var scope = current.closest("[lang]");
+    return (current.getAttribute("data-lang") || (scope && scope.lang) || document.documentElement.lang || "nl").slice(0, 2);
+  }
+
+  // Floating button at the bottom right of every page, in the agency's colour.
+  var launcherHost = null;
+  function launcher(config) {
+    if (!config || !config.valuationLauncher || current.getAttribute("data-launcher") === "off") return;
+    var brand = /^#[0-9a-f]{3,8}$/i.test(config.brand || "") ? config.brand : "#111111";
+    var host = document.createElement("div");
+    host.setAttribute("data-viewing-launcher", "");
+    var root = host.attachShadow({ mode: "open" });
+    root.innerHTML =
+      "<style>" +
+      ":host{all:initial}" +
+      ".open{position:fixed;z-index:2147483000;right:20px;bottom:20px;display:flex;align-items:center;gap:8px;height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:" + brand + ";color:#fff;font:600 15px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.2);cursor:pointer}" +
+      ".open:focus-visible,.close:focus-visible{outline:2px solid " + brand + ";outline-offset:2px}" +
+      ".open svg{width:20px;height:20px;flex:none}" +
+      ".panel{position:fixed;z-index:2147483001;right:20px;bottom:20px;width:420px;max-width:calc(100vw - 40px);height:min(720px,calc(100vh - 40px));display:flex;flex-direction:column;overflow:hidden;border-radius:14px;color-scheme:light dark;background:Canvas;color:CanvasText;box-shadow:0 12px 48px rgba(0,0,0,.28)}" +
+      ".panel[hidden],.open[hidden]{display:none}" +
+      ".bar{display:flex;align-items:center;justify-content:space-between;gap:8px;height:48px;padding:0 8px 0 16px;border-bottom:1px solid rgba(127,127,127,.25);font:600 14px/1.2 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}" +
+      ".close{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:inherit;font:400 24px/1 system-ui,sans-serif;cursor:pointer}" +
+      "iframe{flex:1;width:100%;border:0;background:transparent}" +
+      "@media (max-width:560px){.open{right:16px;bottom:16px}.panel{inset:0;width:auto;max-width:none;height:100%;border-radius:0}}" +
+      "</style>" +
+      '<button class="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg><span></span></button>' +
+      '<div class="panel" role="dialog" aria-modal="true" hidden><div class="bar"><span></span><button class="close" type="button">×</button></div></div>';
+    var open = root.querySelector(".open");
+    var panel = root.querySelector(".panel");
+    var close = root.querySelector(".close");
+    open.querySelector("span").textContent = config.text.launcher;
+    panel.querySelector(".bar span").textContent = config.text.launcher;
+    panel.setAttribute("aria-label", config.text.title);
+    close.setAttribute("aria-label", config.text.close);
+    var iframe = null;
+    function show() {
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        iframe.title = config.text.title;
+        iframe.src = origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang() ;
+        panel.appendChild(iframe);
+      }
+      panel.hidden = false;
+      open.hidden = true;
+      close.focus();
+    }
+    function hide() {
+      panel.hidden = true;
+      open.hidden = false;
+      open.focus();
+    }
+    open.addEventListener("click", show);
+    close.addEventListener("click", hide);
+    root.addEventListener("keydown", function (event) { if (event.key === "Escape") hide(); });
+    document.body.appendChild(host);
+    launcherHost = host;
+    refreshLauncher();
+  }
+  // Not on a page that already shows the valuation itself.
+  function refreshLauncher() {
+    if (launcherHost) launcherHost.style.display = document.querySelector("[data-viewing-valuation]") ? "none" : "";
+  }
+
+  function scan() {
+    document.querySelectorAll("[data-viewing-widget]:not([data-viewing-mounted])").forEach(function (el) { el.setAttribute("data-viewing-mounted", ""); mount(el); });
+    document.querySelectorAll("[data-viewing-valuation]:not([data-viewing-mounted])").forEach(function (el) { el.setAttribute("data-viewing-mounted", ""); mountValuation(el); });
+    refreshLauncher();
+  }
+
   function start() {
-    document.querySelectorAll("[data-viewing-widget]").forEach(mount);
-    document.querySelectorAll("[data-viewing-valuation]").forEach(mountValuation);
+    scan();
+    if (agency) {
+      fetch(origin + "/api/widget/config?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang())
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(launcher)
+        .catch(function () {});
+    }
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; scan(); }, 200);
+    }).observe(document.body, { childList: true, subtree: true });
   }
   // The script may run before the page body is parsed (async, or placed in <head>).
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
