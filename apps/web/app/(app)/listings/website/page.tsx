@@ -102,6 +102,25 @@ export default async function WebsiteImportPage() {
             </>
           )}
 
+          {status.websiteAgents.length > 0 && (
+            <Panel className="mt-5 flex items-start gap-3 p-4">
+              <UserRound className="mt-0.5 size-4 shrink-0 text-muted" />
+              <div>
+                <div className="font-medium">
+                  {status.websiteAgents.length} {status.websiteAgents.length === 1 ? "agent" : "agents"} added from your website
+                </div>
+                <p className="mt-0.5 text-muted">
+                  {status.websiteAgents.map((a) => a.name).join(", ")}. Their listings take bookings from Monday to Friday, 9:00 to 18:00. Check their hours and
+                  email in{" "}
+                  <Link href="/agents" className="text-fg underline underline-offset-2">
+                    Agents
+                  </Link>
+                  .
+                </p>
+              </div>
+            </Panel>
+          )}
+
           {(status.withoutAgent > 0 || status.unknownAgents.length > 0) && (
             <Panel className="mt-5 flex items-start gap-3 p-4">
               <UserRound className="mt-0.5 size-4 shrink-0 text-muted" />

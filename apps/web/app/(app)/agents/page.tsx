@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { Users } from "lucide-react";
-import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
+import { Avatar, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 
 export default async function AgentsPage() {
@@ -20,7 +20,10 @@ export default async function AgentsPage() {
                 <Link href={`/agents/${a.id}`} className="flex items-center gap-3 px-4 py-3 active:bg-hover">
                   <Avatar name={a.name} color={a.color} size={32} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{a.name}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{a.name}</span>
+                      {a.source === "website" && <Pill>From website</Pill>}
+                    </div>
                     <div className="truncate text-[12px] text-muted">
                       {a.officeName ?? "No office"} · {a.activeListings} listings · {a.upcomingAppointments} viewings
                     </div>
@@ -47,8 +50,11 @@ export default async function AgentsPage() {
                     <Link href={`/agents/${a.id}`} className="group flex items-center gap-2.5">
                       <Avatar name={a.name} color={a.color} size={26} />
                       <span>
-                        <span className="block font-medium group-hover:underline">{a.name}</span>
-                        <span className="block text-[12px] text-muted">{a.email}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium group-hover:underline">{a.name}</span>
+                          {a.source === "website" && <Pill>From website</Pill>}
+                        </span>
+                        <span className="block text-[12px] text-muted">{a.email ?? a.phone ?? "No email yet"}</span>
                       </span>
                     </Link>
                   </td>

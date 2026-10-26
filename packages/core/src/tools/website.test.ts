@@ -55,8 +55,14 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(house!.agentId).toBe(sofie!.id);
     const status = await runTool(tools.websiteImportStatus, ctx, {});
     expect(status.websiteUrl).toBe("https://www.immo-test.be/");
-    expect(status.withoutAgent).toBe(1);
-    expect(status.unknownAgents).toEqual(["Jan Nieuwe"]);
+    // Jan Nieuwe isn't an agent here yet: he is added from the website, with working hours.
+    expect(status.withoutAgent).toBe(0);
+    const [jan] = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.name, "Jan Nieuwe")));
+    expect(jan).toMatchObject({ source: "website", email: null });
+    const [flat] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900002")));
+    expect(flat!.agentId).toBe(jan!.id);
+    const hours = await db.select().from(schema.availabilityRules).where(eq(schema.availabilityRules.agentId, jan!.id));
+    expect(hours).toHaveLength(5);
   });
 
   it("updates a changed price and archives a listing whose page is gone", async () => {

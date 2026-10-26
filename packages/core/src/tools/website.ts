@@ -34,7 +34,7 @@ import { allowAll, disallowAll, parseRobots, type RobotsPolicy } from "../websit
  * run only re-reads what may have changed and archives listings that vanished.
  */
 
-const { agencySettings, agents, listings, postcodes, websitePages } = schema;
+const { agencySettings, agents, availabilityRules, listings, postcodes, websitePages } = schema;
 
 const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
@@ -58,7 +58,7 @@ const MAX_DELAY_MS = 60_000;
 export const crawlPace = { minDelayMs: 1000 };
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v2";
+const EXTRACTION_VERSION = "v3";
 
 export const ROBOTS_BLOCKED = "Not allowed by the website's robots.txt";
 
@@ -246,7 +246,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     return "other";
   }
 
-  const agent = matchAgent(team, listing.agentName) ?? knownAgent;
+  const agent = matchAgent(team, listing.agentName) ?? knownAgent ?? (await addWebsiteAgent(ctx, team, listing));
+  if (agent && (listing.agentEmail || listing.agentPhone)) await completeAgent(ctx, agent.id, listing);
   const outcome = await saveListing(ctx, page, listing, agent?.id ?? null, extractedBy);
   await ctx.db
     .update(websitePages)
@@ -357,6 +358,42 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
   }
   await recordEvent(ctx, { type: "listing.imported", subjectType: "listing", subjectId: created.id, data: { url: page.url, reference, extractedBy } });
   return { listingId: created.id, created: true };
+}
+
+/**
+ * Someone the website names as contact for a listing who isn't an agent here yet: added with working
+ * hours Mon–Fri 9:00–18:00 (the agency adjusts them), so their listings can be booked straight away.
+ */
+async function addWebsiteAgent(ctx: ToolContext, known: AgentRow[], listing: ExtractedListing): Promise<AgentRow | null> {
+  const name = listing.agentName?.replace(/\s+/g, " ").trim();
+  if (!name || name.split(" ").length < 2 || name.length > 60) return null;
+  if (listing.agentEmail) {
+    const [sameEmail] = await ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.email, listing.agentEmail)));
+    if (sameEmail) return sameEmail;
+  }
+  const [created] = await ctx.db
+    .insert(agents)
+    .values({ agencyId: ctx.agencyId, name, email: listing.agentEmail, phone: listing.agentPhone, source: "website" })
+    .onConflictDoNothing()
+    .returning({ id: agents.id, name: agents.name });
+  if (!created) return null;
+  await ctx.db.insert(availabilityRules).values([1, 2, 3, 4, 5].map((weekday) => ({ agencyId: ctx.agencyId, agentId: created.id, weekday, startMinute: 9 * 60, endMinute: 18 * 60 })));
+  await recordEvent(ctx, { type: "agent.added_from_website", subjectType: "agent", subjectId: created.id, data: { name, email: listing.agentEmail, phone: listing.agentPhone } });
+  known.push(created);
+  return created;
+}
+
+/** Fills in an agent's email or phone from the website when we don't have them yet. */
+async function completeAgent(ctx: ToolContext, agentId: string, listing: ExtractedListing) {
+  const [row] = await ctx.db.select({ email: agents.email, phone: agents.phone }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, agentId)));
+  if (!row) return;
+  const changes = {
+    ...(!row.email && listing.agentEmail ? { email: listing.agentEmail } : {}),
+    ...(!row.phone && listing.agentPhone ? { phone: listing.agentPhone } : {}),
+  };
+  if (!Object.keys(changes).length) return;
+  // Another agent may already use that email; then we leave it.
+  await ctx.db.update(agents).set(changes).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, agentId))).catch(() => undefined);
 }
 
 async function team(ctx: ToolContext): Promise<AgentRow[]> {
@@ -539,6 +576,12 @@ export const websiteImportStatus = defineTool({
       withoutAgent: imported.filter((p) => !p.listingAgentId).length,
       /** People the website names as contact who aren't agents here yet. */
       unknownAgents: unknownNames,
+      /** Agents added because the website names them, with the default working hours. */
+      websiteAgents: await ctx.db
+        .select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.source, "website")))
+        .orderBy(asc(agents.name)),
       failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
       /** Pages we know of, by what they turned out to be. */
       pageCounts: {

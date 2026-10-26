@@ -127,9 +127,11 @@ export const agents = pgTable(
     officeId: text().references(() => offices.id, { onDelete: "set null" }),
     userId: text().references(() => user.id, { onDelete: "set null" }),
     name: text().notNull(),
-    email: text().notNull(),
+    // Agents read from the agency's website often have only a phone number.
+    email: text(),
     phone: text(),
     avatarUrl: text(),
+    source: text().$type<"website">(), // set when the agent was added from the agency's website
     color: text(),
     languages: jsonb().$type<Language[]>().notNull().default(["nl"]),
     slotMinutes: smallint().notNull().default(30),

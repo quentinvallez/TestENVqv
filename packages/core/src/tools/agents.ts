@@ -16,6 +16,7 @@ export const listAgents = defineTool({
         name: agents.name,
         email: agents.email,
         phone: agents.phone,
+        source: agents.source,
         color: agents.color,
         active: agents.active,
         officeName: offices.name,

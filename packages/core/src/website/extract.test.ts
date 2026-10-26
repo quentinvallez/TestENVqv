@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boilerplateLines,
+  contactNear,
   extractListing,
   isListingPage,
   looksLikeListingUrl,
@@ -194,5 +195,21 @@ describe("reading a listing page", () => {
     expect(sale.photos).toEqual(["https://cdn.omnicasapictures.com/x/97172AL.jpg?6392"]);
     const rent = extractListing(page("Keizersplein 56 11, AALST", "€ 1 350/mnd"), "https://www.immo-zone.be/woning/97160", boilerplate).listing;
     expect(rent).toMatchObject({ street: "Keizersplein", houseNumber: "56 11", city: "Aalst", price: 1350, transaction: "rent" });
+  });
+
+  it("reads the agent from a name before a BIV number, with the phone next to it, but not the agency itself", () => {
+    const html = `<html><body><h1>Handelshuis op 11a op sterke ligging te Aalst</h1>
+<p>Kerkstraat 12 , AALST</p><p>€ 395 000</p><p>Slaapkamers 3</p><p>Bewoonbare oppervlakte 180 m²</p>
+<h3>Interesse?</h3><p>Wout Timmerman BIV: 519.807 <a href="tel:0479 18 38 35">0479 18 38 35</a></p>
+<div>Immo Zone BIV nr. 511 931 info@immo-zone.be</div></body></html>`;
+    const { listing } = extractListing(html, "https://immo-zone.be/te-koop/aalst/handelshuis/97170");
+    expect(listing.agentName).toBe("Wout Timmerman");
+    expect(listing.agentPhone).toBe("+32479183835");
+    expect(listing.agentEmail).toBeNull();
+  });
+
+  it("takes an email next to the agent only when it carries their name", () => {
+    expect(contactNear("Sofie Peeters\nsofie.peeters@trevi.be\n+32 3 123 45 67", "Sofie Peeters")).toEqual({ agentEmail: "sofie.peeters@trevi.be", agentPhone: "+3231234567" });
+    expect(contactNear("Sofie Peeters\ninfo@trevi.be", "Sofie Peeters").agentEmail).toBeNull();
   });
 });
