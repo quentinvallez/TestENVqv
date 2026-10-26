@@ -82,6 +82,11 @@ Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`),
 - fr: Bonjour {{1}}, nous ne vous avons pas vu à la visite de {{2}}. Souhaitez-vous fixer un nouveau rendez-vous ? Répondez simplement à ce message.
 - en: Hi {{1}}, we missed you at the viewing of {{2}}. Would you like to plan a new time? Just reply to this message.
 
+**viewing_cancelled** (category Utility). Sent when a listing with planned viewings goes under option, is sold or rented. Variables: 1 first name, 2 address, 3 date and time.
+- nl: Dag {{1}}, uw bezoek aan {{2}} op {{3}} gaat helaas niet door: het pand is niet langer beschikbaar. Antwoord gerust op dit bericht, dan zoeken we iets anders voor u.
+- fr: Bonjour {{1}}, votre visite de {{2}} le {{3}} est malheureusement annulée : le bien n'est plus disponible. Répondez simplement à ce message et nous chercherons autre chose pour vous.
+- en: Hi {{1}}, your viewing at {{2}} on {{3}} is unfortunately cancelled: the property is no longer available. Just reply to this message and we'll look for something else for you.
+
 **lead_nudge** (Meta will likely classify it as Marketing, which costs more per message). Variables: 1 first name, 2 address.
 - nl: Dag {{1}}, bent u nog geïnteresseerd in {{2}}? We plannen graag een bezoek met u in. Antwoord gerust op dit bericht.
 - fr: Bonjour {{1}}, êtes-vous toujours intéressé(e) par {{2}} ? Nous organisons volontiers une visite. Répondez simplement à ce message.

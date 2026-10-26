@@ -3,6 +3,7 @@ import type { WebsiteSync } from "@viewing/db/schema";
 import { z } from "zod";
 import { aiAvailable } from "../ai/client";
 import { recordEvent } from "../events";
+import { draftOffMarketNotices } from "../planner/off-market";
 import { defineTool, type ToolContext } from "../tool";
 import { extractWithAi, mergeExtraction } from "../website/ai";
 import {
@@ -264,6 +265,8 @@ async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gon
     .returning({ id: listings.id, reference: listings.reference });
   if (!archived) return "other";
   await recordEvent(ctx, { type: "listing.removed_from_website", subjectType: "listing", subjectId: archived.id, data: { url: page.url, reference: archived.reference } });
+  // Only when the site took it down: a page robots.txt closes to us says nothing about the property.
+  if (kind === "gone") await draftOffMarketNotices(ctx, archived.id, "unavailable");
   return "removed";
 }
 
@@ -326,6 +329,7 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
       .where(eq(listings.id, existing.id));
     if (existing.status !== status && changes.status) {
       await recordEvent(ctx, { type: "listing.status_changed", subjectType: "listing", subjectId: existing.id, data: { from: existing.status, to: status, source: "website" } });
+      if (status !== "active") await draftOffMarketNotices(ctx, existing.id, status);
     }
     return { listingId: existing.id, created: false };
   }

@@ -120,4 +120,33 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(status.listings.map((l) => l.reference)).not.toContain("7900006");
     expect(status.pageCounts.offMarket).toBeGreaterThanOrEqual(1);
   });
+
+  it("drafts a cancellation for planned viewings when a listing is sold, and cancels the viewing on approval", async () => {
+    const url = `${home}/aanbod/detail/7900007/te-koop-woning-kontich`;
+    const page = (title: string) => listingPage({ title, price: "€ 450.000", ref: "7900007", address: "Molenstraat 3, 2550 Kontich", agent: "Sofie Peeters" });
+    site.set(url, { status: 200, html: page("Woning te koop in Kontich") });
+    await runTool(tools.importWebsitePage, ctx, { url, useAi: false });
+    const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900007")));
+    const [agent] = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.name, "Sofie Peeters")));
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Lien", email: "lien@example.com", language: "nl" }).returning();
+    const startsAt = new Date(Date.now() + 3 * 86400000);
+    const [viewing] = await db
+      .insert(schema.appointments)
+      .values({ agencyId, agentId: agent!.id, listingId: listing!.id, contactId: contact!.id, startsAt, endsAt: new Date(startsAt.getTime() + 1800000) })
+      .returning();
+
+    site.set(url, { status: 200, html: page("Verkocht: woning in Kontich") });
+    await db.update(schema.websitePages).set({ lastCheckedAt: new Date(Date.now() - 2 * 86400000) }).where(eq(schema.websitePages.agencyId, agencyId));
+    await runTool(tools.importWebsitePage, ctx, { url, useAi: false });
+
+    const drafts = await db.select().from(schema.proposals).where(and(eq(schema.proposals.agencyId, agencyId), eq(schema.proposals.kind, "off_market")));
+    expect(drafts).toHaveLength(1);
+    expect(String(drafts[0]!.input.body)).toContain("verkocht");
+    const [stillPlanned] = await db.select().from(schema.appointments).where(eq(schema.appointments.id, viewing!.id));
+    expect(stillPlanned!.status).toBe("scheduled");
+
+    await runTool(tools.decideProposal, ctx, { proposalId: drafts[0]!.id, decision: "approved" });
+    const [cancelled] = await db.select().from(schema.appointments).where(eq(schema.appointments.id, viewing!.id));
+    expect(cancelled!.status).toBe("cancelled");
+  });
 });

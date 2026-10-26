@@ -71,6 +71,7 @@ export const eventLabel: Record<string, string> = {
   "automation.reminder_drafted": "Reminder drafted",
   "automation.follow_up_drafted": "Follow-up drafted",
   "automation.nudge_drafted": "Check-in drafted",
+  "planner.off_market_drafted": "Planner drafted a cancellation (listing off the market)",
   "settings.automations_updated": "Automations changed",
 };
 
