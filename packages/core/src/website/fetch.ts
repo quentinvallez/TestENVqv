@@ -48,12 +48,13 @@ export type FetchedPage = { url: string; status: number; html: string };
 
 /**
  * GET a page of the agency's site. Redirects are followed by hand (at most
- * five) and must stay on the same site, so a page can't send us elsewhere.
+ * five) and must stay on the same site, on paths its robots.txt allows.
  */
-export async function fetchSitePage(input: string, site: string, timeoutMs = 12_000): Promise<FetchedPage> {
+export async function fetchSitePage(input: string, site: string, allowed: (url: string) => boolean = () => true, timeoutMs = 12_000): Promise<FetchedPage> {
   let url = new URL(input);
   for (let hop = 0; hop < 6; hop++) {
     if (!sameSite(url, site)) throw new FetchError(`${url.hostname} is not on the agency's website`);
+    if (!allowed(url.toString())) throw new FetchError("Redirected to a page the website's robots.txt doesn't allow");
     await assertPublicUrl(url);
     const response = await fetch(url, {
       redirect: "manual",
