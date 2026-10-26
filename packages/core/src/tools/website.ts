@@ -451,7 +451,8 @@ export const importWebsiteListings = defineTool({
     };
     await ctx.db.update(agencySettings).set({ websiteSync: summary }).where(eq(agencySettings.agencyId, ctx.agencyId));
     await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...summary, site } });
-    return summary;
+    // `checked`: pages read in this run, so a caller running several in a row can show progress.
+    return { ...summary, checked: done };
   },
 });
 
