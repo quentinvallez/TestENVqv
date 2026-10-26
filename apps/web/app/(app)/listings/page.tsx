@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
-import { Building2, CalendarDays, MessageSquare, Plus } from "lucide-react";
+import { Building2, CalendarDays, Globe, MessageSquare } from "lucide-react";
 import { ListingPhoto } from "@/components/listing-photo";
-import { Avatar, Button, EmptyState, PageHeader, StatusDot } from "@/components/ui";
+import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { address, formatPrice } from "@/lib/format";
 import { listingStatusMeta, propertyTypeLabel } from "@/lib/labels";
@@ -15,15 +15,25 @@ export default async function ListingsPage() {
       <PageHeader
         crumbs={[{ label: "Listings" }]}
         actions={
-          <Button variant="primary" size="sm" disabled title="Coming with listing management">
-            <Plus className="size-3.5" />
-            <span className="hidden sm:inline">New listing</span>
-          </Button>
+          <Link href="/listings/website" className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90">
+            <Globe className="size-3.5" />
+            <span className="hidden sm:inline">Import from website</span>
+          </Link>
         }
       />
       <div className="flex-1 overflow-auto">
         {listings.length === 0 ? (
-          <EmptyState icon={<Building2 className="size-5" />} title="No listings yet" description="Listings imported from your website will appear here." />
+          <EmptyState
+            icon={<Building2 className="size-5" />}
+            title="No listings yet"
+            description="Give your website address and we read your listings from it, with their agents. They stay in sync every night."
+            action={
+              <Link href="/listings/website" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-primary-fg hover:opacity-90">
+                <Globe className="size-4" />
+                Import from your website
+              </Link>
+            }
+          />
         ) : (
           <>
           <ul className="divide-y divide-line md:hidden">

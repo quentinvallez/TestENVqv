@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { runTool, tools } from "@viewing/core";
-import { CalendarDays, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
+import { CalendarDays, ExternalLink, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link";
 import { assignAgentAction, suggestToMatchesAction } from "../../actions";
@@ -68,6 +68,12 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                 {listingStatusMeta[listing.status].label}
               </Pill>
               <Pill>{listing.transaction === "rent" ? "For rent" : "For sale"}</Pill>
+              {listing.websiteUrl && (
+                <a href={listing.websiteUrl} target="_blank" rel="noreferrer" className="inline-flex h-5 items-center gap-1 rounded border border-line px-1.5 text-[11px] font-medium text-muted hover:text-fg">
+                  <ExternalLink className="size-3" />
+                  {listing.features?.source === "website" ? "From your website" : "On your website"}
+                </a>
+              )}
             </div>
             <h1 className="mt-2 text-[20px] font-semibold tracking-tight">{listing.title ?? street}</h1>
             <p className="text-muted">{[street, listing.postcode].filter(Boolean).join(" · ")}</p>

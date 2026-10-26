@@ -1,11 +1,11 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
-import { Code2, ExternalLink, House, ListChecks, Sparkles } from "lucide-react";
+import { CalendarPlus, Code2, ExternalLink, House, ListChecks, Sparkles } from "lucide-react";
 import { Button, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { address } from "@/lib/format";
-import { setValuationLauncherAction } from "../actions";
+import { setBookingLauncherAction, setValuationLauncherAction } from "../actions";
 
 export default async function WidgetPage() {
   const { agency } = await getSession();
@@ -57,6 +57,25 @@ export default async function WidgetPage() {
               </Link>
             )}
           </div>
+
+          <Panel className="mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2 font-medium">
+                <CalendarPlus className="size-4 text-muted" />
+                Booking on listing pages, found automatically
+                <StatusDot color={widget.bookingLauncher ? "var(--success)" : "var(--line-strong)"} />
+                <span className="text-[12px] font-normal text-muted">{widget.bookingLauncher ? "On" : "Off"}</span>
+              </div>
+              <p className="mt-1 max-w-xl text-muted">
+                With your listings <Link href="/listings/website" className="underline underline-offset-2">imported from your website</Link>, the script
+                recognises each listing page and shows a &quot;Plan een bezoek&quot; button there, in your colour, instead of the valuation button. No
+                change to your listing pages needed; a placeholder on the page takes precedence.
+              </p>
+            </div>
+            <form action={setBookingLauncherAction.bind(null, !widget.bookingLauncher)}>
+              <Button type="submit">{widget.bookingLauncher ? "Turn off" : "Turn on"}</Button>
+            </form>
+          </Panel>
 
           <Panel className="mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -113,7 +132,7 @@ export default async function WidgetPage() {
               Embed code
             </div>
             <pre className="overflow-x-auto rounded-md bg-hover p-3 font-mono text-[12px] text-muted">
-              {`<!-- On every page, once (shows the valuation button) -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>\n\n<!-- On a listing page: booking, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- Optional, on your "Sell" page: the valuation in the page itself -->\n<div data-viewing-valuation></div>`}
+              {`<!-- On every page, once: valuation button, and booking on listing pages it recognises -->\n<script src="${appOrigin}/widget.js" data-agency="${agency.id}" async></script>\n\n<!-- Optional, to place booking inside a listing page yourself, with the listing's reference -->\n<div data-viewing-widget data-listing="ANT-1042"></div>\n\n<!-- Optional, on your "Sell" page: the valuation in the page itself -->\n<div data-viewing-valuation></div>`}
             </pre>
             <p className="mt-2 flex items-start gap-1.5 text-[12px] text-faint">
               <Sparkles className="mt-0.5 size-3.5 shrink-0" />

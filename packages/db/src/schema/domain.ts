@@ -33,6 +33,8 @@ export type Branding = {
 export type WidgetSettings = {
   /** Floating "free valuation" button at the bottom right of every page. On unless turned off. */
   valuationLauncher?: boolean;
+  /** Floating "book a viewing" button on listing pages found on the website, when the page has no placeholder. On unless turned off. */
+  bookingLauncher?: boolean;
 };
 
 /**
@@ -41,6 +43,21 @@ export type WidgetSettings = {
  */
 export type ChannelSettings = {
   whatsapp?: { phoneNumberId: string; displayNumber: string; accessToken: string };
+};
+
+/** Outcome of the last import of listings from the agency's website. */
+export type WebsiteSync = {
+  lastRunAt?: string;
+  /** Listing pages found on the site in that run. */
+  found?: number;
+  created?: number;
+  updated?: number;
+  /** Listings whose page disappeared, now archived. */
+  removed?: number;
+  failed?: number;
+  /** Pages still to read; the next run continues with them. */
+  remaining?: number;
+  error?: string;
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */
@@ -73,6 +90,7 @@ export const agencySettings = pgTable("agency_settings", {
   widget: jsonb().$type<WidgetSettings>().notNull().default({}),
   channels: jsonb().$type<ChannelSettings>().notNull().default({}),
   automations: jsonb().$type<AutomationSettings>().notNull().default({}),
+  websiteSync: jsonb().$type<WebsiteSync>().notNull().default({}),
   ...timestamps,
 });
 
@@ -188,6 +206,31 @@ export const listings = pgTable(
     ...timestamps,
   },
   (t) => [index().on(t.agencyId, t.status), uniqueIndex().on(t.agencyId, t.reference)],
+);
+
+/**
+ * Pages of the agency's own website that the importer has read: listing pages
+ * (linked to the listing they filled), and other pages so they aren't read again.
+ */
+export const websitePages = pgTable(
+  "website_pages",
+  {
+    id: id("wpg"),
+    agencyId: agencyId(),
+    url: text().notNull(),
+    kind: text().$type<"pending" | "listing" | "other" | "gone" | "error">().notNull().default("pending"),
+    listingId: text().references(() => listings.id, { onDelete: "set null" }),
+    /** Hash of the page text, so unchanged pages aren't read again by the AI. */
+    contentHash: text(),
+    /** What read the listing facts: structured data in the page, our rules, or Claude. */
+    extractedBy: text().$type<"structured" | "rules" | "ai">(),
+    /** The contact person named on the page, also when they aren't one of the agency's agents yet. */
+    agentName: text(),
+    lastError: text(),
+    lastCheckedAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex().on(t.agencyId, t.url), index().on(t.listingId), index().on(t.agencyId, t.kind)],
 );
 
 export const contacts = pgTable(

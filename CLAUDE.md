@@ -47,6 +47,8 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - `apps/web/app/widget.js/route.ts` is the embed script agencies put on their site. It resolves the listing by reference (`/api/widget/resolve`) and picks the agent whose name appears first on the page; the booking goes to that agent, else to the listing's responsible agent.
 - The same script shows a floating valuation button (bottom right, agency colour, full screen on phones) on every page without a `data-viewing-valuation` placeholder. Agencies switch it in the back office (`settings_update_widget`); `data-launcher="off"` on the script turns it off per page. The script must stay plain ES5 in a shadow root, so agency CSS can't break it.
 
+- Listings come from the agency's own website (`listings_import_website`, daily cron `/api/cron/website`): pages are found and read in `packages/core/src/website` (pure extraction, tested; Claude only when the rules miss key facts, marked "Read by Claude"). Fetches stay on the agency's site and public hosts (`website/fetch.ts`). widget.js reports the page it runs on (`/api/widget/page`): known listing pages get a floating booking button without a placeholder; unknown ones are read in the background.
+
 ## Valuations and recommendations
 
 - The estimate is computed by `packages/core/src/valuation/model.ts` (pure, tested): Statbel municipality median × adjustments, blended with the agency's own sales nearby. AI never produces the amounts.

@@ -12,18 +12,18 @@ export const getWidgetSettings = defineTool({
   input: z.object({}),
   run: async (ctx) => {
     const [row] = await ctx.db.select({ widget: agencySettings.widget }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
-    return { valuationLauncher: row?.widget.valuationLauncher ?? true };
+    return { valuationLauncher: row?.widget.valuationLauncher ?? true, bookingLauncher: row?.widget.bookingLauncher ?? true };
   },
 });
 
 export const updateWidgetSettings = defineTool({
   name: "settings_update_widget",
-  description: "Turn the floating valuation button on the agency's website on or off.",
+  description: "Turn the floating buttons on the agency's website on or off: the valuation on every page, and booking on listing pages found by the listing import.",
   mutates: true,
-  input: z.object({ valuationLauncher: z.boolean() }),
+  input: z.object({ valuationLauncher: z.boolean().optional(), bookingLauncher: z.boolean().optional() }),
   run: async (ctx, input) => {
     const [row] = await ctx.db.select({ widget: agencySettings.widget }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
-    const widget = { ...row?.widget, valuationLauncher: input.valuationLauncher };
+    const widget = { ...row?.widget, ...Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)) };
     await ctx.db
       .insert(agencySettings)
       .values({ agencyId: ctx.agencyId, widget })
