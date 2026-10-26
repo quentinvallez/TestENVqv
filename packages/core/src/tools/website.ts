@@ -9,6 +9,7 @@ import {
   boilerplateLines,
   extractListing,
   isListingPage,
+  isRemovedListingPage,
   looksLikeListingUrl,
   looksLikeOverviewUrl,
   matchAgent,
@@ -37,6 +38,8 @@ const { agencySettings, agents, listings, postcodes, websitePages } = schema;
 const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
 const RECHECK_LISTING = 20 * HOUR;
+/** Listings the agency still offers; the import page leaves out the rest (sold, rented, under option). */
+const ON_OFFER: ("draft" | "active")[] = ["draft", "active"];
 /** Pages that weren't listings, or failed, are tried again after this. */
 const RECHECK_OTHER = 14 * 24 * HOUR;
 const RECHECK_ERROR = 24 * HOUR;
@@ -136,11 +139,36 @@ class SiteReader {
   }
 }
 
-/** Candidate listing URLs: from sitemaps, then from overview pages linked from the home page. */
+/** Candidate listing URLs: from overview pages linked from the home page, then from sitemaps. */
 async function discover(reader: SiteReader, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
   const { site } = reader;
   const found = new Set<string>();
   const origin = new URL(site).origin;
+
+  // Overview pages first: they show what is on offer today, while sitemaps are often stale. They get
+  // at most two thirds of the time, so sitemaps still add the listings the overviews don't link.
+  const overviewDeadline = Date.now() + (deadline - Date.now()) * (2 / 3);
+  const home = await reader.read(site);
+  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
+  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
+  const queue = [home];
+  const visited = new Set([normalizeUrl(home.url) ?? site]);
+  let overviews = 0;
+  while (queue.length && reader.fits(overviewDeadline)) {
+    const page = queue.shift()!;
+    // Shallow overview pages first: "/kopen" lists everything, "/kopen/aalst/huis" a slice.
+    const depth = (url: string) => new URL(url).pathname.split("/").filter(Boolean).length;
+    const links = pageLinks(page.html, page.url).sort((a, b) => depth(a) - depth(b));
+    for (const link of links) {
+      if (looksLikeListingUrl(link, site)) found.add(link);
+      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(overviewDeadline)) {
+        visited.add(link);
+        overviews++;
+        const next = await reader.read(link);
+        if ("html" in next && next.status === 200) queue.push(next);
+      }
+    }
+  }
 
   const sitemapQueue: string[] = [...reader.robots.sitemaps];
   if (!sitemapQueue.length) sitemapQueue.push(`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`);
@@ -160,26 +188,6 @@ async function discover(reader: SiteReader, deadline: number): Promise<{ listing
     }
   }
 
-  // Overview pages, also when there is a sitemap: sitemaps are often stale.
-  if (!reader.fits(deadline)) return { listings: found };
-  const home = await reader.read(site);
-  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
-  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
-  const queue = [home];
-  const visited = new Set([normalizeUrl(home.url) ?? site]);
-  let overviews = 0;
-  while (queue.length && reader.fits(deadline)) {
-    const page = queue.shift()!;
-    for (const link of pageLinks(page.html, page.url)) {
-      if (looksLikeListingUrl(link, site)) found.add(link);
-      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(deadline)) {
-        visited.add(link);
-        overviews++;
-        const next = await reader.read(link);
-        if ("html" in next && next.status === 200) queue.push(next);
-      }
-    }
-  }
   return { listings: found };
 }
 
@@ -217,6 +225,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   const read = extractListing(fetched.html, page.url, await reader.siteBoilerplate());
   let listing: ExtractedListing = read.listing;
   let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
+  // Some sites keep a removed listing's page up with a notice instead of a 404.
+  if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
   let isListing = isListingPage(listing, fetched.html);
   const knownAgent = matchAgent(team, listing.agentName, text);
   const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
@@ -427,10 +437,12 @@ export const importWebsiteListings = defineTool({
       done++;
     }
 
+    // Listings on offer: sold, rented and under option are kept (valuations use sales) but not counted.
     const [{ count: listingPages } = { count: 0 }] = await ctx.db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(distinct ${listings.id})::int` })
       .from(websitePages)
-      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing")));
+      .innerJoin(listings, eq(listings.id, websitePages.listingId))
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing"), inArray(listings.status, ON_OFFER)));
     const [{ count: pagesFound } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
@@ -451,7 +463,8 @@ export const importWebsiteListings = defineTool({
     };
     await ctx.db.update(agencySettings).set({ websiteSync: summary }).where(eq(agencySettings.agencyId, ctx.agencyId));
     await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...summary, site } });
-    return summary;
+    // `checked`: pages read in this run, so a caller running several in a row can show progress.
+    return { ...summary, checked: done };
   },
 });
 
@@ -511,7 +524,8 @@ export const websiteImportStatus = defineTool({
       .orderBy(asc(sql`case ${websitePages.kind} when 'listing' then 0 when 'error' then 1 when 'pending' then 2 else 3 end`), asc(listings.city));
     // A listing can have several pages (a project, or the same house in two languages): show it once.
     const seen = new Set<string>();
-    const imported = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
+    const all = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
+    const imported = all.filter((p) => p.status && (ON_OFFER as string[]).includes(p.status));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,
@@ -522,6 +536,15 @@ export const websiteImportStatus = defineTool({
       /** People the website names as contact who aren't agents here yet. */
       unknownAgents: unknownNames,
       failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
+      /** Pages we know of, by what they turned out to be. */
+      pageCounts: {
+        listing: imported.length,
+        offMarket: all.length - imported.length,
+        pending: pages.filter((p) => p.kind === "pending").length,
+        gone: pages.filter((p) => p.kind === "gone").length,
+        other: pages.filter((p) => p.kind === "other").length,
+        error: pages.filter((p) => p.kind === "error").length,
+      },
       pending: pages.filter((p) => p.kind === "pending").length,
     };
   },

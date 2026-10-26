@@ -18,6 +18,38 @@ function ReadBy({ by }: { by: string | null }) {
   return <Pill>{by === "structured" ? "Page data" : "Rules"}</Pill>;
 }
 
+/** What the pages we found on the site turned out to be, as one thin bar with a legend. */
+function PageBreakdown({ counts }: { counts: { listing: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
+  const parts = [
+    { label: "listings", value: counts.listing, className: "bg-fg" },
+    { label: "sold, rented or under option (not listed)", value: counts.offMarket, className: "bg-muted" },
+    { label: "to read", value: counts.pending, className: "bg-line-strong" },
+    { label: "taken offline", value: counts.gone, className: "bg-faint" },
+    { label: "not a listing", value: counts.other, className: "bg-line" },
+    { label: "could not be read", value: counts.error, className: "bg-danger" },
+  ].filter((p) => p.value > 0);
+  const total = parts.reduce((sum, p) => sum + p.value, 0);
+  if (!total) return null;
+  return (
+    <div className="mt-3">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-hover" aria-hidden>
+        {parts.map((p) => (
+          <div key={p.label} className={p.className} style={{ width: `${(p.value / total) * 100}%` }} />
+        ))}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
+        <span>{total} pages found:</span>
+        {parts.map((p) => (
+          <span key={p.label} className="flex items-center gap-1.5 tabular-nums">
+            <span className={`size-1.5 rounded-full ${p.className}`} />
+            {p.value} {p.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function WebsiteImportPage() {
   const status = await runTool(tools.websiteImportStatus, await getToolContext(), {});
   const { sync } = status;
@@ -57,6 +89,7 @@ export default async function WebsiteImportPage() {
                 {(sync.remaining ?? 0) > 0 && ` ${sync.remaining} pages still to read; the next run continues with them.`}
                 {sync.error && <span className="text-danger"> {sync.error}</span>}
               </p>
+              <PageBreakdown counts={status.pageCounts} />
               {((sync.blocked ?? 0) > 0 || (sync.crawlDelay ?? 0) > 1) && (
                 <p className="mt-2 max-w-2xl text-[12px] text-muted">
                   We follow your website&apos;s robots.txt.

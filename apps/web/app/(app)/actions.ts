@@ -139,7 +139,9 @@ export async function markAttendanceAction(appointmentId: string, attended: bool
   if (conversationId) redirect(`/inbox?c=${conversationId}`);
 }
 
-export type WebsiteImportState = { error?: string; read?: number; pages?: number; remaining?: number } | undefined;
+export type WebsiteImportState =
+  | { error?: string; read?: number; pages?: number; remaining?: number; checked?: number; created?: number; updated?: number }
+  | undefined;
 
 export async function importWebsiteAction(_state: WebsiteImportState, form: FormData): Promise<WebsiteImportState> {
   const websiteUrl = String(form.get("websiteUrl") ?? "").trim();
@@ -147,7 +149,14 @@ export async function importWebsiteAction(_state: WebsiteImportState, form: Form
     // Stays under the page's time limit; the page starts the next run while pages are left.
     const summary = await runTool(tools.importWebsiteListings, await getToolContext(), { websiteUrl: websiteUrl || undefined, budgetSeconds: 50 });
     revalidatePath("/listings", "layout");
-    return { read: summary.found ?? 0, pages: summary.pages ?? 0, remaining: summary.remaining ?? 0 };
+    return {
+      read: summary.found ?? 0,
+      pages: summary.pages ?? 0,
+      remaining: summary.remaining ?? 0,
+      checked: summary.checked,
+      created: summary.created ?? 0,
+      updated: summary.updated ?? 0,
+    };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "The website could not be read." };
   }

@@ -523,6 +523,14 @@ export function referenceFromUrl(url: string): string | null {
   return ids.at(-1) ?? null;
 }
 
+const removedNotice =
+  /(niet (meer|langer) (online|beschikbaar)|is (reeds )?(verkocht|verhuurd) en niet meer|n'est plus (en ligne|disponible)|plus disponible en ligne|no longer (online|available))/i;
+
+/** A listing page that still answers but says the listing was taken offline ("Helaas staat dit zoekertje niet meer online"). */
+export function isRemovedListingPage(listing: ExtractedListing, html: string): boolean {
+  return removedNotice.test(pageText(html)) && !isListingPage(listing, html);
+}
+
 /**
  * Whether a page is a single listing rather than an overview or an article:
  * a price, or rooms or areas, near a type of property, without dozens of prices.
