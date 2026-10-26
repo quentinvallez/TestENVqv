@@ -28,7 +28,7 @@ export async function bookableListing(listingId: string) {
     .from(schema.listings)
     .innerJoin(schema.organization, eq(schema.organization.id, schema.listings.agencyId))
     .leftJoin(schema.agencySettings, eq(schema.agencySettings.agencyId, schema.listings.agencyId))
-    .where(and(eq(schema.listings.id, listingId), inArray(schema.listings.status, ["active", "under_offer"])));
+    .where(and(eq(schema.listings.id, listingId), eq(schema.listings.status, "active")));
   return row ?? null;
 }
 
@@ -65,7 +65,7 @@ export async function publicListings(agencyId: string) {
   return db
     .select()
     .from(schema.listings)
-    .where(and(eq(schema.listings.agencyId, agencyId), inArray(schema.listings.status, ["active", "under_offer"])))
+    .where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.status, "active")))
     .orderBy(schema.listings.createdAt);
 }
 
@@ -78,7 +78,7 @@ export async function widgetContext(agencyId: string, reference: string) {
       and(
         eq(schema.listings.agencyId, agencyId),
         eq(schema.listings.reference, reference),
-        inArray(schema.listings.status, ["active", "under_offer"]),
+        eq(schema.listings.status, "active"),
       ),
     );
   const agents = await db
@@ -125,7 +125,8 @@ export async function widgetPage(agencyId: string, pageUrl: string) {
     .leftJoin(schema.listings, eq(schema.listings.id, schema.websitePages.listingId))
     // The site may be visited with or without "www." while we stored one of the two.
     .where(and(eq(schema.websitePages.agencyId, agencyId), inArray(schema.websitePages.url, [url, otherWww(url)])));
-  const bookable = page?.listingId && (page.status === "active" || page.status === "under_offer");
+  // Only listings on offer take bookings: under option, sold or rented, the planner stays away.
+  const bookable = page?.listingId && page.status === "active";
   if (!bookable) return { listingId: null, agents: [], unknown: !page && looksLikeListingUrl(url, settings.websiteUrl) };
   const agents = await db
     .select({ id: schema.agents.id, name: schema.agents.name })

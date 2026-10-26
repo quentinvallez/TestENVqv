@@ -28,7 +28,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
 
   const base = `/listings/${listing.id}`;
   const street = address(listing.street, listing.houseNumber, listing.city);
-  const bookable = listing.status === "active" || listing.status === "under_offer";
+  const bookable = listing.status === "active";
 
   return (
     <>
