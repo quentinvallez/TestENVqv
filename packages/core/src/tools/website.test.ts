@@ -155,4 +155,17 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     const [cancelled] = await db.select().from(schema.appointments).where(eq(schema.appointments.id, viewing!.id));
     expect(cancelled!.status).toBe("cancelled");
   });
+
+  it("goes back to the demo data: the import and its agents are gone, the demo is loaded again", async () => {
+    const result = await runTool(tools.resetToDemoData, ctx, {});
+    expect(result).toMatchObject({ seeded: true });
+    const pages = await db.select().from(schema.websitePages).where(eq(schema.websitePages.agencyId, agencyId));
+    expect(pages).toHaveLength(0);
+    const fromWebsite = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.source, "website")));
+    expect(fromWebsite).toHaveLength(0);
+    const imported = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900001")));
+    expect(imported).toHaveLength(0);
+    const [settings] = await db.select().from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, agencyId));
+    expect(settings!.websiteUrl).toBeNull();
+  });
 });

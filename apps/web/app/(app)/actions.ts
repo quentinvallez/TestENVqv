@@ -10,6 +10,11 @@ export async function seedDemoAction() {
   revalidatePath("/", "layout");
 }
 
+export async function resetDemoAction() {
+  await runTool(tools.resetToDemoData, await getToolContext(), {});
+  revalidatePath("/", "layout");
+}
+
 export async function moveLeadStageAction(leadId: string, stage: (typeof leadStages)[number]) {
   await runTool(tools.moveLeadStage, await getToolContext(), { leadId, stage });
   revalidatePath("/leads");

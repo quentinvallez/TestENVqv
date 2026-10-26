@@ -5,7 +5,8 @@ import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Stat, StatusDot 
 import { getSession, getToolContext } from "@/lib/context";
 import { address, formatDay, formatRelative, formatTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta, eventLabel } from "@/lib/labels";
-import { seedDemoAction } from "./actions";
+import { resetDemoAction, seedDemoAction } from "./actions";
+import { DemoReset } from "./demo-reset";
 
 export default async function DashboardPage() {
   const { user } = await getSession();
@@ -124,6 +125,11 @@ export default async function DashboardPage() {
                     </ol>
                   </Panel>
                 </section>
+              </div>
+
+              <div className="mt-8 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[12px] text-muted">Showing a demo or starting over? Load the sample agency again.</p>
+                <DemoReset action={resetDemoAction} />
               </div>
             </>
           )}

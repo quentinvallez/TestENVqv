@@ -1,12 +1,14 @@
-import { eq, schema, sql } from "@viewing/db";
+import { and, eq, inArray, isNull, notExists, schema, sql } from "@viewing/db";
+import type { Language } from "@viewing/db/schema";
 import { z } from "zod";
 import { draftFollowUp, handleConversation } from "../planner/agent";
 import { runTool } from "../tool";
 import { requestValuation, verifyValuation } from "./valuations";
 import { zonedDay, zonedTime } from "../time";
 import { defineTool } from "../tool";
+import { recordEvent } from "../events";
 
-const { offices, agents, availabilityRules, listings, contacts, leads, appointments, events, proposals, conversations, messages } = schema;
+const { offices, agents, availabilityRules, listings, contacts, leads, appointments, events, proposals, conversations, messages, valuations, automationRuns, websitePages, calendarConnections, agencySettings } = schema;
 
 const photo = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=800&q=70`;
 
@@ -49,22 +51,32 @@ export const seedDemoData = defineTool({
         ])
         .returning();
 
-      const agentRows = await tx
-        .insert(agents)
-        .values([
-          { agencyId, officeId: antwerp!.id, name: "Sofie Peeters", email: "sofie@demo-agency.be", phone: "+32 470 11 22 33", color: "#6366f1", languages: ["nl", "en"] },
-          { agencyId, officeId: antwerp!.id, name: "Thomas Janssens", email: "thomas@demo-agency.be", phone: "+32 471 22 33 44", color: "#10b981", languages: ["nl", "fr"] },
-          { agencyId, officeId: ghent!.id, name: "Lien De Smet", email: "lien@demo-agency.be", phone: "+32 472 33 44 55", color: "#f59e0b", languages: ["nl", "en"] },
-          { agencyId, officeId: ghent!.id, name: "Maxime Dubois", email: "maxime@demo-agency.be", phone: "+32 473 44 55 66", color: "#ec4899", languages: ["fr", "nl"] },
-        ])
-        .returning();
+      const demoAgents = [
+        { agencyId, officeId: antwerp!.id, name: "Sofie Peeters", email: "sofie@demo-agency.be", phone: "+32 470 11 22 33", color: "#6366f1", languages: ["nl", "en"] as Language[] },
+        { agencyId, officeId: antwerp!.id, name: "Thomas Janssens", email: "thomas@demo-agency.be", phone: "+32 471 22 33 44", color: "#10b981", languages: ["nl", "fr"] as Language[] },
+        { agencyId, officeId: ghent!.id, name: "Lien De Smet", email: "lien@demo-agency.be", phone: "+32 472 33 44 55", color: "#f59e0b", languages: ["nl", "en"] as Language[] },
+        { agencyId, officeId: ghent!.id, name: "Maxime Dubois", email: "maxime@demo-agency.be", phone: "+32 473 44 55 66", color: "#ec4899", languages: ["fr", "nl"] as Language[] },
+      ];
+      // Demo agents kept by a reset (a connected calendar) are reused, with their own hours.
+      const kept = await tx
+        .select()
+        .from(agents)
+        .where(and(eq(agents.agencyId, agencyId), inArray(agents.email, demoAgents.map((a) => a.email))));
+      for (const agent of kept) {
+        await tx.update(agents).set({ officeId: demoAgents.find((a) => a.email === agent.email)!.officeId }).where(eq(agents.id, agent.id));
+      }
+      const missing = demoAgents.filter((a) => !kept.some((k) => k.email === a.email));
+      const inserted = missing.length ? await tx.insert(agents).values(missing).returning() : [];
+      const agentRows = demoAgents.map((a) => [...kept, ...inserted].find((row) => row.email === a.email)!);
       const [sofie, thomas, lien, maxime] = agentRows;
 
-      await tx.insert(availabilityRules).values(
-        agentRows.flatMap((agent) =>
-          [1, 2, 3, 4, 5].map((weekday) => ({ agencyId, agentId: agent.id, weekday, startMinute: 9 * 60, endMinute: 18 * 60 })),
-        ),
-      );
+      if (inserted.length) {
+        await tx.insert(availabilityRules).values(
+          inserted.flatMap((agent) =>
+            [1, 2, 3, 4, 5].map((weekday) => ({ agencyId, agentId: agent.id, weekday, startMinute: 9 * 60, endMinute: 18 * 60 })),
+          ),
+        );
+      }
 
       const listingRows = await tx
         .insert(listings)
@@ -380,5 +392,48 @@ export const seedDemoData = defineTool({
     }
 
     return { seeded: true, listings: seeded.listingRows.length, leads: leadRows.length, appointments: appointmentRows.length, conversations: threads.length };
+  },
+});
+
+/**
+ * Takes the workspace back to the demo: clears listings, website import, contacts, leads, viewings,
+ * conversations, drafts and history, then loads the demo data again. Agents with a login or a
+ * connected calendar stay, so connections aren't lost.
+ */
+export const resetToDemoData = defineTool({
+  name: "demo_reset",
+  description: "Replace the agency's data with the demo data. Deletes listings, the website import, contacts, leads, viewings, conversations and drafts; keeps agents with a login or a connected calendar.",
+  mutates: true,
+  input: z.object({}),
+  run: async (ctx) => {
+    const agencyId = ctx.agencyId;
+    await ctx.db.transaction(async (tx) => {
+      await tx.delete(proposals).where(eq(proposals.agencyId, agencyId));
+      await tx.delete(messages).where(eq(messages.agencyId, agencyId));
+      await tx.delete(conversations).where(eq(conversations.agencyId, agencyId));
+      await tx.delete(automationRuns).where(eq(automationRuns.agencyId, agencyId));
+      await tx.delete(valuations).where(eq(valuations.agencyId, agencyId));
+      await tx.delete(appointments).where(eq(appointments.agencyId, agencyId));
+      await tx.delete(leads).where(eq(leads.agencyId, agencyId));
+      await tx.delete(contacts).where(eq(contacts.agencyId, agencyId));
+      await tx.delete(websitePages).where(eq(websitePages.agencyId, agencyId));
+      await tx.delete(listings).where(eq(listings.agencyId, agencyId));
+      await tx
+        .delete(agents)
+        .where(
+          and(
+            eq(agents.agencyId, agencyId),
+            isNull(agents.userId),
+            notExists(tx.select({ id: calendarConnections.id }).from(calendarConnections).where(eq(calendarConnections.agentId, agents.id))),
+          ),
+        );
+      await tx.delete(offices).where(eq(offices.agencyId, agencyId));
+      await tx.delete(events).where(eq(events.agencyId, agencyId));
+      // Without the website address the nightly run doesn't import the site again over the demo.
+      await tx.update(agencySettings).set({ websiteUrl: null, websiteSync: {} }).where(eq(agencySettings.agencyId, agencyId));
+    });
+    const seeded = await seedDemoData.run(ctx, {});
+    await recordEvent(ctx, { type: "demo.reset", subjectType: "agency", subjectId: agencyId, data: {} });
+    return seeded;
   },
 });
