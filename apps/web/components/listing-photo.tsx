@@ -15,5 +15,6 @@ export function ListingPhoto({ src, alt, className }: { src: string | null | und
     );
   }
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={alt} onError={() => setFailed(true)} className={cn("object-cover", className)} />;
+  // No referrer: photo hosts of agency CRMs often refuse images requested from another site.
+  return <img src={src} alt={alt} referrerPolicy="no-referrer" onError={() => setFailed(true)} className={cn("object-cover", className)} />;
 }

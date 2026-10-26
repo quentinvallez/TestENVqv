@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boilerplateLines,
   extractListing,
   isListingPage,
   looksLikeListingUrl,
@@ -174,5 +175,24 @@ describe("reading a listing page", () => {
     expect(parseAmount("€ 1.150,00 / maand")).toBe(1150);
     expect(splitStreet("Rue Victor Hugo 190 bte 3")).toEqual({ street: "Rue Victor Hugo", houseNumber: "190 bte 3" });
     expect(splitStreet("12, rue de la Loi")).toEqual({ street: "rue de la Loi", houseNumber: "12" });
+  });
+
+  it("reads a page with an unlabelled address and price, ignoring the office address in the footer", () => {
+    const office = `<div class="site-footer"><p>Immo Zone BV</p><p>Keizersplein 71 9300 Aalst</p><p>BIV: Luxemburgstraat, 16B, 1000 BRUSSEL</p></div>`;
+    const home = `<html><body><h1>Immo Zone</h1><a href="/kopen">Kopen</a>${office}</body></html>`;
+    const page = (address: string, price: string) => `<html><head><meta property="og:image" content="https://cdn.omnicasapictures.com/x/97172AL.jpg?6392"></head><body>
+<ul><li><a href="/kopen">Kopen</a></li><li><a href="/huren">Huren</a></li></ul>
+<h2>Huis</h2><a href="#map">${address}</a><div class="price">${price}</div>
+<h1>Volledig gerenoveerde stadswoning met 3 slaapkamers en patio in Kortrijk</h1>
+<ul><li>Bewoonbare oppervlakte 112m2</li><li>Slaapkamers 3</li><li>Badkamers 1</li></ul>
+<table><tr><td>Referentie</td><td>3628123</td></tr><tr><td>EPC</td><td>B</td></tr></table>
+<p>Interesse?</p><p>Kristof Vanderbeken</p>${office}</body></html>`;
+    const boilerplate = boilerplateLines(home);
+    const sale = extractListing(page("Patersmotestraat 2 , KORTRIJK", "€ 300 000"), "https://www.immo-zone.be/te-koop/kortrijk/volledig-gerenoveerde-stadswoning/97172", boilerplate).listing;
+    expect(sale).toMatchObject({ street: "Patersmotestraat", houseNumber: "2", city: "Kortrijk", price: 300000, reference: "3628123", transaction: "sale", bedrooms: 3, livingArea: 112, epcLabel: "B" });
+    expect(sale.title).toBe("Volledig gerenoveerde stadswoning met 3 slaapkamers en patio in Kortrijk");
+    expect(sale.photos).toEqual(["https://cdn.omnicasapictures.com/x/97172AL.jpg?6392"]);
+    const rent = extractListing(page("Keizersplein 56 11, AALST", "€ 1 350/mnd"), "https://www.immo-zone.be/woning/97160", boilerplate).listing;
+    expect(rent).toMatchObject({ street: "Keizersplein", houseNumber: "56 11", city: "Aalst", price: 1350, transaction: "rent" });
   });
 });
