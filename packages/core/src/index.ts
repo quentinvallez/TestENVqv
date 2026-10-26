@@ -16,3 +16,4 @@ export { authorizeUrl, oauthConfigured } from "./integrations/oauth";
 export { runAutomationsForAllAgencies, type AutomationSummary } from "./automations/jobs";
 export { REMINDER_HOUR } from "./automations/rules";
 export { automationsCron } from "./automations/schedule";
+export { syncWebsitesForAllAgencies } from "./tools/website";

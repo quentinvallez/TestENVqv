@@ -138,3 +138,22 @@ export async function markAttendanceAction(appointmentId: string, attended: bool
   revalidatePath("/", "layout");
   if (conversationId) redirect(`/inbox?c=${conversationId}`);
 }
+
+export type WebsiteImportState = { error?: string; done?: boolean } | undefined;
+
+export async function importWebsiteAction(_state: WebsiteImportState, form: FormData): Promise<WebsiteImportState> {
+  const websiteUrl = String(form.get("websiteUrl") ?? "").trim();
+  try {
+    // Stays under the page's time limit; a next run continues with the pages left.
+    await runTool(tools.importWebsiteListings, await getToolContext(), { websiteUrl: websiteUrl || undefined, budgetSeconds: 50 });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "The website could not be read." };
+  }
+  revalidatePath("/listings", "layout");
+  return { done: true };
+}
+
+export async function setBookingLauncherAction(on: boolean) {
+  await runTool(tools.updateWidgetSettings, await getToolContext(), { bookingLauncher: on });
+  revalidatePath("/widget");
+}

@@ -16,6 +16,11 @@
  * right that opens it in a panel (full screen on phones). Agencies turn the
  * button off in the back office, or per page with data-launcher="off" on the
  * script tag. Placeholders added later (single-page sites) are picked up too.
+ *
+ * Without any placeholder, a listing page of the agency's website that the
+ * listing import knows gets a floating "book a viewing" button instead, so the
+ * agency only has to paste the script tag. Pages it doesn't know yet are read
+ * in the background and have the button from the next visit.
  */
 const script = String.raw`(function () {
   var current = document.currentScript;
@@ -99,10 +104,13 @@ const script = String.raw`(function () {
     return (current.getAttribute("data-lang") || (scope && scope.lang) || document.documentElement.lang || "nl").slice(0, 2);
   }
 
-  // Floating button at the bottom right of every page, in the agency's colour.
+  // Floating button at the bottom right, in the agency's colour: the valuation
+  // on every page, or "book a viewing" on listing pages found on the website.
   var launcherHost = null;
-  function launcher(config) {
-    if (!config || !config.valuationLauncher || current.getAttribute("data-launcher") === "off") return;
+  var bookingPage = false;
+  var houseIcon = '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>';
+  var calendarIcon = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>';
+  function launcher(config, options) {
     var brand = /^#[0-9a-f]{3,8}$/i.test(config.brand || "") ? config.brand : "#111111";
     var host = document.createElement("div");
     host.setAttribute("data-viewing-launcher", "");
@@ -120,21 +128,21 @@ const script = String.raw`(function () {
       "iframe{flex:1;width:100%;border:0;background:transparent}" +
       "@media (max-width:560px){.open{right:16px;bottom:16px}.panel{inset:0;width:auto;max-width:none;height:100%;border-radius:0}}" +
       "</style>" +
-      '<button class="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg><span></span></button>' +
+      '<button class="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + options.icon + '</svg><span></span></button>' +
       '<div class="panel" role="dialog" aria-modal="true" hidden><div class="bar"><span></span><button class="close" type="button">×</button></div></div>';
     var open = root.querySelector(".open");
     var panel = root.querySelector(".panel");
     var close = root.querySelector(".close");
-    open.querySelector("span").textContent = config.text.launcher;
-    panel.querySelector(".bar span").textContent = config.text.launcher;
-    panel.setAttribute("aria-label", config.text.title);
+    open.querySelector("span").textContent = options.label;
+    panel.querySelector(".bar span").textContent = options.label;
+    panel.setAttribute("aria-label", options.title);
     close.setAttribute("aria-label", config.text.close);
     var iframe = null;
     function show() {
       if (!iframe) {
         iframe = document.createElement("iframe");
-        iframe.title = config.text.title;
-        iframe.src = origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang() ;
+        iframe.title = options.title;
+        iframe.src = options.src;
         panel.appendChild(iframe);
       }
       panel.hidden = false;
@@ -149,13 +157,39 @@ const script = String.raw`(function () {
     open.addEventListener("click", show);
     close.addEventListener("click", hide);
     root.addEventListener("keydown", function (event) { if (event.key === "Escape") hide(); });
+    if (launcherHost) launcherHost.parentNode.removeChild(launcherHost);
     document.body.appendChild(host);
     launcherHost = host;
     refreshLauncher();
   }
-  // Not on a page that already shows the valuation itself.
+  function valuationLauncher(config) {
+    if (!config || !config.valuationLauncher || bookingPage || current.getAttribute("data-launcher") === "off") return;
+    launcher(config, { label: config.text.launcher, title: config.text.title, icon: houseIcon, src: origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang() });
+  }
+  // A listing page of the agency's site without a placeholder: we know it from
+  // the listing import (or read it now, for the next visit) and offer booking.
+  function bookingLauncher(config) {
+    if (!config || !config.bookingLauncher || current.getAttribute("data-launcher") === "off" || document.querySelector("[data-viewing-widget]")) return valuationLauncher(config);
+    fetch(origin + "/api/widget/page?agency=" + encodeURIComponent(agency) + "&url=" + encodeURIComponent(location.href.split("#")[0]))
+      .then(function (response) { return response.ok ? response.json() : {}; })
+      .then(function (data) {
+        if (!data.listingId || document.querySelector("[data-viewing-widget]")) return valuationLauncher(config);
+        bookingPage = true;
+        var agent = detectAgent(data.agents || [], document.createElement("div"));
+        launcher(config, {
+          label: config.text.booking,
+          title: config.text.booking,
+          icon: calendarIcon,
+          src: origin + "/embed/" + data.listingId + "?lang=" + pageLang() + (agent ? "&agent=" + agent.id : ""),
+        });
+      })
+      .catch(function () { valuationLauncher(config); });
+  }
+  // Not on a page that already shows the valuation (or the booking) itself.
   function refreshLauncher() {
-    if (launcherHost) launcherHost.style.display = document.querySelector("[data-viewing-valuation]") ? "none" : "";
+    if (!launcherHost) return;
+    var inline = bookingPage ? document.querySelector("[data-viewing-widget]") : document.querySelector("[data-viewing-valuation]");
+    launcherHost.style.display = inline ? "none" : "";
   }
 
   function scan() {
@@ -169,7 +203,7 @@ const script = String.raw`(function () {
     if (agency) {
       fetch(origin + "/api/widget/config?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang())
         .then(function (response) { return response.ok ? response.json() : null; })
-        .then(launcher)
+        .then(bookingLauncher)
         .catch(function () {});
     }
     var pending = false;

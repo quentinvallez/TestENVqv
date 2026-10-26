@@ -1,0 +1,431 @@
+import { and, asc, db, eq, inArray, isNull, lt, or, schema, sql } from "@viewing/db";
+import type { WebsiteSync } from "@viewing/db/schema";
+import { z } from "zod";
+import { aiAvailable } from "../ai/client";
+import { recordEvent } from "../events";
+import { defineTool, type ToolContext } from "../tool";
+import { extractWithAi, mergeExtraction } from "../website/ai";
+import {
+  extractListing,
+  isListingPage,
+  looksLikeListingUrl,
+  looksLikeOverviewUrl,
+  matchAgent,
+  missingKeyFacts,
+  normalizeUrl,
+  pageLinks,
+  pageText,
+  referenceFromUrl,
+  robotsSitemaps,
+  sameSite,
+  sitemapEntries,
+  textFingerprint,
+  type ExtractedListing,
+} from "../website/extract";
+import { fetchSitePage } from "../website/fetch";
+
+/*
+ * Listings from the agency's own website: we find the listing pages (sitemap,
+ * then overview pages), read each one and create or update the listing, with
+ * the agent the page names. Pages are remembered in website_pages, so a daily
+ * run only re-reads what may have changed and archives listings that vanished.
+ */
+
+const { agencySettings, agents, listings, websitePages } = schema;
+
+const HOUR = 3600 * 1000;
+/** Listing pages are read again at most this often (prices and status change). */
+const RECHECK_LISTING = 20 * HOUR;
+/** Pages that weren't listings, or failed, are tried again after this. */
+const RECHECK_OTHER = 14 * 24 * HOUR;
+const RECHECK_ERROR = 24 * HOUR;
+/** A page visit reported by the widget triggers a read at most this often. */
+const RECHECK_VISIT = 6 * HOUR;
+const MAX_SITEMAPS = 12;
+const MAX_OVERVIEW_PAGES = 15;
+const MAX_NEW_PAGES_PER_RUN = 400;
+const CONCURRENCY = 4;
+
+type PageRow = typeof websitePages.$inferSelect;
+type AgentRow = { id: string; name: string };
+type PageOutcome = "created" | "updated" | "unchanged" | "removed" | "other" | "failed";
+
+async function settingsRow(ctx: ToolContext) {
+  const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  return row;
+}
+
+/** The address an agency types ("dewaele.com/nl") as a full URL. */
+export function websiteFromInput(input: string): string | null {
+  const trimmed = input.trim();
+  return normalizeUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+}
+
+async function safeFetch(url: string, site: string) {
+  try {
+    return await fetchSitePage(url, site);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Candidate listing URLs: from sitemaps, then from overview pages linked from the home page. */
+async function discover(site: string, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
+  const found = new Set<string>();
+  const origin = new URL(site).origin;
+
+  const sitemapQueue: string[] = [];
+  const robots = await safeFetch(`${origin}/robots.txt`, site);
+  if ("html" in robots && robots.status === 200) sitemapQueue.push(...robotsSitemaps(robots.html));
+  if (!sitemapQueue.length) sitemapQueue.push(`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`);
+  const seenSitemaps = new Set<string>();
+  while (sitemapQueue.length && seenSitemaps.size < MAX_SITEMAPS && Date.now() < deadline) {
+    const next = sitemapQueue.shift()!;
+    if (seenSitemaps.has(next)) continue;
+    seenSitemaps.add(next);
+    const page = await safeFetch(next, site);
+    if (!("html" in page) || page.status !== 200) continue;
+    const entries = sitemapEntries(page.html);
+    // Listing sitemaps first: their names usually say so.
+    sitemapQueue.push(...entries.sitemaps.sort((a, b) => Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(b)) - Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(a))));
+    for (const entry of entries.pages) {
+      const url = normalizeUrl(entry);
+      if (url && looksLikeListingUrl(url, site)) found.add(url);
+    }
+  }
+
+  // Overview pages, also when there is a sitemap: sitemaps are often stale.
+  const home = await safeFetch(site, site);
+  if (!("html" in home)) return { listings: found, error: `The website could not be read: ${home.error}` };
+  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
+  const queue = [home];
+  const visited = new Set([normalizeUrl(home.url) ?? site]);
+  let overviews = 0;
+  while (queue.length && Date.now() < deadline) {
+    const page = queue.shift()!;
+    for (const link of pageLinks(page.html, page.url)) {
+      if (looksLikeListingUrl(link, site)) found.add(link);
+      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site)) {
+        visited.add(link);
+        overviews++;
+        const next = await safeFetch(link, site);
+        if ("html" in next && next.status === 200) queue.push(next);
+      }
+    }
+  }
+  return { listings: found };
+}
+
+/** Reads one page and creates, updates or archives its listing. */
+async function processPage(ctx: ToolContext, site: string, page: PageRow, team: AgentRow[], useAi: boolean): Promise<PageOutcome> {
+  const now = new Date();
+  const fetched = await safeFetch(page.url, site);
+  if (!("html" in fetched)) {
+    await ctx.db.update(websitePages).set({ kind: page.kind === "listing" ? "listing" : "error", lastError: fetched.error, lastCheckedAt: now }).where(eq(websitePages.id, page.id));
+    return "failed";
+  }
+  if (fetched.status === 404 || fetched.status === 410) return removePage(ctx, page, now);
+  if (fetched.status >= 400) {
+    await ctx.db.update(websitePages).set({ lastError: `HTTP ${fetched.status}`, lastCheckedAt: now, kind: page.kind === "listing" ? "listing" : "error" }).where(eq(websitePages.id, page.id));
+    return "failed";
+  }
+  // Sites often redirect a removed listing to the overview.
+  const landed = normalizeUrl(fetched.url) ?? page.url;
+  if (landed !== page.url && page.kind === "listing" && !looksLikeListingUrl(landed, site)) return removePage(ctx, page, now);
+
+  const text = pageText(fetched.html);
+  const hash = textFingerprint(text);
+  if (page.kind === "listing" && page.listingId && page.contentHash === hash) {
+    await ctx.db.update(websitePages).set({ lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+    return "unchanged";
+  }
+
+  const read = extractListing(fetched.html, page.url);
+  let listing: ExtractedListing = read.listing;
+  let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
+  let isListing = isListingPage(listing, fetched.html);
+  const knownAgent = matchAgent(team, listing.agentName, text);
+  const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
+  if (useAi && aiAvailable() && (isListing || looksLikeListingUrl(page.url, site)) && missing.length > 1) {
+    try {
+      const ai = await extractWithAi(page.url, text);
+      isListing = ai.isListing;
+      listing = mergeExtraction(listing, ai.listing);
+      extractedBy = "ai";
+    } catch (error) {
+      console.error(`Claude could not read ${page.url}`, error);
+    }
+  }
+  if (!isListing) {
+    await ctx.db.update(websitePages).set({ kind: "other", contentHash: hash, lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+    return "other";
+  }
+
+  const agent = matchAgent(team, listing.agentName) ?? knownAgent;
+  const outcome = await saveListing(ctx, page, listing, agent?.id ?? null, extractedBy);
+  await ctx.db
+    .update(websitePages)
+    .set({ kind: "listing", listingId: outcome.listingId, contentHash: hash, extractedBy, agentName: listing.agentName, lastCheckedAt: now, lastError: null })
+    .where(eq(websitePages.id, page.id));
+  return outcome.created ? "created" : "updated";
+}
+
+async function removePage(ctx: ToolContext, page: PageRow, now: Date): Promise<PageOutcome> {
+  await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+  if (!page.listingId) return "other";
+  const [archived] = await ctx.db
+    .update(listings)
+    .set({ status: "archived" })
+    .where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, page.listingId), inArray(listings.status, ["draft", "active", "under_offer"])))
+    .returning({ id: listings.id, reference: listings.reference });
+  if (!archived) return "other";
+  await recordEvent(ctx, { type: "listing.removed_from_website", subjectType: "listing", subjectId: archived.id, data: { url: page.url, reference: archived.reference } });
+  return "removed";
+}
+
+async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedListing, agentId: string | null, extractedBy: string) {
+  const byPage = page.listingId ? await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, page.listingId))) : [];
+  const byUrl = byPage.length ? byPage : await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.websiteUrl, page.url)));
+  const reference = (facts.reference ?? referenceFromUrl(page.url) ?? `WEB-${textFingerprint(page.url).slice(0, 8)}`).slice(0, 40);
+  const byReference = byUrl.length ? byUrl : await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.reference, reference)));
+  const existing = byReference[0];
+
+  const status = facts.status ?? "active";
+  const values = {
+    status,
+    transaction: facts.transaction ?? existing?.transaction ?? "sale",
+    propertyType: facts.propertyType ?? existing?.propertyType ?? "other",
+    title: facts.title,
+    description: facts.description,
+    street: facts.street,
+    houseNumber: facts.houseNumber,
+    postcode: facts.postcode,
+    city: facts.city,
+    price: facts.price,
+    bedrooms: facts.bedrooms,
+    bathrooms: facts.bathrooms,
+    livingArea: facts.livingArea,
+    plotArea: facts.plotArea,
+    epcScore: facts.epcScore,
+    epcLabel: facts.epcLabel,
+    websiteUrl: page.url,
+  };
+  // Keep what we had for anything this read of the page didn't find.
+  const changes = Object.fromEntries(Object.entries(values).filter(([, v]) => v != null)) as Partial<typeof values>;
+  const photos = facts.photos.slice(0, 20).map((url) => ({ url }));
+  const soldNow = (status === "sold" || status === "rented") && !existing?.soldAt;
+
+  if (existing) {
+    // A listing someone archived or marked sold by hand isn't revived by a stale page.
+    if (existing.status === "archived" && status === "active") delete changes.status;
+    await ctx.db
+      .update(listings)
+      .set({
+        ...changes,
+        ...(photos.length ? { photos } : {}),
+        ...(agentId && !existing.agentId ? { agentId } : {}),
+        ...(soldNow ? { soldAt: new Date() } : {}),
+        features: { ...existing.features, source: "website", extractedBy },
+      })
+      .where(eq(listings.id, existing.id));
+    if (existing.status !== status && changes.status) {
+      await recordEvent(ctx, { type: "listing.status_changed", subjectType: "listing", subjectId: existing.id, data: { from: existing.status, to: status, source: "website" } });
+    }
+    return { listingId: existing.id, created: false };
+  }
+
+  const [created] = await ctx.db
+    .insert(listings)
+    .values({
+      ...changes,
+      agencyId: ctx.agencyId,
+      reference,
+      status,
+      transaction: values.transaction,
+      propertyType: values.propertyType,
+      agentId,
+      photos,
+      soldAt: soldNow ? new Date() : null,
+      features: { source: "website", extractedBy },
+    })
+    .onConflictDoNothing()
+    .returning({ id: listings.id });
+  if (!created) {
+    // Two pages with the same reference (a listing in two languages): link to the one we have.
+    const [same] = await ctx.db.select({ id: listings.id }).from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.reference, reference)));
+    return { listingId: same!.id, created: false };
+  }
+  await recordEvent(ctx, { type: "listing.imported", subjectType: "listing", subjectId: created.id, data: { url: page.url, reference, extractedBy } });
+  return { listingId: created.id, created: true };
+}
+
+async function runPool<T>(items: T[], deadline: number, work: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: CONCURRENCY }, async () => {
+      while (next < items.length && Date.now() < deadline) await work(items[next++]!);
+    }),
+  );
+  return next;
+}
+
+async function team(ctx: ToolContext): Promise<AgentRow[]> {
+  return ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true)));
+}
+
+export const importWebsiteListings = defineTool({
+  name: "listings_import_website",
+  description:
+    "Find the listings on the agency's own website and create or update them here, with the agent each page names. Saves the website address when one is given. Runs within a time budget; a next run continues where it stopped.",
+  mutates: true,
+  input: z.object({
+    websiteUrl: z.string().min(4).optional().describe("The agency's website, e.g. https://www.agency.be/nl"),
+    budgetSeconds: z.number().int().min(5).max(280).default(45),
+    useAi: z.boolean().default(true),
+  }),
+  run: async (ctx, input) => {
+    const started = Date.now();
+    const deadline = started + input.budgetSeconds * 1000;
+    const settings = await settingsRow(ctx);
+    const site = input.websiteUrl ? websiteFromInput(input.websiteUrl) : settings?.websiteUrl;
+    if (!site) throw new Error("Set the agency's website address first");
+    if (input.websiteUrl && site !== settings?.websiteUrl) {
+      await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, websiteUrl: site }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { websiteUrl: site } });
+    }
+
+    // Discovery takes at most a third of the budget; reading pages the rest.
+    const discovered = await discover(site, started + (deadline - started) / 3);
+    const candidates = [...discovered.listings].slice(0, MAX_NEW_PAGES_PER_RUN);
+    if (candidates.length) {
+      await ctx.db
+        .insert(websitePages)
+        .values(candidates.map((url) => ({ agencyId: ctx.agencyId, url })))
+        .onConflictDoNothing();
+    }
+
+    const now = Date.now();
+    const due = await ctx.db
+      .select()
+      .from(websitePages)
+      .where(
+        and(
+          eq(websitePages.agencyId, ctx.agencyId),
+          or(
+            eq(websitePages.kind, "pending"),
+            and(eq(websitePages.kind, "listing"), or(isNull(websitePages.lastCheckedAt), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_LISTING)))),
+            and(eq(websitePages.kind, "error"), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_ERROR))),
+            and(eq(websitePages.kind, "other"), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_OTHER))),
+          ),
+        ),
+      )
+      .orderBy(asc(sql`case ${websitePages.kind} when 'pending' then 0 when 'listing' then 1 else 2 end`), asc(websitePages.lastCheckedAt));
+    const people = await team(ctx);
+    const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0 };
+    const done = await runPool(due, deadline, async (page) => {
+      tally[await processPage(ctx, site, page, people, input.useAi)]++;
+    });
+
+    const [{ count: listingPages } = { count: 0 }] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(websitePages)
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing")));
+    const summary: WebsiteSync = {
+      lastRunAt: new Date().toISOString(),
+      found: listingPages,
+      created: tally.created,
+      updated: tally.updated + tally.unchanged,
+      removed: tally.removed,
+      failed: tally.failed,
+      remaining: due.length - done,
+      ...(discovered.error && !due.length ? { error: discovered.error } : {}),
+    };
+    await ctx.db.update(agencySettings).set({ websiteSync: summary }).where(eq(agencySettings.agencyId, ctx.agencyId));
+    await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...summary, site } });
+    return summary;
+  },
+});
+
+export const importWebsitePage = defineTool({
+  name: "listings_import_page",
+  description: "Read one page of the agency's website (e.g. a listing a visitor just opened) and create or update its listing. Only pages on the agency's own site are read.",
+  mutates: true,
+  input: z.object({ url: z.string().min(8), useAi: z.boolean().default(true) }),
+  run: async (ctx, input) => {
+    const settings = await settingsRow(ctx);
+    const site = settings?.websiteUrl;
+    const url = normalizeUrl(input.url);
+    if (!site || !url || !sameSite(url, site)) return { status: "skipped" as const, reason: "not on the agency's website" };
+    const [inserted] = await ctx.db.insert(websitePages).values({ agencyId: ctx.agencyId, url }).onConflictDoNothing().returning();
+    const page = inserted ?? (await ctx.db.select().from(websitePages).where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.url, url))))[0]!;
+    if (!inserted && page.lastCheckedAt && Date.now() - page.lastCheckedAt.getTime() < RECHECK_VISIT) return { status: "skipped" as const, reason: "read recently" };
+    // Claim the page so parallel visits don't read it twice.
+    await ctx.db.update(websitePages).set({ lastCheckedAt: new Date() }).where(eq(websitePages.id, page.id));
+    const outcome = await processPage(ctx, site, page, await team(ctx), input.useAi);
+    const [after] = await ctx.db.select({ listingId: websitePages.listingId }).from(websitePages).where(eq(websitePages.id, page.id));
+    return { status: outcome, listingId: after?.listingId ?? null };
+  },
+});
+
+export const websiteImportStatus = defineTool({
+  name: "website_import_status",
+  description: "The agency's website address, the outcome of the last listing import, and imported listings that still need an agent.",
+  mutates: false,
+  input: z.object({}),
+  run: async (ctx) => {
+    const settings = await settingsRow(ctx);
+    const pages = await ctx.db
+      .select({
+        url: websitePages.url,
+        kind: websitePages.kind,
+        extractedBy: websitePages.extractedBy,
+        agentName: websitePages.agentName,
+        lastError: websitePages.lastError,
+        lastCheckedAt: websitePages.lastCheckedAt,
+        listingId: listings.id,
+        reference: listings.reference,
+        title: listings.title,
+        status: listings.status,
+        street: listings.street,
+        houseNumber: listings.houseNumber,
+        city: listings.city,
+        price: listings.price,
+        transaction: listings.transaction,
+        photo: sql<string | null>`${listings.photos}->0->>'url'`,
+        listingAgentId: listings.agentId,
+        listingAgentName: agents.name,
+      })
+      .from(websitePages)
+      .leftJoin(listings, eq(listings.id, websitePages.listingId))
+      .leftJoin(agents, eq(agents.id, listings.agentId))
+      .where(eq(websitePages.agencyId, ctx.agencyId))
+      .orderBy(asc(sql`case ${websitePages.kind} when 'listing' then 0 when 'error' then 1 when 'pending' then 2 else 3 end`), asc(listings.city));
+    const imported = pages.filter((p) => p.kind === "listing" && p.listingId);
+    const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
+    return {
+      websiteUrl: settings?.websiteUrl ?? null,
+      sync: settings?.websiteSync ?? {},
+      aiAvailable: aiAvailable(),
+      listings: imported,
+      withoutAgent: imported.filter((p) => !p.listingAgentId).length,
+      /** People the website names as contact who aren't agents here yet. */
+      unknownAgents: unknownNames,
+      failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
+      pending: pages.filter((p) => p.kind === "pending").length,
+    };
+  },
+});
+
+/** Daily re-read of every agency's website, so new, changed and removed listings follow on their own. */
+export async function syncWebsitesForAllAgencies(budgetSeconds = 50, database: ToolContext["db"] = db) {
+  const rows = await database.select({ agencyId: agencySettings.agencyId }).from(agencySettings).where(sql`${agencySettings.websiteUrl} is not null`);
+  const results: Record<string, WebsiteSync | { error: string }> = {};
+  for (const { agencyId } of rows) {
+    try {
+      results[agencyId] = await importWebsiteListings.run({ db: database, agencyId, actor: { type: "system", id: null } }, { budgetSeconds, useAi: true });
+    } catch (error) {
+      results[agencyId] = { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  return results;
+}
+

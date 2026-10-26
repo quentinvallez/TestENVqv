@@ -13,6 +13,7 @@ import { findMatchingClients, recommendForContact, similarListings, suggestListi
 import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
+import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
@@ -70,6 +71,9 @@ export const tools = {
   disconnectCalendar,
   channelsStatus,
   connectWhatsApp,
+  importWebsiteListings,
+  importWebsitePage,
+  websiteImportStatus,
 };
 
 /** Tools by their public name, as agents and proposals refer to them. */

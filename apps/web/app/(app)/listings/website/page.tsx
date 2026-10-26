@@ -1,0 +1,182 @@
+import Link from "next/link";
+import { runTool, tools } from "@viewing/core";
+import { AlertTriangle, ExternalLink, Globe, Sparkles, UserRound } from "lucide-react";
+import { ListingPhoto } from "@/components/listing-photo";
+import { AiPill, PageHeader, Panel, Pill, Stat, StatusDot } from "@/components/ui";
+import { getToolContext } from "@/lib/context";
+import { address, formatPrice, formatRelative } from "@/lib/format";
+import { listingStatusMeta } from "@/lib/labels";
+import { importWebsiteAction } from "../../actions";
+import { ImportForm } from "./import-form";
+
+export const dynamic = "force-dynamic";
+// The import runs inside the server action of this page.
+export const maxDuration = 60;
+
+function ReadBy({ by }: { by: string | null }) {
+  if (by === "ai") return <AiPill>Read by Claude</AiPill>;
+  return <Pill>{by === "structured" ? "Page data" : "Rules"}</Pill>;
+}
+
+export default async function WebsiteImportPage() {
+  const status = await runTool(tools.websiteImportStatus, await getToolContext(), {});
+  const { sync } = status;
+  const host = status.websiteUrl ? new URL(status.websiteUrl).host : null;
+
+  return (
+    <>
+      <PageHeader crumbs={[{ label: "Listings", href: "/listings" }, { label: "From your website" }]} />
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[960px] px-4 py-6 md:px-5">
+          <h1 className="text-[18px] font-semibold tracking-tight">Your listings, read from your website</h1>
+          <p className="mt-1 max-w-2xl text-muted">
+            Give your website address and we find every listing on it, with its price, address, details, photos and the agent the page names. Every
+            night we read it again: new listings appear, price and status changes follow, and listings you take off your site are archived here.
+          </p>
+
+          <Panel className="mt-5 p-4">
+            <ImportForm action={importWebsiteAction} websiteUrl={status.websiteUrl} label={status.websiteUrl ? "Check again now" : "Import listings"} />
+            <p className="mt-2 flex items-start gap-1.5 text-[12px] text-faint">
+              <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+              {status.aiAvailable
+                ? "Most pages are read by rules. When a page is laid out in a way they don't understand, Claude reads it; those listings are marked."
+                : "Pages are read by rules. With Claude connected, pages the rules don't fully understand would be read by Claude."}
+            </p>
+          </Panel>
+
+          {sync.lastRunAt && (
+            <>
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label="Listings on your site" value={sync.found ?? 0} hint={host ?? undefined} />
+                <Stat label="New in last run" value={sync.created ?? 0} />
+                <Stat label="Checked or updated" value={sync.updated ?? 0} />
+                <Stat label="Removed from site" value={sync.removed ?? 0} hint="Archived here" />
+              </div>
+              <p className="mt-2 text-[12px] text-muted">
+                Last read {formatRelative(new Date(sync.lastRunAt))}.
+                {(sync.remaining ?? 0) > 0 && ` ${sync.remaining} pages still to read; the next run continues with them.`}
+                {sync.error && <span className="text-danger"> {sync.error}</span>}
+              </p>
+            </>
+          )}
+
+          {(status.withoutAgent > 0 || status.unknownAgents.length > 0) && (
+            <Panel className="mt-5 flex items-start gap-3 p-4">
+              <UserRound className="mt-0.5 size-4 shrink-0 text-muted" />
+              <div>
+                <div className="font-medium">
+                  {status.withoutAgent} {status.withoutAgent === 1 ? "listing has" : "listings have"} no agent yet
+                </div>
+                <p className="mt-0.5 text-muted">
+                  {status.unknownAgents.length > 0
+                    ? `Your website names ${status.unknownAgents.join(", ")}, who ${status.unknownAgents.length === 1 ? "isn't an agent" : "aren't agents"} here yet. Until then, open the listing to pick the agent whose calendar takes the bookings.`
+                    : "Open the listing to pick the agent whose calendar takes the bookings."}
+                </p>
+              </div>
+            </Panel>
+          )}
+
+          {status.listings.length > 0 && (
+            <section className="mt-6">
+              <h2 className="mb-2 font-medium">Imported listings</h2>
+              <Panel className="overflow-hidden">
+                <ul className="divide-y divide-line md:hidden">
+                  {status.listings.map((l) => (
+                    <li key={l.url}>
+                      <Link href={`/listings/${l.listingId}`} className="flex gap-3 px-4 py-3 active:bg-hover">
+                        <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-16 w-20 shrink-0 rounded-md border border-line" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium">{address(l.street, l.houseNumber, l.city) || l.title}</div>
+                          <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
+                            {l.status && <StatusDot color={listingStatusMeta[l.status].color} className="size-1.5" />}
+                            {l.status && listingStatusMeta[l.status].label} · {formatPrice(l.price, l.transaction ?? undefined)}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                            <ReadBy by={l.extractedBy} />
+                            <span className="truncate">{l.listingAgentName ?? (l.agentName ? `Page names ${l.agentName}` : "No agent")}</span>
+                          </div>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <table className="hidden w-full text-left md:table">
+                  <thead className="bg-panel text-[12px] text-muted">
+                    <tr className="border-b border-line">
+                      <th className="py-2 pr-3 pl-4 font-normal">Property</th>
+                      <th className="px-3 font-normal">Status</th>
+                      <th className="px-3 font-normal">Price</th>
+                      <th className="px-3 font-normal">Agent</th>
+                      <th className="px-3 font-normal">Read by</th>
+                      <th className="py-2 pr-4 pl-3 font-normal">
+                        <span className="sr-only">Page</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {status.listings.map((l) => (
+                      <tr key={l.url} className="group hover:bg-hover/60">
+                        <td className="py-2 pr-3 pl-4">
+                          <Link href={`/listings/${l.listingId}`} className="flex items-center gap-3">
+                            <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-10 w-14 shrink-0 rounded-md border border-line" />
+                            <div className="min-w-0">
+                              <div className="max-w-[300px] truncate font-medium group-hover:underline">{address(l.street, l.houseNumber, l.city) || l.title}</div>
+                              <div className="text-[12px] text-muted">{l.reference}</div>
+                            </div>
+                          </Link>
+                        </td>
+                        <td className="px-3 whitespace-nowrap">
+                          {l.status && (
+                            <span className="flex items-center gap-1.5">
+                              <StatusDot color={listingStatusMeta[l.status].color} />
+                              {listingStatusMeta[l.status].label}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 whitespace-nowrap tabular-nums">{formatPrice(l.price, l.transaction ?? undefined)}</td>
+                        <td className="px-3 whitespace-nowrap">
+                          {l.listingAgentName ?? <span className="text-faint">{l.agentName ? `Page names ${l.agentName}` : "None"}</span>}
+                        </td>
+                        <td className="px-3">
+                          <ReadBy by={l.extractedBy} />
+                        </td>
+                        <td className="py-2 pr-4 pl-3 text-right">
+                          <a href={l.url} target="_blank" rel="noreferrer" className="inline-flex size-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-fg" aria-label="Open on your website">
+                            <ExternalLink className="size-3.5" />
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Panel>
+            </section>
+          )}
+
+          {status.failed.length > 0 && (
+            <details className="mt-5">
+              <summary className="flex cursor-pointer items-center gap-1.5 text-muted">
+                <AlertTriangle className="size-3.5" />
+                {status.failed.length} {status.failed.length === 1 ? "page" : "pages"} could not be read
+              </summary>
+              <ul className="mt-2 flex flex-col gap-1 text-[12px] text-muted">
+                {status.failed.slice(0, 50).map((f) => (
+                  <li key={f.url} className="break-all">
+                    {f.url} · {f.error}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {!sync.lastRunAt && (
+            <p className="mt-5 flex items-start gap-1.5 text-[12px] text-faint">
+              <Globe className="mt-0.5 size-3.5 shrink-0" />
+              We read your public pages like a search engine does, about once a day, and only on the address you give here.
+            </p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
