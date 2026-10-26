@@ -38,6 +38,8 @@ const { agencySettings, agents, listings, postcodes, websitePages } = schema;
 const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
 const RECHECK_LISTING = 20 * HOUR;
+/** Listings the agency still offers; the import page leaves out the rest (sold, rented, under option). */
+const ON_OFFER: ("draft" | "active")[] = ["draft", "active"];
 /** Pages that weren't listings, or failed, are tried again after this. */
 const RECHECK_OTHER = 14 * 24 * HOUR;
 const RECHECK_ERROR = 24 * HOUR;
@@ -435,10 +437,12 @@ export const importWebsiteListings = defineTool({
       done++;
     }
 
+    // Listings on offer: sold, rented and under option are kept (valuations use sales) but not counted.
     const [{ count: listingPages } = { count: 0 }] = await ctx.db
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(distinct ${listings.id})::int` })
       .from(websitePages)
-      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing")));
+      .innerJoin(listings, eq(listings.id, websitePages.listingId))
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing"), inArray(listings.status, ON_OFFER)));
     const [{ count: pagesFound } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
@@ -520,7 +524,8 @@ export const websiteImportStatus = defineTool({
       .orderBy(asc(sql`case ${websitePages.kind} when 'listing' then 0 when 'error' then 1 when 'pending' then 2 else 3 end`), asc(listings.city));
     // A listing can have several pages (a project, or the same house in two languages): show it once.
     const seen = new Set<string>();
-    const imported = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
+    const all = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
+    const imported = all.filter((p) => p.status && (ON_OFFER as string[]).includes(p.status));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,
@@ -534,6 +539,7 @@ export const websiteImportStatus = defineTool({
       /** Pages we know of, by what they turned out to be. */
       pageCounts: {
         listing: imported.length,
+        offMarket: all.length - imported.length,
         pending: pages.filter((p) => p.kind === "pending").length,
         gone: pages.filter((p) => p.kind === "gone").length,
         other: pages.filter((p) => p.kind === "other").length,

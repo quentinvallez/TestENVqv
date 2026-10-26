@@ -109,4 +109,15 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     const status = await runTool(tools.websiteImportStatus, ctx, {});
     expect(status.pageCounts.gone).toBeGreaterThanOrEqual(1);
   });
+
+  it("leaves listings that are sold, rented or under option out of the list", async () => {
+    const soldUrl = `${home}/aanbod/detail/7900006/verkocht-woning-edegem`;
+    site.set(soldUrl, { status: 200, html: listingPage({ title: "Verkocht: woning in Edegem", price: "€ 395.000", ref: "7900006", address: "Kerkplein 1, 2650 Edegem", agent: "Sofie Peeters" }) });
+    await runTool(tools.importWebsitePage, ctx, { url: soldUrl, useAi: false });
+    const [sold] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900006")));
+    expect(sold!.status).toBe("sold");
+    const status = await runTool(tools.websiteImportStatus, ctx, {});
+    expect(status.listings.map((l) => l.reference)).not.toContain("7900006");
+    expect(status.pageCounts.offMarket).toBeGreaterThanOrEqual(1);
+  });
 });

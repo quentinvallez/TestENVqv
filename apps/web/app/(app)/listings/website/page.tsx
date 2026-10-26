@@ -19,9 +19,10 @@ function ReadBy({ by }: { by: string | null }) {
 }
 
 /** What the pages we found on the site turned out to be, as one thin bar with a legend. */
-function PageBreakdown({ counts }: { counts: { listing: number; pending: number; gone: number; other: number; error: number } }) {
+function PageBreakdown({ counts }: { counts: { listing: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
   const parts = [
     { label: "listings", value: counts.listing, className: "bg-fg" },
+    { label: "sold, rented or under option (not listed)", value: counts.offMarket, className: "bg-muted" },
     { label: "to read", value: counts.pending, className: "bg-line-strong" },
     { label: "taken offline", value: counts.gone, className: "bg-faint" },
     { label: "not a listing", value: counts.other, className: "bg-line" },
