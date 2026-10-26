@@ -308,7 +308,7 @@ export function structuredData(html: string, pageUrl: string): Partial<Extracted
 /** "Sint-Dionysiusstraat 54" → street and number; "Rue Victor Hugo 190 bus 3" too. */
 export function splitStreet(value: string): { street: string | null; houseNumber: string | null } {
   const clean = value.replace(/\s+/g, " ").trim().replace(/,$/, "");
-  const nl = clean.match(/^(.*?[A-Za-zÀ-ÿ.'’)-])\s+(\d+[A-Za-z]?(?:\s*(?:bus|bte|boîte|box|\/)\s*\w+)?)$/i);
+  const nl = clean.match(/^(.*?[A-Za-zÀ-ÿ.'’)-])\s+(\d+[A-Za-z]?(?:\s*(?:bus|bte|boîte|box|\/)?\s*\w+)?)$/i);
   if (nl) return { street: nl[1]!.trim(), houseNumber: nl[2]!.trim() };
   const fr = clean.match(/^(\d+[A-Za-z]?),?\s+(.+)$/);
   if (fr) return { street: fr[2]!.trim(), houseNumber: fr[1]!.trim() };
@@ -380,9 +380,51 @@ export function statusFrom(...hints: (string | null | undefined)[]): WebsiteList
 
 /** "9051 Gent Sint-Denijs-Westrem" or "1410 Waterloo" (Belgian postcodes have four digits). */
 function postcodeCity(textBlock: string): { postcode: string; city: string; before: string } | null {
-  const match = textBlock.match(/(?:^|\n|,\s*|\|\s*)([^\n,|]{0,60}?)[,\s]*\b([1-9]\d{3})\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’. -]{1,40}?)(?=\s*(?:\n|$|,|\||\())/);
+  const match = textBlock.match(/(?:^|\n|,[ \t]*|\|[ \t]*)([^\n,|]{0,60}?)[, \t]*\b([1-9]\d{3})[ \t]+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’. -]{1,40}?)(?=[ \t]*(?:\n|$|,|\||\())/);
   if (!match) return null;
-  return { before: match[1]!.trim(), postcode: match[2]!, city: match[3]!.trim() };
+  return { before: match[1]!.trim(), postcode: match[2]!, city: titleCase(match[3]!.trim()) };
+}
+
+/** "KORTRIJK" → "Kortrijk", "SINT-MARTENS-LATEM" → "Sint-Martens-Latem"; mixed case is kept. */
+function titleCase(value: string): string {
+  if (value !== value.toUpperCase()) return value;
+  return value.toLowerCase().replace(/(^|[\s'’-])([a-zà-ÿ])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+/**
+ * An unlabelled address line, as many sites show it under the title:
+ * "Patersmotestraat 2 , KORTRIJK", "Keizersplein 56 11, AALST", "Kerkstraat 4, 9000 Gent".
+ */
+function streetCityLine(textBlock: string): { street: string; houseNumber: string | null; postcode: string | null; city: string } | null {
+  for (const line of textBlock.split("\n").slice(0, 120)) {
+    const match = line.match(/^([A-ZÀ-Ý][A-Za-zÀ-ÿ'’. -]{2,50}?\s\d+[A-Za-z]?(?:\s*(?:bus|bte|box|\/)?\s*\w{1,4})?)\s*,\s*(?:([1-9]\d{3})\s+)?([A-ZÀ-Ý][A-Za-zÀ-ÿ'’. -]{1,40})$/);
+    if (!match) continue;
+    const split = splitStreet(match[1]!);
+    if (!split.street || /oppervlakte|surface|superficie|slaapkamer|chambre|m2|m²/i.test(line)) continue;
+    return { street: split.street, houseNumber: split.houseNumber, postcode: match[2] ?? null, city: titleCase(match[3]!.trim()) };
+  }
+  return null;
+}
+
+/**
+ * Lines of the home page that are the agency's own details (an office
+ * address, a VAT number), which every page repeats in its footer. Removing
+ * them keeps the office address from being taken for the listing's.
+ */
+export function boilerplateLines(homeHtml: string): Set<string> {
+  return new Set(
+    pageText(homeHtml)
+      .split("\n")
+      .filter((line) => /\b[1-9]\d{3}\s+[A-ZÀ-Ý]/.test(line) || /\b(BTW|TVA|VAT|BE\s?0\d{3}|ondernemingsnummer|BIV|IPI)\b/i.test(line)),
+  );
+}
+
+/** "€ 300 000" or "€ 1 350/mnd" near the top of a page that shows its price without a label. */
+function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | null {
+  const match = textBlock.match(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+)\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/i);
+  if (!match) return null;
+  const price = parseAmount(match[1] ?? match[2] ?? "");
+  return price && price >= 100 ? { price, rent: Boolean(match[3]) } : null;
 }
 
 function headline(html: string): string | null {
@@ -400,9 +442,14 @@ function titleTag(html: string): string | null {
  * Listing facts read by rules: structured data first, then labelled values in
  * the page text, then the URL. Fields the page doesn't show stay null.
  */
-export function extractListing(html: string, pageUrl: string): { listing: ExtractedListing; structured: boolean } {
+export function extractListing(html: string, pageUrl: string, boilerplate?: Set<string>): { listing: ExtractedListing; structured: boolean } {
   const structured = structuredData(html, pageUrl);
-  const textBlock = pageText(html);
+  const textBlock = boilerplate?.size
+    ? pageText(html)
+        .split("\n")
+        .filter((line) => !boilerplate.has(line))
+        .join("\n")
+    : pageText(html);
   const listing = emptyListing();
   const { found, ...fromStructured } = structured;
   Object.assign(listing, Object.fromEntries(Object.entries(fromStructured).filter(([, v]) => v != null && !(Array.isArray(v) && v.length === 0))));
@@ -431,13 +478,31 @@ export function extractListing(html: string, pageUrl: string): { listing: Extrac
     listing.street = split.street;
     listing.houseNumber = split.houseNumber;
   }
+  // No labelled address: a "street number, city" line, which beats a "postcode city" found further down.
+  const line = typeof addressLine === "string" ? null : streetCityLine(textBlock);
+  if (line && !structured.street) {
+    listing.street = line.street;
+    listing.houseNumber = line.houseNumber;
+    listing.city = line.city;
+    listing.postcode = line.postcode ?? (located && located.city.toLowerCase() === line.city.toLowerCase() ? located.postcode : null);
+  }
+  const path = decodeURIComponent(new URL(pageUrl).pathname);
+  // The city is often in the URL (/te-koop/kortrijk/…).
+  listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
+  let rentByPrice = false;
+  if (listing.price == null) {
+    const found = unlabelledPrice(textBlock);
+    if (found) {
+      listing.price = found.price;
+      rentByPrice = found.rent;
+    }
+  }
 
   const title = headline(html) ?? listing.title ?? titleTag(html);
   listing.title = title;
-  const path = decodeURIComponent(new URL(pageUrl).pathname);
   const statusLine = labelled(textBlock, { field: "status", labels: "status|statut|state", value: /^[\s:|]{0,4}([^\n]{3,40})/i, parse: (raw) => raw });
   listing.status = statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? statusFrom(path.replace(/[-/]/g, " "));
-  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" ? "rent" : null);
+  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
   listing.propertyType = propertyTypeFrom(path, title);
   listing.reference ??= referenceFromUrl(pageUrl);
   if (!listing.description) {

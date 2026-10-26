@@ -6,6 +6,7 @@ import { recordEvent } from "../events";
 import { defineTool, type ToolContext } from "../tool";
 import { extractWithAi, mergeExtraction } from "../website/ai";
 import {
+  boilerplateLines,
   extractListing,
   isListingPage,
   looksLikeListingUrl,
@@ -31,7 +32,7 @@ import { allowAll, disallowAll, parseRobots, type RobotsPolicy } from "../websit
  * run only re-reads what may have changed and archives listings that vanished.
  */
 
-const { agencySettings, agents, listings, websitePages } = schema;
+const { agencySettings, agents, listings, postcodes, websitePages } = schema;
 
 const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
@@ -51,6 +52,9 @@ const MAX_DELAY_MS = 60_000;
 
 /** At least this long between two requests to the same site, whatever its robots.txt says. Tests set it to 0. */
 export const crawlPace = { minDelayMs: 1000 };
+
+/** Bump when the reading rules change, so listings read with older rules are read again. */
+const EXTRACTION_VERSION = "v2";
 
 export const ROBOTS_BLOCKED = "Not allowed by the website's robots.txt";
 
@@ -79,6 +83,8 @@ type ReadResult = FetchedPage | { error: string; blocked?: boolean };
  */
 class SiteReader {
   private lastRequest = 0;
+  /** The agency's own details repeated on every page (office address), left out when reading a listing. */
+  private boilerplate: Set<string> | null = null;
   private constructor(
     readonly site: string,
     readonly robots: RobotsPolicy,
@@ -96,6 +102,15 @@ class SiteReader {
     const reader = new SiteReader(site, robots);
     reader.lastRequest = Date.now();
     return reader;
+  }
+
+  /** Read from the home page once per run, on first use. */
+  async siteBoilerplate(): Promise<Set<string>> {
+    if (!this.boilerplate) {
+      const home = await this.read(this.site);
+      this.boilerplate = "html" in home && home.status < 400 ? boilerplateLines(home.html) : new Set();
+    }
+    return this.boilerplate;
   }
 
   get delayMs() {
@@ -192,13 +207,14 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   if (landed !== page.url && page.kind === "listing" && !looksLikeListingUrl(landed, site)) return removePage(ctx, page, now);
 
   const text = pageText(fetched.html);
-  const hash = textFingerprint(text);
+  // A new version of the rules reads every page again, even when it didn't change.
+  const hash = `${EXTRACTION_VERSION}:${textFingerprint(text)}`;
   if (page.kind === "listing" && page.listingId && page.contentHash === hash) {
     await ctx.db.update(websitePages).set({ lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
     return "unchanged";
   }
 
-  const read = extractListing(fetched.html, page.url);
+  const read = extractListing(fetched.html, page.url, await reader.siteBoilerplate());
   let listing: ExtractedListing = read.listing;
   let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
   let isListing = isListingPage(listing, fetched.html);
@@ -248,6 +264,16 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
   const byReference = byUrl.length ? byUrl : await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.reference, reference)));
   const existing = byReference[0];
 
+  // Sites that show "street number, city" without a postcode: look the postcode up by town.
+  if (!facts.postcode && facts.city) {
+    const [known] = await ctx.db
+      .select({ postcode: postcodes.postcode })
+      .from(postcodes)
+      .where(or(sql`lower(${postcodes.locality}) = lower(${facts.city})`, sql`lower(${postcodes.municipality}) = lower(${facts.city})`))
+      .orderBy(asc(postcodes.postcode))
+      .limit(1);
+    if (known) facts = { ...facts, postcode: known.postcode };
+  }
   const status = facts.status ?? "active";
   const values = {
     status,
@@ -270,6 +296,8 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
   };
   // Keep what we had for anything this read of the page didn't find.
   const changes = Object.fromEntries(Object.entries(values).filter(([, v]) => v != null)) as Partial<typeof values>;
+  // The address is one fact: a new read replaces all of it, so no part of an older, wrong one stays.
+  if (facts.street || facts.city) Object.assign(changes, { street: facts.street, houseNumber: facts.houseNumber, postcode: facts.postcode, city: facts.city });
   const photos = facts.photos.slice(0, 20).map((url) => ({ url }));
   const soldNow = (status === "sold" || status === "rented") && !existing?.soldAt;
 
@@ -372,9 +400,19 @@ export const importWebsiteListings = defineTool({
           eq(websitePages.agencyId, ctx.agencyId),
           or(
             eq(websitePages.kind, "pending"),
-            and(eq(websitePages.kind, "listing"), or(isNull(websitePages.lastCheckedAt), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_LISTING)))),
+            and(
+              eq(websitePages.kind, "listing"),
+              or(
+                isNull(websitePages.lastCheckedAt),
+                lt(websitePages.lastCheckedAt, new Date(now - RECHECK_LISTING)),
+                sql`${websitePages.contentHash} is null or ${websitePages.contentHash} not like ${`${EXTRACTION_VERSION}:%`}`,
+              ),
+            ),
             and(eq(websitePages.kind, "error"), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_ERROR))),
-            and(eq(websitePages.kind, "other"), lt(websitePages.lastCheckedAt, new Date(now - RECHECK_OTHER))),
+            and(
+              eq(websitePages.kind, "other"),
+              or(lt(websitePages.lastCheckedAt, new Date(now - RECHECK_OTHER)), sql`${websitePages.contentHash} not like ${`${EXTRACTION_VERSION}:%`}`),
+            ),
           ),
         ),
       )
@@ -471,7 +509,9 @@ export const websiteImportStatus = defineTool({
       .leftJoin(agents, eq(agents.id, listings.agentId))
       .where(eq(websitePages.agencyId, ctx.agencyId))
       .orderBy(asc(sql`case ${websitePages.kind} when 'listing' then 0 when 'error' then 1 when 'pending' then 2 else 3 end`), asc(listings.city));
-    const imported = pages.filter((p) => p.kind === "listing" && p.listingId);
+    // A listing can have several pages (a project, or the same house in two languages): show it once.
+    const seen = new Set<string>();
+    const imported = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,
