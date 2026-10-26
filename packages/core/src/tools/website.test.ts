@@ -98,4 +98,15 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(requested.filter((url) => url.endsWith("sitemap.xml"))).toHaveLength(0);
     expect(requested).toContain(`${home}/aanbod/detail/7900005/te-koop-huis-mortsel`);
   });
+
+  it("archives a listing whose page stays up but says it is no longer online", async () => {
+    site.set(houseUrl, { status: 200, html: `<html><body><h1>Ruime woning te koop in Berchem</h1><p>Helaas staat dit zoekertje niet meer online.</p></body></html>` });
+    await db.update(schema.websitePages).set({ lastCheckedAt: new Date(Date.now() - 2 * 86400000) }).where(eq(schema.websitePages.agencyId, agencyId));
+    const summary = await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+    expect(summary.removed).toBeGreaterThanOrEqual(1);
+    const [house] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900001")));
+    expect(house!.status).toBe("archived");
+    const status = await runTool(tools.websiteImportStatus, ctx, {});
+    expect(status.pageCounts.gone).toBeGreaterThanOrEqual(1);
+  });
 });

@@ -9,6 +9,7 @@ import {
   boilerplateLines,
   extractListing,
   isListingPage,
+  isRemovedListingPage,
   looksLikeListingUrl,
   looksLikeOverviewUrl,
   matchAgent,
@@ -136,11 +137,36 @@ class SiteReader {
   }
 }
 
-/** Candidate listing URLs: from sitemaps, then from overview pages linked from the home page. */
+/** Candidate listing URLs: from overview pages linked from the home page, then from sitemaps. */
 async function discover(reader: SiteReader, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
   const { site } = reader;
   const found = new Set<string>();
   const origin = new URL(site).origin;
+
+  // Overview pages first: they show what is on offer today, while sitemaps are often stale. They get
+  // at most two thirds of the time, so sitemaps still add the listings the overviews don't link.
+  const overviewDeadline = Date.now() + (deadline - Date.now()) * (2 / 3);
+  const home = await reader.read(site);
+  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
+  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
+  const queue = [home];
+  const visited = new Set([normalizeUrl(home.url) ?? site]);
+  let overviews = 0;
+  while (queue.length && reader.fits(overviewDeadline)) {
+    const page = queue.shift()!;
+    // Shallow overview pages first: "/kopen" lists everything, "/kopen/aalst/huis" a slice.
+    const depth = (url: string) => new URL(url).pathname.split("/").filter(Boolean).length;
+    const links = pageLinks(page.html, page.url).sort((a, b) => depth(a) - depth(b));
+    for (const link of links) {
+      if (looksLikeListingUrl(link, site)) found.add(link);
+      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(overviewDeadline)) {
+        visited.add(link);
+        overviews++;
+        const next = await reader.read(link);
+        if ("html" in next && next.status === 200) queue.push(next);
+      }
+    }
+  }
 
   const sitemapQueue: string[] = [...reader.robots.sitemaps];
   if (!sitemapQueue.length) sitemapQueue.push(`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`);
@@ -160,26 +186,6 @@ async function discover(reader: SiteReader, deadline: number): Promise<{ listing
     }
   }
 
-  // Overview pages, also when there is a sitemap: sitemaps are often stale.
-  if (!reader.fits(deadline)) return { listings: found };
-  const home = await reader.read(site);
-  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
-  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
-  const queue = [home];
-  const visited = new Set([normalizeUrl(home.url) ?? site]);
-  let overviews = 0;
-  while (queue.length && reader.fits(deadline)) {
-    const page = queue.shift()!;
-    for (const link of pageLinks(page.html, page.url)) {
-      if (looksLikeListingUrl(link, site)) found.add(link);
-      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(deadline)) {
-        visited.add(link);
-        overviews++;
-        const next = await reader.read(link);
-        if ("html" in next && next.status === 200) queue.push(next);
-      }
-    }
-  }
   return { listings: found };
 }
 
@@ -217,6 +223,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   const read = extractListing(fetched.html, page.url, await reader.siteBoilerplate());
   let listing: ExtractedListing = read.listing;
   let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
+  // Some sites keep a removed listing's page up with a notice instead of a 404.
+  if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
   let isListing = isListingPage(listing, fetched.html);
   const knownAgent = matchAgent(team, listing.agentName, text);
   const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
@@ -523,6 +531,14 @@ export const websiteImportStatus = defineTool({
       /** People the website names as contact who aren't agents here yet. */
       unknownAgents: unknownNames,
       failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
+      /** Pages we know of, by what they turned out to be. */
+      pageCounts: {
+        listing: imported.length,
+        pending: pages.filter((p) => p.kind === "pending").length,
+        gone: pages.filter((p) => p.kind === "gone").length,
+        other: pages.filter((p) => p.kind === "other").length,
+        error: pages.filter((p) => p.kind === "error").length,
+      },
       pending: pages.filter((p) => p.kind === "pending").length,
     };
   },
