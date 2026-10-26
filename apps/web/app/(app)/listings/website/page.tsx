@@ -57,6 +57,15 @@ export default async function WebsiteImportPage() {
                 {(sync.remaining ?? 0) > 0 && ` ${sync.remaining} pages still to read; the next run continues with them.`}
                 {sync.error && <span className="text-danger"> {sync.error}</span>}
               </p>
+              {((sync.blocked ?? 0) > 0 || (sync.crawlDelay ?? 0) > 1) && (
+                <p className="mt-2 max-w-2xl text-[12px] text-muted">
+                  We follow your website&apos;s robots.txt.
+                  {(sync.blocked ?? 0) > 0 && ` It doesn't allow crawlers on ${sync.blocked} listing ${sync.blocked === 1 ? "page" : "pages"}, so we leave ${sync.blocked === 1 ? "it" : "them"} out.`}
+                  {(sync.crawlDelay ?? 0) > 1 && ` It asks for ${sync.crawlDelay} seconds between pages, so a full read takes several nights.`} To let us read all
+                  listings at a normal pace, add these two lines to it:{" "}
+                  <code className="rounded bg-hover px-1 font-mono">User-agent: ViewingBot</code> <code className="rounded bg-hover px-1 font-mono">Allow: /</code>
+                </p>
+              )}
             </>
           )}
 
@@ -172,7 +181,7 @@ export default async function WebsiteImportPage() {
           {!sync.lastRunAt && (
             <p className="mt-5 flex items-start gap-1.5 text-[12px] text-faint">
               <Globe className="mt-0.5 size-3.5 shrink-0" />
-              We read your public pages like a search engine does, about once a day, and only on the address you give here.
+              We read your public pages like a search engine does: once a day, one page at a time, only on the address you give here and only where your robots.txt allows.
             </p>
           )}
         </div>

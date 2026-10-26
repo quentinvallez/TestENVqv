@@ -2,6 +2,7 @@ import { and, db, eq, newId, schema } from "@viewing/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tools } from "../registry";
 import { runTool, type ToolContext } from "../tool";
+import { crawlPace } from "./website";
 
 // A small agency website served from memory instead of the network.
 const site = new Map<string, { status: number; html: string }>();
@@ -28,6 +29,7 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
   const flatUrl = `${home}/aanbod/detail/7900002/te-koop-appartement-gent`;
 
   beforeAll(async () => {
+    crawlPace.minDelayMs = 0;
     await db.insert(schema.organization).values({ id: agencyId, name: "Immo Test", slug: agencyId, createdAt: new Date() });
     await db.insert(schema.agencySettings).values({ agencyId });
     await runTool(tools.seedDemoData, ctx, {});
@@ -74,5 +76,16 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(result).toMatchObject({ status: "created" });
     expect(await runTool(tools.importWebsitePage, ctx, { url: newUrl, useAi: false })).toMatchObject({ status: "skipped", reason: "read recently" });
     expect(await runTool(tools.importWebsitePage, ctx, { url: "https://evil.example/aanbod/detail/7900003/x", useAi: false })).toMatchObject({ status: "skipped" });
+  });
+
+  it("doesn't read pages the site's robots.txt disallows, and archives listings read from them before", async () => {
+    site.set(`${home}/robots.txt`, { status: 200, html: `User-agent: *\nDisallow: /aanbod/detail/7900003\nSitemap: ${home}/sitemap.xml` });
+    site.set(`${home}/sitemap.xml`, { status: 200, html: `<urlset><url><loc>${houseUrl}</loc></url><url><loc>${home}/aanbod/detail/7900003/te-koop-villa-schilde</loc></url></urlset>` });
+    await db.update(schema.websitePages).set({ lastCheckedAt: new Date(Date.now() - 2 * 86400000) }).where(eq(schema.websitePages.agencyId, agencyId));
+    const summary = await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+    expect(summary.blocked).toBeGreaterThanOrEqual(1);
+    const [villa] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900003")));
+    expect(villa!.status).toBe("archived");
+    expect(await runTool(tools.importWebsitePage, ctx, { url: `${home}/aanbod/detail/7900003/villa-schilde-fr`, useAi: false })).toMatchObject({ status: "blocked" });
   });
 });

@@ -55,6 +55,10 @@ export type WebsiteSync = {
   /** Listings whose page disappeared, now archived. */
   removed?: number;
   failed?: number;
+  /** Listing pages the site's robots.txt doesn't let us read. */
+  blocked?: number;
+  /** Seconds the site's robots.txt asks between requests. */
+  crawlDelay?: number;
   /** Pages still to read; the next run continues with them. */
   remaining?: number;
   error?: string;

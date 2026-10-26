@@ -16,13 +16,13 @@ import {
   pageLinks,
   pageText,
   referenceFromUrl,
-  robotsSitemaps,
   sameSite,
   sitemapEntries,
   textFingerprint,
   type ExtractedListing,
 } from "../website/extract";
-import { fetchSitePage } from "../website/fetch";
+import { fetchSitePage, type FetchedPage } from "../website/fetch";
+import { allowAll, disallowAll, parseRobots, type RobotsPolicy } from "../website/robots";
 
 /*
  * Listings from the agency's own website: we find the listing pages (sitemap,
@@ -44,11 +44,17 @@ const RECHECK_VISIT = 6 * HOUR;
 const MAX_SITEMAPS = 12;
 const MAX_OVERVIEW_PAGES = 15;
 const MAX_NEW_PAGES_PER_RUN = 400;
-const CONCURRENCY = 4;
+/** The longest crawl delay we wait for; a site asking more is read at this pace. */
+const MAX_DELAY_MS = 60_000;
+
+/** At least this long between two requests to the same site, whatever its robots.txt says. Tests set it to 0. */
+export const crawlPace = { minDelayMs: 1000 };
+
+export const ROBOTS_BLOCKED = "Not allowed by the website's robots.txt";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
-type PageOutcome = "created" | "updated" | "unchanged" | "removed" | "other" | "failed";
+type PageOutcome = "created" | "updated" | "unchanged" | "removed" | "other" | "failed" | "blocked";
 
 async function settingsRow(ctx: ToolContext) {
   const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
@@ -61,29 +67,72 @@ export function websiteFromInput(input: string): string | null {
   return normalizeUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
 }
 
-async function safeFetch(url: string, site: string) {
-  try {
-    return await fetchSitePage(url, site);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+type ReadResult = FetchedPage | { error: string; blocked?: boolean };
+
+/**
+ * Reads one site the way its robots.txt asks: only paths it allows for our
+ * crawler (or for all crawlers), one request at a time, with the delay it
+ * sets between requests. Without a robots.txt everything is allowed; when the
+ * file can't be read because the site fails, nothing is (as search engines do).
+ */
+class SiteReader {
+  private lastRequest = 0;
+  private constructor(
+    readonly site: string,
+    readonly robots: RobotsPolicy,
+  ) {}
+
+  static async open(site: string) {
+    let robots = allowAll;
+    try {
+      const file = await fetchSitePage(`${new URL(site).origin}/robots.txt`, site);
+      if (file.status === 200) robots = parseRobots(file.html);
+      else if (file.status >= 500) robots = disallowAll;
+    } catch {
+      robots = disallowAll;
+    }
+    const reader = new SiteReader(site, robots);
+    reader.lastRequest = Date.now();
+    return reader;
+  }
+
+  get delayMs() {
+    return Math.max(crawlPace.minDelayMs, Math.min((this.robots.crawlDelay ?? 0) * 1000, MAX_DELAY_MS));
+  }
+
+  /** Whether one more request still fits before the deadline, counting the wait. */
+  fits(deadline: number) {
+    return Math.max(Date.now(), this.lastRequest + this.delayMs) < deadline;
+  }
+
+  async read(url: string): Promise<ReadResult> {
+    if (!this.robots.allowed(url)) return { error: ROBOTS_BLOCKED, blocked: true };
+    const wait = this.lastRequest + this.delayMs - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    try {
+      return await fetchSitePage(url, this.site, this.robots.allowed);
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      this.lastRequest = Date.now();
+    }
   }
 }
 
 /** Candidate listing URLs: from sitemaps, then from overview pages linked from the home page. */
-async function discover(site: string, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
+async function discover(reader: SiteReader, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
+  const { site } = reader;
   const found = new Set<string>();
   const origin = new URL(site).origin;
 
-  const sitemapQueue: string[] = [];
-  const robots = await safeFetch(`${origin}/robots.txt`, site);
-  if ("html" in robots && robots.status === 200) sitemapQueue.push(...robotsSitemaps(robots.html));
+  const sitemapQueue: string[] = [...reader.robots.sitemaps];
   if (!sitemapQueue.length) sitemapQueue.push(`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`);
   const seenSitemaps = new Set<string>();
-  while (sitemapQueue.length && seenSitemaps.size < MAX_SITEMAPS && Date.now() < deadline) {
+  while (sitemapQueue.length && seenSitemaps.size < MAX_SITEMAPS && reader.fits(deadline)) {
     const next = sitemapQueue.shift()!;
     if (seenSitemaps.has(next)) continue;
     seenSitemaps.add(next);
-    const page = await safeFetch(next, site);
+    const page = await reader.read(next);
     if (!("html" in page) || page.status !== 200) continue;
     const entries = sitemapEntries(page.html);
     // Listing sitemaps first: their names usually say so.
@@ -95,20 +144,21 @@ async function discover(site: string, deadline: number): Promise<{ listings: Set
   }
 
   // Overview pages, also when there is a sitemap: sitemaps are often stale.
-  const home = await safeFetch(site, site);
-  if (!("html" in home)) return { listings: found, error: `The website could not be read: ${home.error}` };
+  if (!reader.fits(deadline)) return { listings: found };
+  const home = await reader.read(site);
+  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
   if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
   const queue = [home];
   const visited = new Set([normalizeUrl(home.url) ?? site]);
   let overviews = 0;
-  while (queue.length && Date.now() < deadline) {
+  while (queue.length && reader.fits(deadline)) {
     const page = queue.shift()!;
     for (const link of pageLinks(page.html, page.url)) {
       if (looksLikeListingUrl(link, site)) found.add(link);
-      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site)) {
+      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(deadline)) {
         visited.add(link);
         overviews++;
-        const next = await safeFetch(link, site);
+        const next = await reader.read(link);
         if ("html" in next && next.status === 200) queue.push(next);
       }
     }
@@ -117,9 +167,15 @@ async function discover(site: string, deadline: number): Promise<{ listings: Set
 }
 
 /** Reads one page and creates, updates or archives its listing. */
-async function processPage(ctx: ToolContext, site: string, page: PageRow, team: AgentRow[], useAi: boolean): Promise<PageOutcome> {
+async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean): Promise<PageOutcome> {
+  const { site } = reader;
   const now = new Date();
-  const fetched = await safeFetch(page.url, site);
+  const fetched = await reader.read(page.url);
+  if ("blocked" in fetched) {
+    // The site doesn't want this page read: we stop using what we read from it before.
+    await ctx.db.update(websitePages).set({ kind: "error", lastError: fetched.error, lastCheckedAt: now }).where(eq(websitePages.id, page.id));
+    return page.listingId ? removePage(ctx, { ...page, kind: "error" }, now, "error") : "blocked";
+  }
   if (!("html" in fetched)) {
     await ctx.db.update(websitePages).set({ kind: page.kind === "listing" ? "listing" : "error", lastError: fetched.error, lastCheckedAt: now }).where(eq(websitePages.id, page.id));
     return "failed";
@@ -170,8 +226,8 @@ async function processPage(ctx: ToolContext, site: string, page: PageRow, team: 
   return outcome.created ? "created" : "updated";
 }
 
-async function removePage(ctx: ToolContext, page: PageRow, now: Date): Promise<PageOutcome> {
-  await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gone" | "error" = "gone"): Promise<PageOutcome> {
+  if (kind === "gone") await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
   if (!page.listingId) return "other";
   const [archived] = await ctx.db
     .update(listings)
@@ -259,16 +315,6 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
   return { listingId: created.id, created: true };
 }
 
-async function runPool<T>(items: T[], deadline: number, work: (item: T) => Promise<void>) {
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: CONCURRENCY }, async () => {
-      while (next < items.length && Date.now() < deadline) await work(items[next++]!);
-    }),
-  );
-  return next;
-}
-
 async function team(ctx: ToolContext): Promise<AgentRow[]> {
   return ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true)));
 }
@@ -294,8 +340,11 @@ export const importWebsiteListings = defineTool({
     }
 
     // Discovery takes at most a third of the budget; reading pages the rest.
-    const discovered = await discover(site, started + (deadline - started) / 3);
-    const candidates = [...discovered.listings].slice(0, MAX_NEW_PAGES_PER_RUN);
+    const reader = await SiteReader.open(site);
+    const discovered = await discover(reader, started + (deadline - started) / 3);
+    const allowed = [...discovered.listings].filter((url) => reader.robots.allowed(url));
+    const blockedLinks = discovered.listings.size - allowed.length;
+    const candidates = allowed.slice(0, MAX_NEW_PAGES_PER_RUN);
     if (candidates.length) {
       await ctx.db
         .insert(websitePages)
@@ -320,10 +369,14 @@ export const importWebsiteListings = defineTool({
       )
       .orderBy(asc(sql`case ${websitePages.kind} when 'pending' then 0 when 'listing' then 1 else 2 end`), asc(websitePages.lastCheckedAt));
     const people = await team(ctx);
-    const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0 };
-    const done = await runPool(due, deadline, async (page) => {
-      tally[await processPage(ctx, site, page, people, input.useAi)]++;
-    });
+    const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
+    let done = 0;
+    for (const page of due) {
+      // Blocked pages cost no request, so they don't wait for a slot.
+      if (reader.robots.allowed(page.url) && !reader.fits(deadline)) break;
+      tally[await processPage(ctx, reader, page, people, input.useAi)]++;
+      done++;
+    }
 
     const [{ count: listingPages } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(*)::int` })
@@ -336,6 +389,8 @@ export const importWebsiteListings = defineTool({
       updated: tally.updated + tally.unchanged,
       removed: tally.removed,
       failed: tally.failed,
+      blocked: tally.blocked + blockedLinks,
+      crawlDelay: reader.robots.crawlDelay ?? undefined,
       remaining: due.length - done,
       ...(discovered.error && !due.length ? { error: discovered.error } : {}),
     };
@@ -360,7 +415,7 @@ export const importWebsitePage = defineTool({
     if (!inserted && page.lastCheckedAt && Date.now() - page.lastCheckedAt.getTime() < RECHECK_VISIT) return { status: "skipped" as const, reason: "read recently" };
     // Claim the page so parallel visits don't read it twice.
     await ctx.db.update(websitePages).set({ lastCheckedAt: new Date() }).where(eq(websitePages.id, page.id));
-    const outcome = await processPage(ctx, site, page, await team(ctx), input.useAi);
+    const outcome = await processPage(ctx, await SiteReader.open(site), page, await team(ctx), input.useAi);
     const [after] = await ctx.db.select({ listingId: websitePages.listingId }).from(websitePages).where(eq(websitePages.id, page.id));
     return { status: outcome, listingId: after?.listingId ?? null };
   },
@@ -416,8 +471,10 @@ export const websiteImportStatus = defineTool({
 });
 
 /** Daily re-read of every agency's website, so new, changed and removed listings follow on their own. */
-export async function syncWebsitesForAllAgencies(budgetSeconds = 50, database: ToolContext["db"] = db) {
+export async function syncWebsitesForAllAgencies(totalSeconds = 270, database: ToolContext["db"] = db) {
   const rows = await database.select({ agencyId: agencySettings.agencyId }).from(agencySettings).where(sql`${agencySettings.websiteUrl} is not null`);
+  // Sites with a crawl delay are read slowly, so each agency gets its share of the run.
+  const budgetSeconds = Math.max(20, Math.min(240, Math.floor(totalSeconds / Math.max(rows.length, 1))));
   const results: Record<string, WebsiteSync | { error: string }> = {};
   for (const { agencyId } of rows) {
     try {
