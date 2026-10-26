@@ -39,6 +39,8 @@ const RECHECK_LISTING = 20 * HOUR;
 /** Pages that weren't listings, or failed, are tried again after this. */
 const RECHECK_OTHER = 14 * 24 * HOUR;
 const RECHECK_ERROR = 24 * HOUR;
+/** Sitemaps and overview pages are searched again at most this often while pages are still waiting to be read. */
+const REDISCOVER = 20 * HOUR;
 /** A page visit reported by the widget triggers a read at most this often. */
 const RECHECK_VISIT = 6 * HOUR;
 const MAX_SITEMAPS = 12;
@@ -335,13 +337,22 @@ export const importWebsiteListings = defineTool({
     const settings = await settingsRow(ctx);
     const site = input.websiteUrl ? websiteFromInput(input.websiteUrl) : settings?.websiteUrl;
     if (!site) throw new Error("Set the agency's website address first");
-    if (input.websiteUrl && site !== settings?.websiteUrl) {
+    const siteChanged = Boolean(input.websiteUrl && site !== settings?.websiteUrl);
+    if (siteChanged) {
       await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, websiteUrl: site }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { websiteUrl: site } });
     }
 
-    // Discovery takes at most a third of the budget; reading pages the rest.
+    // Finding the listing pages takes at most a third of the budget; reading them the rest. While pages
+    // found earlier are still waiting, a run goes straight to reading them (runs follow each other).
     const reader = await SiteReader.open(site);
-    const discovered = await discover(reader, started + (deadline - started) / 3);
+    const previous = settings?.websiteSync ?? {};
+    const [{ count: waiting } = { count: 0 }] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(websitePages)
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "pending")));
+    const recentlyDiscovered = previous.discoveredAt && Date.now() - new Date(previous.discoveredAt).getTime() < REDISCOVER;
+    const rediscover = siteChanged || waiting === 0 || !recentlyDiscovered;
+    const discovered = rediscover ? await discover(reader, started + (deadline - started) / 3) : { listings: new Set<string>() };
     const allowed = [...discovered.listings].filter((url) => reader.robots.allowed(url));
     const blockedLinks = discovered.listings.size - allowed.length;
     const candidates = allowed.slice(0, MAX_NEW_PAGES_PER_RUN);
@@ -382,17 +393,23 @@ export const importWebsiteListings = defineTool({
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
       .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing")));
+    const [{ count: pagesFound } = { count: 0 }] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(websitePages)
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), inArray(websitePages.kind, ["pending", "listing", "error"])));
     const summary: WebsiteSync = {
       lastRunAt: new Date().toISOString(),
+      discoveredAt: rediscover ? new Date(started).toISOString() : previous.discoveredAt,
       found: listingPages,
+      pages: pagesFound,
       created: tally.created,
       updated: tally.updated + tally.unchanged,
       removed: tally.removed,
       failed: tally.failed,
-      blocked: tally.blocked + blockedLinks,
+      blocked: rediscover ? tally.blocked + blockedLinks : (previous.blocked ?? 0) + tally.blocked,
       crawlDelay: reader.robots.crawlDelay ?? undefined,
       remaining: due.length - done,
-      ...(discovered.error && !due.length ? { error: discovered.error } : {}),
+      ...("error" in discovered && discovered.error && !due.length ? { error: discovered.error } : {}),
     };
     await ctx.db.update(agencySettings).set({ websiteSync: summary }).where(eq(agencySettings.agencyId, ctx.agencyId));
     await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...summary, site } });

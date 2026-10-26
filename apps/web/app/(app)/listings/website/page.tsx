@@ -47,7 +47,7 @@ export default async function WebsiteImportPage() {
           {sync.lastRunAt && (
             <>
               <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Stat label="Listings on your site" value={sync.found ?? 0} hint={host ?? undefined} />
+                <Stat label="Listings read" value={sync.found ?? 0} hint={sync.pages ? `of ${sync.pages} listing pages found` : (host ?? undefined)} />
                 <Stat label="New in last run" value={sync.created ?? 0} />
                 <Stat label="Checked or updated" value={sync.updated ?? 0} />
                 <Stat label="Removed from site" value={sync.removed ?? 0} hint="Archived here" />

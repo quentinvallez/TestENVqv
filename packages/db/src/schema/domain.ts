@@ -48,8 +48,12 @@ export type ChannelSettings = {
 /** Outcome of the last import of listings from the agency's website. */
 export type WebsiteSync = {
   lastRunAt?: string;
-  /** Listing pages found on the site in that run. */
+  /** When we last searched the sitemaps and overview pages for listing pages. */
+  discoveredAt?: string;
+  /** Listings read from the site so far. */
   found?: number;
+  /** Listing pages found on the site, read or still to read. */
+  pages?: number;
   created?: number;
   updated?: number;
   /** Listings whose page disappeared, now archived. */
