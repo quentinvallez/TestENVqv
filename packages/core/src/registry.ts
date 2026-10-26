@@ -2,7 +2,7 @@ import { listAgents } from "./tools/agents";
 import { dashboardSummary, recentActivity } from "./tools/activity";
 import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
-import { seedDemoData } from "./tools/demo";
+import { resetToDemoData, seedDemoData } from "./tools/demo";
 import { listLeads, moveLeadStage } from "./tools/leads";
 import { assignListingAgent, createListing, getListing, listListings } from "./tools/listings";
 import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
@@ -63,6 +63,7 @@ export const tools = {
   listAutomationRuns,
   markAttendance,
   seedDemoData,
+  resetToDemoData,
   receivePortalLead,
   receiveEmail,
   receiveWhatsApp,

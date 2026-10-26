@@ -17,5 +17,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
 
   const { state, nonce } = createState({ agencyId: ctx.agencyId, agentId, provider });
   (await cookies()).set(stateCookie, nonce, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600, path: "/api/calendar" });
-  return Response.redirect(authorizeUrl(provider, { redirectUri: redirectUri(request, provider), state, loginHint: availability.agent.email }), 302);
+  return Response.redirect(authorizeUrl(provider, { redirectUri: redirectUri(request, provider), state, loginHint: availability.agent.email ?? undefined }), 302);
 }

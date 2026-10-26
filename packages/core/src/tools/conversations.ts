@@ -130,6 +130,8 @@ export const replyToConversation = defineTool({
     body: z.string().trim().min(1).max(5000),
     offeredSlots: z.array(z.string()).default([]),
     cancelAppointmentId: z.string().optional(),
+    cancelReason: z.string().trim().max(500).optional(),
+    reopenLead: z.boolean().default(true).describe("After cancelling, move the lead back to 'invited' so they can pick a new time"),
     leadStage: z.enum(["invited", "booked", "visited", "follow_up", "offer"]).optional(),
     subject: z.string().trim().max(300).optional(),
     kind: z.string().max(40).optional().describe('What the message is for, e.g. "reply", "reminder", "no_show", "follow_up"'),
@@ -147,7 +149,7 @@ export const replyToConversation = defineTool({
     if (!conversation) throw new Error("Conversation not found");
 
     if (input.cancelAppointmentId) {
-      await cancelAppointment.run(ctx, { appointmentId: input.cancelAppointmentId, reason: "Client cancelled by message", reopenLead: true });
+      await cancelAppointment.run(ctx, { appointmentId: input.cancelAppointmentId, reason: input.cancelReason ?? "Client cancelled by message", reopenLead: input.reopenLead });
     }
     const sent = await sendMessage(ctx, {
       conversationId: conversation.id,

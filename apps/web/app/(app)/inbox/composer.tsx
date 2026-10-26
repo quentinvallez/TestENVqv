@@ -11,6 +11,7 @@ const draftKindLabel: Record<string, string> = {
   follow_up: "Follow-up after the viewing",
   no_show: "After a no-show",
   nudge: "Check-in, no answer yet",
+  off_market: "Viewing off: the listing is no longer on offer",
 };
 
 export function DraftComposer({

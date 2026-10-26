@@ -102,6 +102,8 @@ async function sendReminders(ctx: ToolContext, now: Date, autoSend: boolean) {
 
   for (const apt of candidates) {
     if (!apt.contact || !reminderDue(apt, now)) continue;
+    // No reminder for a viewing of a listing that is no longer on offer: the planner drafts a cancellation instead.
+    if (apt.type === "viewing" && apt.listing && apt.listing.status !== "active") continue;
     const runId = await claim(ctx, "reminder", "appointment", apt.id, apt.startsAt.toISOString());
     if (!runId) continue;
     const contact = apt.contact;

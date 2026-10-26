@@ -154,6 +154,46 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
   },
 };
 
+/** When a listing with planned viewings goes under option, is sold or rented, or is taken off the site. `other` is the viewing's date and time. */
+export const offMarketTemplates: Record<"under_offer" | "sold" | "rented" | "unavailable", Record<Lang, (v: Vars) => string>> = {
+  under_offer: {
+    nl: (v) => `Beste ${v.name},\n\n${v.address}, waarvoor u een bezoek gepland had op ${v.other}, is intussen onder optie. Daarom gaat uw bezoek helaas niet door. Valt de optie weg, dan laten we het u meteen weten.`,
+    fr: (v) => `Bonjour ${v.name},\n\n${v.address}, que vous deviez visiter le ${v.other}, est entre-temps sous option. Votre visite est donc malheureusement annulée. Si l'option tombe, nous vous prévenons tout de suite.`,
+    en: (v) => `Dear ${v.name},\n\n${v.address}, which you were due to view on ${v.other}, is now under option. Unfortunately that means your viewing is cancelled. If the option falls through, we'll let you know straight away.`,
+  },
+  sold: {
+    nl: (v) => `Beste ${v.name},\n\n${v.address}, waarvoor u een bezoek gepland had op ${v.other}, is intussen verkocht. Daarom gaat uw bezoek helaas niet door.`,
+    fr: (v) => `Bonjour ${v.name},\n\n${v.address}, que vous deviez visiter le ${v.other}, a entre-temps été vendu. Votre visite est donc malheureusement annulée.`,
+    en: (v) => `Dear ${v.name},\n\n${v.address}, which you were due to view on ${v.other}, has now been sold. Unfortunately that means your viewing is cancelled.`,
+  },
+  rented: {
+    nl: (v) => `Beste ${v.name},\n\n${v.address}, waarvoor u een bezoek gepland had op ${v.other}, is intussen verhuurd. Daarom gaat uw bezoek helaas niet door.`,
+    fr: (v) => `Bonjour ${v.name},\n\n${v.address}, que vous deviez visiter le ${v.other}, a entre-temps été loué. Votre visite est donc malheureusement annulée.`,
+    en: (v) => `Dear ${v.name},\n\n${v.address}, which you were due to view on ${v.other}, has now been let. Unfortunately that means your viewing is cancelled.`,
+  },
+  unavailable: {
+    nl: (v) => `Beste ${v.name},\n\n${v.address}, waarvoor u een bezoek gepland had op ${v.other}, is niet langer beschikbaar. Daarom gaat uw bezoek helaas niet door.`,
+    fr: (v) => `Bonjour ${v.name},\n\n${v.address}, que vous deviez visiter le ${v.other}, n'est plus disponible. Votre visite est donc malheureusement annulée.`,
+    en: (v) => `Dear ${v.name},\n\n${v.address}, which you were due to view on ${v.other}, is no longer available. Unfortunately that means your viewing is cancelled.`,
+  },
+};
+
+/** The closing line of an off-market message: with similar listings, or an invitation to say what they look for. */
+export const offMarketClosing = {
+  similar: { nl: "Misschien zijn deze panden iets voor u:", fr: "Ces biens pourraient vous intéresser :", en: "These properties might suit you:" },
+  none: {
+    nl: "Laat gerust weten wat u zoekt, dan houden we u op de hoogte van nieuwe panden.",
+    fr: "Dites-nous ce que vous recherchez et nous vous tiendrons au courant des nouveaux biens.",
+    en: "Let us know what you're looking for and we'll keep you posted on new properties.",
+  },
+} satisfies Record<string, Record<Lang, string>>;
+
+export const offMarketSubject = {
+  nl: "Uw bezoek gaat niet door",
+  fr: "Votre visite est annulée",
+  en: "Your viewing is cancelled",
+} satisfies Record<Lang, string>;
+
 export const reminderSubject = {
   nl: "Herinnering: uw bezoek",
   fr: "Rappel : votre visite",

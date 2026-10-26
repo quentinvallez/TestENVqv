@@ -21,6 +21,8 @@ const schema = z.object({
   epcScore: z.number().int().nullable().describe("kWh/m² per year"),
   epcLabel: z.string().nullable().describe("A+ to G"),
   agentName: z.string().nullable().describe("Full name of the agent or contact person for this property, if a person is named"),
+  agentEmail: z.string().nullable().describe("That person's own email address, if shown (not the office's general address)"),
+  agentPhone: z.string().nullable().describe("That person's phone number, if shown"),
 });
 
 const system = `You read one page of a Belgian real estate agency's website and copy the property facts it shows into fields.
@@ -46,6 +48,8 @@ export function mergeExtraction(rules: ExtractedListing, ai: Omit<ExtractedListi
     const preferAi = key === "propertyType" || key === "status" || key === "transaction" || key === "agentName";
     if (preferAi || merged[key] == null) (merged as Record<string, unknown>)[key] = value;
   }
+  if (merged.agentPhone) merged.agentPhone = merged.agentPhone.replace(/[^\d+]/g, "").replace(/^0/, "+32") || null;
+  if (merged.agentEmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(merged.agentEmail)) merged.agentEmail = null;
   if (merged.postcode && !/^[1-9]\d{3}$/.test(merged.postcode)) merged.postcode = merged.postcode.match(/[1-9]\d{3}/)?.[0] ?? null;
   return merged;
 }

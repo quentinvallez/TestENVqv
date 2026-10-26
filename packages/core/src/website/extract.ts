@@ -30,6 +30,9 @@ export type ExtractedListing = {
   photos: string[];
   /** The contact person the page names for this listing, if any. */
   agentName: string | null;
+  /** Their email and phone when the page shows them next to the name. */
+  agentEmail: string | null;
+  agentPhone: string | null;
 };
 
 export const emptyListing = (): ExtractedListing => ({
@@ -52,6 +55,8 @@ export const emptyListing = (): ExtractedListing => ({
   epcLabel: null,
   photos: [],
   agentName: null,
+  agentEmail: null,
+  agentPhone: null,
 });
 
 // --- URLs ---------------------------------------------------------------
@@ -438,6 +443,26 @@ function titleTag(html: string): string | null {
   return t ? decodeEntities(t).replace(/\s+/g, " ").trim() || null : null;
 }
 
+const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
+/** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
+const notAPerson = /\b(immo|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse)\b/i;
+
+const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * The email and phone shown right after a person's name. An email counts only when it carries their
+ * first or last name, so the office's info@ address isn't taken for theirs.
+ */
+export function contactNear(textBlock: string, name: string): { agentEmail: string | null; agentPhone: string | null } {
+  const at = textBlock.indexOf(name);
+  if (at < 0) return { agentEmail: null, agentPhone: null };
+  const window = textBlock.slice(at + name.length, at + name.length + 250);
+  const parts = fold(name).split(/\s+/).filter((p) => p.length > 2);
+  const email = [...window.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].map((m) => m[0].toLowerCase()).find((e) => parts.some((p) => fold(e.split("@")[0]!).includes(p)));
+  const phone = window.match(/(?<![\d.])(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}(?!\d)/)?.[0];
+  return { agentEmail: email ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
+}
+
 /**
  * Listing facts read by rules: structured data first, then labelled values in
  * the page text, then the URL. Fields the page doesn't show stay null.
@@ -460,6 +485,16 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     if (value != null) (listing as Record<string, unknown>)[rule.field] = value;
   }
   if (listing.agentName && /^(contact|makelaar|agent|bel|mail)/i.test(listing.agentName)) listing.agentName = null;
+  // A name right before a BIV/IPI licence number is the agent: "Wout Timmerman BIV: 519.807 0479 18 38 35".
+  if (!listing.agentName) {
+    for (const match of textBlock.matchAll(new RegExp(`(?:^|\\n)[ \\t]*(${personName.source})[ \\t]*[,|–-]?[ \\t]*(?:\\n[ \\t]*)?(?:BIV|IPI|B\\.I\\.V\\.)(?![a-z])`, "g"))) {
+      if (!notAPerson.test(match[1]!)) {
+        listing.agentName = match[1]!;
+        break;
+      }
+    }
+  }
+  if (listing.agentName) Object.assign(listing, contactNear(textBlock, listing.agentName));
 
   // Address: a labelled line, else the first "postcode city" in the text.
   const addressLine = labelled(textBlock, { field: "street", labels: "adres|locatie|ligging|adresse|address|location", value: /^[\s:|]{0,4}([^\n]{4,90})/i, parse: (raw) => raw });

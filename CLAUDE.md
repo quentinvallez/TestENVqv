@@ -31,6 +31,7 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Offered times always come from the booking engine and are appended by `composeMessage`; the AI never writes times or links itself.
 - Outbound messages are stored with `delivery: "simulated"` until Outlook/Gmail/WhatsApp are connected. Never present them as sent.
 - Client-facing text exists in NL, FR and EN (`planner/language.ts`, `apps/web/lib/widget-i18n.ts`).
+- When a listing goes under option, sold, rented or off the website, `draftOffMarketNotices` (`planner/off-market.ts`) drafts a message to each client with an upcoming viewing; approving it sends the message and cancels the viewing. Only `active` listings take bookings or get reminders.
 - Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it.
 
 ## Channels
