@@ -6,9 +6,11 @@ import { crawlPace } from "./website";
 
 // A small agency website served from memory instead of the network.
 const site = new Map<string, { status: number; html: string }>();
+const requested: string[] = [];
 vi.mock("../website/fetch", () => ({
   FetchError: class extends Error {},
   fetchSitePage: async (url: string) => {
+    requested.push(url);
     const page = site.get(url.replace(/\/$/, ""));
     if (!page) return { url, status: 404, html: "Not found" };
     return { url, ...page };
@@ -46,7 +48,7 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
 
   it("finds the listing pages and creates the listings with the agent the page names", async () => {
     const summary = await runTool(tools.importWebsiteListings, ctx, { websiteUrl: "www.immo-test.be", useAi: false, budgetSeconds: 20 });
-    expect(summary).toMatchObject({ created: 2, found: 2, failed: 0, remaining: 0 });
+    expect(summary).toMatchObject({ created: 2, found: 2, pages: 2, failed: 0, remaining: 0 });
     const [house] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900001")));
     expect(house).toMatchObject({ status: "active", transaction: "sale", propertyType: "house", price: 495000, street: "Statiestraat", houseNumber: "10", postcode: "2600", city: "Berchem", bedrooms: 3, livingArea: 160, epcScore: 180, websiteUrl: houseUrl });
     const [sofie] = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.name, "Sofie Peeters")));
@@ -87,5 +89,13 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     const [villa] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900003")));
     expect(villa!.status).toBe("archived");
     expect(await runTool(tools.importWebsitePage, ctx, { url: `${home}/aanbod/detail/7900003/villa-schilde-fr`, useAi: false })).toMatchObject({ status: "blocked" });
+  });
+
+  it("goes straight to reading while pages found earlier are still waiting", async () => {
+    await db.insert(schema.websitePages).values({ agencyId, url: `${home}/aanbod/detail/7900005/te-koop-huis-mortsel` });
+    requested.length = 0;
+    await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+    expect(requested.filter((url) => url.endsWith("sitemap.xml"))).toHaveLength(0);
+    expect(requested).toContain(`${home}/aanbod/detail/7900005/te-koop-huis-mortsel`);
   });
 });
