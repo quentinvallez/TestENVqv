@@ -57,14 +57,14 @@ const cardParts = [
   { key: "onOffer", label: "on offer", className: "bg-fg" },
   { key: "underOffer", label: "under option", className: "bg-muted" },
   { key: "soldOrRented", label: "sold or rented", className: "bg-faint" },
-  { key: "toRead", label: "to read", className: "bg-line-strong" },
-  { key: "offline", label: "taken offline", className: "bg-line" },
-  { key: "notListing", label: "not a listing", className: "bg-line" },
+  { key: "toRead", label: "to read", className: "bg-info" },
+  { key: "offline", label: "taken offline", className: "bg-line-strong" },
+  { key: "notListing", label: "not a listing", className: "bg-line-strong" },
   { key: "failed", label: "could not be read", className: "bg-danger" },
 ] as const;
 
 const viaLabel: Record<Overview["via"], string> = {
-  single: "one page",
+  single: "all on one page",
   links: "through its page links",
   form: "through its search form",
   guess: "page by page",
@@ -112,7 +112,8 @@ function OverviewRow({ overview: o }: { overview: Overview }) {
         </>
       )}
       <div className="mt-1 text-[12px] text-faint">
-        {viaLabel[o.via]}, {o.pages} {o.pages === 1 ? "page" : "pages"}
+        {viaLabel[o.via]}
+        {o.via !== "single" && `, ${o.pages} ${o.pages === 1 ? "page" : "pages"}`}
         {!o.complete && "; still going through it"}
         {o.complete && missing > 0 && `; ${missing} ${missing === 1 ? "card" : "cards"} we couldn't reach. Paste the link of a missing listing below.`}
       </div>
