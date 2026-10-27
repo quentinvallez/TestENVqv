@@ -165,8 +165,8 @@ export default async function WebsiteImportPage() {
                 <section className="mt-5">
                   <h2 className="font-medium">What your website shows</h2>
                   <p className="mt-0.5 max-w-2xl text-[12px] text-muted">
-                    Each overview on your site, with the number it shows next to what we found on it. That number often counts listings under option or
-                    sold too: only listings on offer go to your listings and the planner.
+                    Each overview on your site, with the number it shows next to what we found on it. That number often counts sold listings too. Listings on
+                    offer and under option go to your listings; under option ones take no bookings and show no booking button on your site.
                   </p>
                   <Panel className="mt-2">
                     <ul className="divide-y divide-line">

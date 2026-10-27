@@ -1,6 +1,7 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tools } from "../registry";
+import { widgetPage } from "../public";
 import { runTool, type ToolContext } from "../tool";
 import { crawlPace } from "../website/reader";
 
@@ -231,7 +232,11 @@ describe.skipIf(!process.env.DATABASE_URL)("every listing on the site, each coun
     expect(status.overviews).toEqual([
       expect.objectContaining({ url: `${home}/kopen`, stated: 24, found: 24, complete: true, counts: expect.objectContaining({ onOffer: 21, underOffer: 2, soldOrRented: 1, toRead: 0 }) }),
     ]);
-    expect(status.listings).toHaveLength(21);
+    expect(status.listings).toHaveLength(23);
+    expect(status.listings.filter((l) => l.status === "under_offer")).toHaveLength(2);
+    // Under option: in the list, but no booking button on its page.
+    expect(await widgetPage(agencyId, card(22))).toMatchObject({ listingId: null, unknown: false });
+    expect((await widgetPage(agencyId, card(1))).listingId).toBeTruthy();
     const [old] = await db.select().from(schema.websitePages).where(and(eq(schema.websitePages.agencyId, agencyId), eq(schema.websitePages.url, card(99))));
     expect(old).toMatchObject({ kind: "gone", listingId: null });
   });
