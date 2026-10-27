@@ -405,7 +405,13 @@ export const importWebsiteListings = defineTool({
           ),
         ),
       )
-      .orderBy(asc(sql`case ${websitePages.kind} when 'pending' then 0 when 'listing' then 1 else 2 end`), asc(websitePages.lastCheckedAt));
+      // New pages an overview shows first, then new pages only a sitemap lists (often old or sold), then the known ones.
+      .orderBy(
+        asc(
+          sql`case when ${websitePages.kind} = 'pending' and ${websitePages.foundOn} <> array[${ELSEWHERE}]::text[] and cardinality(${websitePages.foundOn}) > 0 then 0 when ${websitePages.kind} = 'pending' then 1 when ${websitePages.kind} = 'listing' then 2 else 3 end`,
+        ),
+        asc(websitePages.lastCheckedAt),
+      );
     const people = await team(ctx);
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
     let checked = 0;

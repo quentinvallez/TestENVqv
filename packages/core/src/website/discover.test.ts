@@ -137,4 +137,38 @@ describe("searching a site for its listing pages", () => {
     expect(found.size).toBe(20);
     expect(state.overviews[0]).toMatchObject({ stated: 20, found: 20, via: "browser" });
   });
+
+  it("reads the site in one language and skips what was sold", async () => {
+    const { reader, hooks, read, found } = fakeSite({
+      "/": `<a href="/nl/te-koop">Te koop</a><a href="/fr/a-vendre">À vendre</a><a href="/nl/referenties">Verkocht</a>`,
+      "/nl/te-koop": `<h2>3 resultaten</h2>${cards(1, 3, "/nl/te-koop/gent/woning")}<a href="/fr/a-vendre">FR</a>`,
+      "/sitemap.xml": `<urlset>${[1, 2, 3].map((i) => `<url><loc>${site}/fr/a-vendre/gand/maison-${i}/${90000 + i}</loc></url>`).join("")}</urlset>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(state.discovery.language).toBe("nl");
+    expect(read).not.toContain(`${site}/fr/a-vendre`);
+    expect(read).not.toContain(`${site}/nl/referenties`);
+    expect(found.size).toBe(3);
+  });
+
+  it("tries page addresses only on overviews that bring new listings, and then only the way that worked", async () => {
+    const { reader, hooks, read } = fakeSite({
+      "/": `<a href="/kopen">Te koop</a><a href="/kopen-huizen">Huizen</a><a href="/huren">Te huur</a><a href="/blog/nieuws">Nieuws</a>`,
+      "/kopen": `${cards(1, 8)}`,
+      "/kopen?pagina=2": `${cards(9, 16)}`,
+      "/kopen?pagina=3": `${cards(1, 8)}`,
+      "/kopen-huizen": `${cards(1, 8)}`,
+      "/huren": `${cards(1, 8, "/te-huur/gent/app")}`,
+      "/huren?pagina=2": `${cards(9, 10, "/te-huur/gent/app")}`,
+      "/blog/nieuws": `<a href="/te-koop/gent/woning-99/99999">Ons nieuwste pand</a><a href="/kopen">Alle panden</a>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(state.discovery.pagingKey).toBe("pagina");
+    // A slice of what we have, and an article with one listing, get no tries.
+    expect(read.filter((url) => url.startsWith(`${site}/kopen-huizen?`) || url.startsWith(`${site}/blog/nieuws?`))).toEqual([]);
+    // The second overview tries only "?pagina=", and goes on that way.
+    expect(read.filter((url) => url.startsWith(`${site}/huren?`))).toEqual([`${site}/huren?pagina=2`, `${site}/huren?pagina=3`]);
+  });
 });

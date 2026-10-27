@@ -14,6 +14,11 @@ const countWords =
  * "1-24 of 265". Null when the page doesn't say.
  */
 export function statedTotal(html: string): number | null {
+  return statedCount(html)?.total ?? null;
+}
+
+/** The stated count with the line it was read from. */
+export function statedCount(html: string): { total: number; line: string } | null {
   const text = pageText(html);
   const toNumber = (raw: string) => {
     const n = Number(raw.replace(/[.\s  ]/g, ""));
@@ -21,13 +26,15 @@ export function statedTotal(html: string): number | null {
   };
   // "1 - 12 van 265", "1–24 of 265", "1 à 12 sur 265"
   const range = text.match(/\b\d{1,5}\s*(?:-|–|à|tot|to)\s*\d{1,5}\s*(?:van|of|sur|de|\/)\s*(\d{1,3}(?:[.\s  ]\d{3})*|\d{1,6})\b/i);
-  if (range) return toNumber(range[1]!);
+  const total = range && toNumber(range[1]!);
+  if (total) return { total, line: range[0] };
   // "265 resultaten", "(265) panden", but not "3 slaapkamers" or a price.
   const counted = new RegExp(`(?:^|[^\\d€.,])(\\d{1,3}(?:[.\\u00a0\\u202f]\\d{3})*|\\d{1,6})\\)?\\s*(?:${countWords})\\b`, "im");
   for (const line of text.split("\n")) {
     if (line.length > 120 || /€|eur\b/i.test(line)) continue;
     const m = line.match(counted);
-    if (m) return toNumber(m[1]!);
+    const found = m && toNumber(m[1]!);
+    if (found) return { total: found, line: line.trim() };
   }
   return null;
 }
@@ -157,4 +164,25 @@ export function guessedPages(pageUrl: string, page: number, perPage: number): st
   return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
     .map((url) => normalizeUrl(url))
     .filter((url): url is string => Boolean(url));
+}
+
+const LANGUAGE = /^(nl|fr|en|de)(?:[-_][a-z]{2})?$/i;
+
+/** The language an address starts with: "/fr/acheter" → "fr", "/nl-be/kopen" → "nl"; null without one. */
+export function languageOf(url: string): string | null {
+  const first = new URL(url).pathname.split("/").find(Boolean) ?? "";
+  return LANGUAGE.test(first) ? first.slice(0, 2).toLowerCase() : null;
+}
+
+/** Overviews of what was sold or rented ("Referenties", "Recent verkocht"): no listing on offer there. */
+export function isArchiveUrl(url: string): boolean {
+  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|\blou[ée]s?\b|\bsold\b|\brented\b/i.test(decodeURIComponent(new URL(url).pathname));
+}
+
+/** Which way a page address numbers its pages: the query key ("page", "start"), or "path" for "/page/2". */
+export function pagingKey(url: string): string | null {
+  const n = pageNumber(url);
+  if (!n) return null;
+  for (const [key, value] of new URL(url).searchParams) if (value === String(n.number)) return key.toLowerCase();
+  return "path";
 }

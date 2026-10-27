@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sitemapEntries } from "./extract";
-import { firstPage, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal } from "./overview";
+import { firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -11,6 +11,8 @@ import type { RobotsPolicy } from "./robots";
  * page addresses we try. Each overview records the count it states and what
  * we found, so a difference shows. Then the sitemaps, for anything the
  * overviews don't link. The search is spread over runs: its state is saved.
+ * One language is read (a site in Dutch, French and English shows every
+ * listing three times), and overviews of what was sold are skipped.
  */
 
 /** Overviews we follow from the home page and other overviews; their filtered slices are skipped once the overview is complete. */
@@ -18,6 +20,8 @@ const MAX_OVERVIEWS = 40;
 /** Pages of one overview, as a last stop: a walk already ends at a page that adds no listing. Large groups show 400 pages. */
 const MAX_PAGES_PER_OVERVIEW = 600;
 const MAX_SITEMAPS = 12;
+/** A page with fewer cards is an article or a teaser, not an overview whose further pages are worth trying. */
+const MIN_CARDS = 6;
 
 export type DiscoveryReader = {
   site: string;
@@ -38,7 +42,19 @@ export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOv
 type QueueItem = WebsiteDiscovery["queue"][number];
 
 export function newDiscovery(site: string, now = new Date()): DiscoveryState {
-  return { discovery: { startedAt: now.toISOString(), queue: [{ url: site, root: null }], visited: [] }, overviews: [] };
+  return { discovery: { startedAt: now.toISOString(), queue: [{ url: site, root: null }], visited: [], language: languageOf(site) ?? undefined }, overviews: [] };
+}
+
+/**
+ * The language to read when the site's address has none: the one the home page redirects to ("/fr"), else, when every
+ * overview it links is in a language, Dutch, French or English in that order; else the addresses without a language.
+ */
+function homeLanguage(homeUrl: string, links: string[]): string | null {
+  const redirected = languageOf(homeUrl);
+  if (redirected) return redirected;
+  const languages = links.map(languageOf);
+  if (!languages.length || languages.includes(null)) return null;
+  return ["nl", "fr", "en", "de"].find((l) => languages.includes(l)) ?? languages[0]!;
 }
 
 const pathOf = (url: string) => new URL(url).pathname.replace(/\/$/, "").toLowerCase();
@@ -82,6 +98,10 @@ export async function continueDiscovery(
   const { site } = reader;
   const { discovery, overviews } = state;
   const visited = new Set(discovery.visited);
+  const inLanguage = (url: string) => {
+    const language = languageOf(url);
+    return language === null || language === (discovery.language ?? null);
+  };
   const visit = (url: string) => {
     visited.add(url);
     discovery.visited.push(url);
@@ -121,21 +141,25 @@ export async function continueDiscovery(
       // Listing sitemaps first: their names usually say so.
       const listingFirst = (url: string) => Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(url));
       discovery.queue.unshift(...entries.sitemaps.sort((a, b) => listingFirst(b) - listingFirst(a)).map((url) => ({ url, root: null, sitemap: true })));
-      await hooks.found(entries.pages.map((entry) => normalizeUrl(entry)).filter((url): url is string => Boolean(url && looksLikeListingUrl(url, site))), null);
+      await hooks.found(entries.pages.map((entry) => normalizeUrl(entry)).filter((url): url is string => Boolean(url && looksLikeListingUrl(url, site) && inLanguage(url))), null);
     }
     if (page.status !== 200 || item.sitemap) {
       if (item.root) settle(state, item.root);
       continue;
     }
 
-    const cards = listingLinks(page.html, page.url, site);
+    if (isHome && discovery.language === undefined) {
+      const overviewLinks = pageLinks(page.html, page.url).filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site));
+      discovery.language = homeLanguage(page.url, overviewLinks);
+    }
+    const cards = listingLinks(page.html, page.url, site).filter(inLanguage);
     const fresh = await hooks.found(cards, item.root);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
 
     // Overviews this page links to (the home page's menu, "new builds" on an overview): page 1 of each, the shallowest first.
     const roots = new Set([...overviews.map((o) => o.url), ...discovery.queue.filter((q) => q.root === q.url).map((q) => q.url)]);
     const links = pageLinks(page.html, page.url)
-      .filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site) && !cards.includes(url))
+      .filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site) && !cards.includes(url) && inLanguage(url) && !isArchiveUrl(url))
       .map((url) => firstPage(url))
       .filter((url, i, all) => all.indexOf(url) === i && !visited.has(url) && !roots.has(url) && reader.robots.allowed(url))
       .sort((a, b) => depth(a) - depth(b));
@@ -167,8 +191,9 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   const unseen = (url: string | null): url is string => Boolean(url && !visited.has(url) && !queued.has(url) && url !== pageUrl);
   const next: QueueItem[] = [];
   if (item.guess && fresh > 0) {
-    // A page address we tried works: go on that way, and drop the other tries.
+    // A page address we tried works: go on that way, drop the other tries, and try only this way on the site's other overviews.
     discovery.queue = discovery.queue.filter((q) => !(q.root === root && q.guess));
+    discovery.pagingKey ??= pagingKey(item.url) ?? undefined;
     o.via = "guess";
   }
   // Go on while pages add listings: new to the search, or new to an overview that doesn't hold what it says yet. A page
@@ -186,8 +211,11 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
     } else if (cardCount > 0 && unseen(viaForm)) {
       next.push({ url: viaForm, root });
       if (o.via === "single") o.via = "form";
-    } else if (isFirst && cardCount > 0 && (o.stated == null || o.found < o.stated)) {
-      next.push(...guessedPages(pageUrl, 2, cardCount).filter(unseen).map((url) => ({ url, root, guess: true })));
+    } else if (isFirst && cardCount > 0 && (o.stated != null ? o.found < o.stated : cardCount >= MIN_CARDS && newToSite > 0)) {
+      // Without a stated count, only an overview that brought listings we didn't have: one showing only known ones is a slice of another.
+      const tries = guessedPages(pageUrl, 2, cardCount).filter(unseen);
+      const known = discovery.pagingKey;
+      next.push(...(known ? tries.filter((url) => pagingKey(url) === known) : tries).map((url) => ({ url, root, guess: true })));
     }
   }
   discovery.queue.unshift(...next);
@@ -214,7 +242,9 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
     rendered.push(o.url);
     const html = await renderer(o.url, deadline).catch(() => null);
     if (!html) continue;
-    const fresh = await hooks.found(listingLinks(html, o.url, reader.site), o.url);
+    const language = state.discovery.language ?? null;
+    const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
+    const fresh = await hooks.found(cards, o.url);
     if (fresh.newToOverview > 0) {
       o.found += fresh.newToOverview;
       o.via = "browser";

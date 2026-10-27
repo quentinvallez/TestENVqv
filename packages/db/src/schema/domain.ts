@@ -97,6 +97,10 @@ export type WebsiteDiscovery = {
   sitemapsRead?: number;
   /** Overviews read again with a browser. */
   rendered?: string[];
+  /** The site's language we read ("nl" for "/nl/…"; null: the one without a language in its addresses). Others are skipped. */
+  language?: string | null;
+  /** How this site numbers its pages, once a tried page address worked ("page", "start", "path"). */
+  pagingKey?: string;
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */

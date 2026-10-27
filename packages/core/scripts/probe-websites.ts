@@ -1,21 +1,35 @@
 /*
  * Measures the website search on real agency sites, as the import runs it (robots.txt and its crawl delay
- * obeyed): per overview, the count the site states next to what we found and how, then a sample of the
- * listings found read to count them per status. Stores nothing.
+ * obeyed): per overview, the count the site states (and the line it says it in) next to what we found and how,
+ * the status badges on its cards, then samples of the listings found, read to count them per status, with
+ * examples of every status that isn't "on offer". Stores nothing.
  * Run: npx tsx packages/core/scripts/probe-websites.ts [words of the site addresses]
  * Env: PROBE_SEARCH_MINUTES (default 20), PROBE_READ_MINUTES (default 8), CHROMIUM_PATH (browser fallback).
  */
-import { continueDiscovery, newDiscovery, type DiscoveryHooks } from "../src/website/discover";
 import { openBrowser } from "../src/website/browser";
-import { extractListing, isListingPage, isRemovedListingPage } from "../src/website/extract";
+import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
+import { extractListing, isListingPage, isRemovedListingPage, pageLinks, pageText, sameSite, statusFrom } from "../src/website/extract";
+import { statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
 const sites = ["https://www.immo-zone.be", "https://www.trevi.be", "https://www.dewaele.com/nl", "https://www.immodavinci.be"];
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
+const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
+const tally = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([k, v]) => `${k} ${v}`).join(", ");
 
 async function main() {
   const only = process.argv.slice(2);
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
+}
+
+/** The status a card shows next to its link on an overview ("Verkocht", "In optie"), from the text around it. */
+function cardBadge(html: string, url: string): string {
+  const u = new URL(url);
+  const at = html.indexOf(u.pathname + u.search);
+  if (at < 0) return "not in html";
+  const text = pageText(html.slice(Math.max(0, at - 500), at + 700));
+  const status = statusFrom(text.match(/\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard)\b/i)?.[0]);
+  return status ?? "no badge";
 }
 
 async function probe(site: string) {
@@ -24,11 +38,26 @@ async function probe(site: string) {
   const reader = await SiteReader.open(site);
   console.log(`crawl delay ${reader.delayMs / 1000}s`);
 
-  // Which overviews showed each listing page ("*": a sitemap).
+  // Every page the search reads, and which overview showed each listing page ("*": a sitemap).
+  const html = new Map<string, string>();
+  let lastUrl = "";
+  const recording: DiscoveryReader = {
+    site: reader.site,
+    robots: reader.robots,
+    fits: (deadline) => reader.fits(deadline),
+    read: async (url) => {
+      const page = await reader.read(url);
+      lastUrl = url;
+      if ("html" in page) html.set(url, page.html);
+      return page;
+    },
+  };
   const shownOn = new Map<string, Set<string>>();
+  const pagesOf = new Map<string, Map<string, string[]>>();
   const hooks: DiscoveryHooks = {
     found: async (urls, root) => {
       const tag = root ?? "*";
+      if (root) pagesOf.set(root, (pagesOf.get(root) ?? new Map()).set(lastUrl, urls));
       let newToOverview = 0;
       let newToSite = 0;
       for (const url of new Set(urls)) {
@@ -45,56 +74,77 @@ async function probe(site: string) {
   const browser = await openBrowser(reader);
   let error: string | undefined;
   try {
-    error = (await continueDiscovery(reader, state, hooks, started + minutes("PROBE_SEARCH_MINUTES", 20), browser?.render)).error;
+    error = (await continueDiscovery(recording, state, hooks, started + minutes("PROBE_SEARCH_MINUTES", 20), browser?.render)).error;
   } finally {
     await browser?.close();
   }
   const { discovery, overviews } = state;
+  const sitemapOnly = [...shownOn].filter(([, t]) => t.size === 1 && t.has("*")).map(([url]) => url);
   console.log(
-    `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
+    `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, language ${discovery.language ?? "(none)"}, paging ${discovery.pagingKey ?? "-"}, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
   );
-  console.log(`listing pages found: ${shownOn.size} (${[...shownOn.values()].filter((t) => t.size === 1 && t.has("*")).length} only in a sitemap)`);
+  console.log(`listing pages found: ${shownOn.size}, of which ${sitemapOnly.length} only in a sitemap`);
   for (const o of overviews) {
     const verdict = o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`;
-    console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}`);
+    const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => urls.map((url) => cardBadge(html.get(page) ?? "", url)));
+    console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
+    const first = html.get(o.url) ?? "";
+    if (o.stated != null) console.log(`      stated in: "${short(statedCount(first)?.line ?? "?", 120)}"`);
+    if (o.stated != null && o.found < o.stated) {
+      const cards = new Set([...(pagesOf.get(o.url)?.values() ?? [])].flat());
+      const others = pageLinks(first, o.url).filter((url) => sameSite(url, site) && !cards.has(url));
+      console.log(`      other links on it: ${others.slice(0, 30).map((url) => url.replace(site, "")).join(" ")}`);
+    }
   }
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);
 
-  // A sample of the listings, spread over the overviews, read the way the importer does.
+  // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
-  const byOverview = new Map<string, string[]>();
-  for (const [url, tags] of shownOn) for (const tag of tags) byOverview.set(tag, [...(byOverview.get(tag) ?? []), url]);
-  const sample: string[] = [];
-  for (let i = 0; sample.length < shownOn.size; i++) {
-    let added = false;
-    for (const urls of byOverview.values()) if (urls[i] && !sample.includes(urls[i])) (sample.push(urls[i]), (added = true));
-    if (!added && [...byOverview.values()].every((urls) => i >= urls.length)) break;
-  }
   const boilerplate = await reader.siteBoilerplate();
-  const statusOf = new Map<string, string>();
-  const references = new Map<string, number>();
-  for (const url of sample) {
-    if (!reader.fits(readUntil)) break;
+  const outcome = new Map<string, { status: string; why: string }>();
+  const readOne = async (url: string) => {
     const page = await reader.read(url);
-    if (!("html" in page)) {
-      statusOf.set(url, "unreadable");
-      continue;
-    }
+    if (!("html" in page)) return outcome.set(url, { status: "unreadable", why: page.error });
     const { listing } = extractListing(page.html, page.url, boilerplate);
-    const status =
-      page.status >= 400 || isRemovedListingPage(listing, page.html) ? "offline" : !isListingPage(listing, page.html) ? "not a listing" : (listing.status ?? "active");
-    statusOf.set(url, status);
-    if (listing.reference) references.set(listing.reference, (references.get(listing.reference) ?? 0) + 1);
+    const text = pageText(page.html);
+    const title = short(page.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "", 80);
+    if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });
+    if (isRemovedListingPage(listing, page.html)) return outcome.set(url, { status: "offline", why: short(text.split("\n").find((l) => /niet (meer|langer)|plus disponible|no longer|verkocht|verhuurd/i.test(l)) ?? "", 100) });
+    if (!isListingPage(listing, page.html)) return outcome.set(url, { status: "not a listing", why: title });
+    const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
+    return outcome.set(url, { status: listing.status ?? "active", why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"}${hint ? ` | "${short(hint, 80)}"` : ""}` });
+  };
+  const sitemapSample = sitemapOnly.slice(0, 40);
+  for (const url of sitemapSample) {
+    if (!reader.fits(readUntil)) break;
+    await readOne(url);
   }
-  console.log(`read ${statusOf.size} of ${shownOn.size} listing pages`);
-  for (const [tag, urls] of byOverview) {
-    const counts = new Map<string, number>();
-    for (const url of urls) if (statusOf.has(url)) counts.set(statusOf.get(url)!, (counts.get(statusOf.get(url)!) ?? 0) + 1);
-    const read = [...counts.values()].reduce((a, b) => a + b, 0);
-    console.log(`  ${tag === "*" ? "(sitemaps)" : tag.replace(site, "") || "/"}: ${urls.length} found, ${read} read: ${[...counts].map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  const byOverview = new Map<string, string[]>();
+  for (const [url, tags] of shownOn) for (const tag of tags) if (tag !== "*") byOverview.set(tag, [...(byOverview.get(tag) ?? []), url]);
+  for (let i = 0; reader.fits(readUntil); i++) {
+    const round = [...byOverview.values()].map((urls) => urls[i]).filter((url): url is string => Boolean(url) && !outcome.has(url!));
+    if (![...byOverview.values()].some((urls) => i < urls.length)) break;
+    for (const url of round) {
+      if (!reader.fits(readUntil)) break;
+      await readOne(url);
+    }
   }
-  const repeated = [...references].filter(([, n]) => n > 1);
-  console.log(`references shared by several listings: ${repeated.length}${repeated.length ? ` (e.g. ${repeated.slice(0, 5).map(([r, n]) => `${r}×${n}`).join(", ")})` : ""}`);
+  console.log(`read ${outcome.size} of ${shownOn.size} listing pages`);
+  const report = (label: string, urls: string[]) => {
+    const read = urls.filter((url) => outcome.has(url));
+    if (!read.length) return;
+    console.log(`  ${label}: ${urls.length} found, ${read.length} read: ${tally(read.map((url) => outcome.get(url)!.status))}`);
+    const examples = new Map<string, number>();
+    for (const url of read) {
+      const { status, why } = outcome.get(url)!;
+      const shown = examples.get(status) ?? 0;
+      if (shown >= (status === "active" ? 1 : 3)) continue;
+      examples.set(status, shown + 1);
+      console.log(`      ${status}: ${url.replace(site, "")}  ${why}`);
+    }
+  };
+  report("(only in a sitemap)", sitemapOnly);
+  for (const [root, urls] of byOverview) report(root.replace(site, "") || "/", urls);
 }
 
 main();
