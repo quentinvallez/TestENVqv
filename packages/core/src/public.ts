@@ -156,3 +156,20 @@ export async function valuationAgency(token: string) {
     .where(eq(schema.valuations.token, token));
   return row ?? null;
 }
+
+/**
+ * The agency and home behind an owner's or tenant's private link. The link stops
+ * working once the listing is sold, rented or archived.
+ */
+export async function occupantAgency(token: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return null;
+  const [row] = await db
+    .select({ agencyId: schema.listingOccupants.agencyId, agencyName: schema.organization.name, branding: schema.agencySettings.branding, status: schema.listings.status })
+    .from(schema.listingOccupants)
+    .innerJoin(schema.listings, eq(schema.listings.id, schema.listingOccupants.listingId))
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.listingOccupants.agencyId))
+    .leftJoin(schema.agencySettings, eq(schema.agencySettings.agencyId, schema.listingOccupants.agencyId))
+    .where(eq(schema.listingOccupants.token, token));
+  if (!row || ["sold", "rented", "archived"].includes(row.status)) return null;
+  return row;
+}

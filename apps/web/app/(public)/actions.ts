@@ -8,7 +8,7 @@ import { z } from "zod";
 import { toWidgetLang } from "@/lib/widget-i18n";
 
 export type FormState = { error?: string } | undefined;
-export type WidgetState = { error?: string; booked?: { when: string; manageUrl: string } } | undefined;
+export type WidgetState = { error?: string; booked?: { when: string; manageUrl: string }; requested?: boolean } | undefined;
 
 function errorMessage(error: unknown) {
   if (error instanceof SlotUnavailableError) return error.message;
@@ -59,6 +59,25 @@ export async function bookFromWidgetAction(listingId: string, langValue: string,
   for (const [key, value] of form.entries()) {
     if (key.startsWith("q-") && typeof value === "string" && value) qualification[key.slice(2)] = value;
   }
+  const contact = {
+    firstName: String(form.get("firstName") ?? ""),
+    lastName: String(form.get("lastName") ?? "") || undefined,
+    email: String(form.get("email") ?? ""),
+    phone: String(form.get("phone") ?? "") || undefined,
+    language: lang,
+    whatsappOptIn: form.get("whatsapp") === "on",
+  };
+  // No free time to pick (e.g. the owner hasn't given any yet): the visitor asks for a viewing instead.
+  if (form.get("request") && !form.get("startsAt")) {
+    try {
+      await runTool(tools.requestViewing, publicContext(found.listing.agencyId), { listingId, contact, message: String(form.get("message") ?? "") || undefined });
+      return { requested: true };
+    } catch (error) {
+      if (error instanceof z.ZodError) return { error: errors.details };
+      console.error(error);
+      return { error: errors.generic };
+    }
+  }
   try {
     const result = await runTool(tools.bookViewing, publicContext(found.listing.agencyId), {
       listingId,
@@ -67,14 +86,7 @@ export async function bookFromWidgetAction(listingId: string, langValue: string,
       source: "website",
       message: String(form.get("message") ?? "") || undefined,
       qualification,
-      contact: {
-        firstName: String(form.get("firstName") ?? ""),
-        lastName: String(form.get("lastName") ?? "") || undefined,
-        email: String(form.get("email") ?? ""),
-        phone: String(form.get("phone") ?? "") || undefined,
-        language: lang,
-        whatsappOptIn: form.get("whatsapp") === "on",
-      },
+      contact,
     });
     const h = await headers();
     const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;

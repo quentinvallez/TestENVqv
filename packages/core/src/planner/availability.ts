@@ -9,6 +9,10 @@ export type SlotOptions = {
   workingHours: WorkingHours[];
   /** Existing appointments and calendar events that block time. */
   busy: Interval[];
+  /** Blocks time without the buffer, e.g. other viewings at the same house: the agent is already there. */
+  busyNoBuffer?: Interval[];
+  /** When given, a slot must lie entirely inside one of these, e.g. the times the occupants allow. */
+  allowed?: Interval[];
   from: Date;
   to: Date;
   slotMinutes: number;
@@ -45,9 +49,11 @@ export function computeSlots(options: SlotOptions): Interval[] {
     timeZone = AGENCY_TIMEZONE,
   } = options;
 
-  const blocked = options.busy
-    .map((b) => ({ start: b.start.getTime() - bufferMinutes * MINUTE, end: b.end.getTime() + bufferMinutes * MINUTE }))
-    .sort((a, b) => a.start - b.start);
+  const blocked = [
+    ...options.busy.map((b) => ({ start: b.start.getTime() - bufferMinutes * MINUTE, end: b.end.getTime() + bufferMinutes * MINUTE })),
+    ...(options.busyNoBuffer ?? []).map((b) => ({ start: b.start.getTime(), end: b.end.getTime() })),
+  ].sort((a, b) => a.start - b.start);
+  const allowed = options.allowed?.map((a) => ({ start: a.start.getTime(), end: a.end.getTime() }));
   const earliest = Math.max(from.getTime(), now.getTime() + minNoticeMinutes * MINUTE);
   const slots: Interval[] = [];
 
@@ -64,9 +70,24 @@ export function computeSlots(options: SlotOptions): Interval[] {
         const end = start + slotMinutes * MINUTE;
         if (end > windowEnd || start < earliest || end > to.getTime()) continue;
         if (blocked.some((b) => b.start < end && b.end > start)) continue;
+        if (allowed && !allowed.some((a) => a.start <= start && a.end >= end)) continue;
         slots.push({ start: new Date(start), end: new Date(end) });
       }
     }
   }
   return slots.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+/** Weekly local-time windows as instants between two dates, e.g. the times a home can be visited. */
+export function expandWindows(windows: WorkingHours[], from: Date, to: Date, timeZone = AGENCY_TIMEZONE): Interval[] {
+  const out: Interval[] = [];
+  for (let offset = 0; ; offset++) {
+    const day = zonedDay(from, offset, timeZone);
+    if (zonedTime(day, timeZone).getTime() >= to.getTime()) break;
+    const weekday = new Date(Date.UTC(day.year, day.month - 1, day.day)).getUTCDay();
+    for (const w of windows.filter((w) => w.weekday === weekday)) {
+      out.push({ start: localTime(day, w.startMinute, timeZone), end: localTime(day, w.endMinute, timeZone) });
+    }
+  }
+  return out;
 }

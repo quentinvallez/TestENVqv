@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { zonedTime } from "../time";
-import { computeSlots, type WorkingHours } from "./availability";
+import { computeSlots, expandWindows, type WorkingHours } from "./availability";
 
 const weekdays9to12: WorkingHours[] = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 12 * 60 }));
 const brussels = (day: number, hour: number, minute = 0, month = 10) => zonedTime({ year: 2026, month, day, hour, minute });
@@ -66,5 +66,42 @@ describe("computeSlots", () => {
       to: brussels(21, 0),
     });
     expect(times(slots)).toEqual(["09:00", "09:30", "10:00", "14:00"]);
+  });
+
+  it("keeps only slots inside the times the occupants allow", () => {
+    const slots = computeSlots({
+      ...base,
+      busy: [],
+      allowed: [{ start: brussels(20, 10), end: brussels(20, 11, 15) }],
+      from: brussels(20, 0),
+      to: brussels(21, 0),
+    });
+    // 11:00 would end at 11:30, past the window.
+    expect(times(slots)).toEqual(["10:00", "10:30"]);
+  });
+
+  it("offers nothing when the occupants allow no time", () => {
+    expect(computeSlots({ ...base, busy: [], allowed: [], from: brussels(20, 0), to: brussels(21, 0) })).toEqual([]);
+  });
+
+  it("puts viewings at the same house back to back, without the travel buffer", () => {
+    const slots = computeSlots({
+      ...base,
+      bufferMinutes: 15,
+      busy: [],
+      busyNoBuffer: [{ start: brussels(20, 10), end: brussels(20, 10, 30) }],
+      from: brussels(20, 0),
+      to: brussels(21, 0),
+    });
+    expect(times(slots)).toEqual(["09:00", "09:30", "10:30", "11:00", "11:30"]);
+  });
+});
+
+describe("expandWindows", () => {
+  it("turns weekly local windows into instants, across the October DST switch", () => {
+    // Saturdays 10:00-12:00, from Friday 23 to Monday 2 November 2026; clocks go back on Sunday 25 October.
+    const saturdays = expandWindows([{ weekday: 6, startMinute: 600, endMinute: 720 }], brussels(23, 0), brussels(2, 0, 0, 11));
+    expect(saturdays.map((w) => w.start.toISOString())).toEqual(["2026-10-24T08:00:00.000Z", "2026-10-31T09:00:00.000Z"]);
+    expect(times(saturdays)).toEqual(["10:00", "10:00"]);
   });
 });

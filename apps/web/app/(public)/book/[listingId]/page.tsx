@@ -39,6 +39,8 @@ export default async function BookPage({ params, searchParams }: { params: Promi
           questions={widget.questions}
           agentName={widget.agent.name}
           slotMinutes={widget.slotMinutes}
+          awaitingOccupant={widget.awaitingOccupant}
+          occupied={widget.listing.access !== "agent"}
           agencyName={agencyName}
           action={bookFromWidgetAction.bind(null, listing.id, lang, widget.agent.id)}
         />

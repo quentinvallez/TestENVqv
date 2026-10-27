@@ -29,6 +29,8 @@ export default async function EmbedPage({ params, searchParams }: { params: Prom
         questions={widget.questions}
         agentName={widget.agent.name}
         slotMinutes={widget.slotMinutes}
+        awaitingOccupant={widget.awaitingOccupant}
+        occupied={widget.listing.access !== "agent"}
         agencyName={widget.agencyName}
         action={bookFromWidgetAction.bind(null, listingId, lang, widget.agent.id)}
       />

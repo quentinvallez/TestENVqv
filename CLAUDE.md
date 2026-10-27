@@ -34,6 +34,11 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - When a listing goes under option, sold, rented or off the website, `draftOffMarketNotices` (`planner/off-market.ts`) drafts a message to each client with an upcoming viewing; approving it sends the message and cancels the viewing. Only `active` listings take bookings or get reminders.
 - Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it.
 
+## Owners and tenants
+
+- An occupied listing (`access` "owner"/"tenant") only offers slots inside its occupants' windows (`listing_windows`, `listing_blocks`); always pass `listingId` to `availability_slots` when the viewing is for a listing. Occupants act through their token (`occupants_*` tools, `occupantAgency` in `@viewing/core/public`).
+- Occupants see visitors only as first name + initial (`visitorLabel`), never contact details. Their alerts (`planner/occupants.ts`) are fixed templates sent automatically unless `autonomy.occupant_alerts = "suggest"`; anything to a visitor stays a draft.
+
 ## Channels
 
 - Messages leave the platform only through `sendMessage` (`packages/core/src/channels`); find or create a conversation with `conversationFor`. It stores the message with `delivery` "sent", "failed" or "simulated" and records `message.sent` / `message.failed`. Never insert outbound `messages` rows yourself.

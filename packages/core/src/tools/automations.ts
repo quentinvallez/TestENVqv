@@ -17,14 +17,18 @@ export const getAutomationSettings = defineTool({
       .select({ automations: agencySettings.automations, autonomy: agencySettings.autonomy })
       .from(agencySettings)
       .where(eq(agencySettings.agencyId, ctx.agencyId));
-    return { ...automationSettings(row?.automations), sendRemindersAutomatically: row?.autonomy.reminders === "act" };
+    return {
+      ...automationSettings(row?.automations),
+      sendRemindersAutomatically: row?.autonomy.reminders === "act",
+      sendOccupantAlertsAutomatically: row?.autonomy.occupant_alerts !== "suggest",
+    };
   },
 });
 
 export const updateAutomationSettings = defineTool({
   name: "automations_update_settings",
   description:
-    "Turn automatic jobs on or off, set after how many days a quiet lead gets a nudge, and choose whether reminders are sent on their own or wait for approval.",
+    "Turn automatic jobs on or off, set after how many days a quiet lead gets a nudge, and choose whether reminders and viewing alerts to owners and tenants are sent on their own or wait for approval.",
   mutates: true,
   input: z.object({
     reminders: z.boolean().optional(),
@@ -33,19 +37,28 @@ export const updateAutomationSettings = defineTool({
     nudges: z.boolean().optional(),
     nudgeAfterDays: z.number().int().min(1).max(14).optional(),
     sendRemindersAutomatically: z.boolean().optional(),
+    sendOccupantAlertsAutomatically: z.boolean().optional(),
   }),
   run: async (ctx, input) => {
-    const { sendRemindersAutomatically, ...jobs } = input;
+    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, ...jobs } = input;
     const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const automations = { ...row?.automations, ...jobs };
-    const autonomy =
-      sendRemindersAutomatically === undefined ? (row?.autonomy ?? {}) : { ...row?.autonomy, reminders: sendRemindersAutomatically ? ("act" as const) : ("suggest" as const) };
+    const level = (on: boolean) => (on ? ("act" as const) : ("suggest" as const));
+    const autonomy = {
+      ...row?.autonomy,
+      ...(sendRemindersAutomatically !== undefined && { reminders: level(sendRemindersAutomatically) }),
+      ...(sendOccupantAlertsAutomatically !== undefined && { occupant_alerts: level(sendOccupantAlertsAutomatically) }),
+    };
     await ctx.db
       .insert(agencySettings)
       .values({ agencyId: ctx.agencyId, automations, autonomy })
       .onConflictDoUpdate({ target: agencySettings.agencyId, set: { automations, autonomy } });
     await recordEvent(ctx, { type: "settings.automations_updated", subjectType: "agency", subjectId: ctx.agencyId, data: input });
-    return { ...automationSettings(automations), sendRemindersAutomatically: autonomy.reminders === "act" };
+    return {
+      ...automationSettings(automations),
+      sendRemindersAutomatically: autonomy.reminders === "act",
+      sendOccupantAlertsAutomatically: autonomy.occupant_alerts !== "suggest",
+    };
   },
 });
 

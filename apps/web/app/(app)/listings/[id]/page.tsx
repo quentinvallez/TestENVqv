@@ -1,17 +1,22 @@
 import { notFound } from "next/navigation";
 import { runTool, tools } from "@viewing/core";
-import { CalendarDays, ExternalLink, FileText, ImagePlus, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
+import { CalendarDays, ExternalLink, FileText, ImagePlus, KeyRound, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link";
-import { assignAgentAction, suggestToMatchesAction } from "../../actions";
+import { addOccupantAction, assignAgentAction, setListingAccessAction, suggestToMatchesAction, updateOccupantAction } from "../../actions";
+import { OccupantForm } from "./occupant-form";
 import { AgentPicker } from "./agent-picker";
 import { ListingPhoto } from "@/components/listing-photo";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Pill, StatusDot, Tabs } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
-import { address, formatDateTime, formatPrice, formatRelative, fullName } from "@/lib/format";
+import { address, formatDateTime, formatDay, formatPrice, formatRelative, fullName } from "@/lib/format";
 import { appointmentStatusMeta, leadStageMeta, listingStatusMeta, propertyTypeLabel, sourceLabel } from "@/lib/labels";
 
-const tabIds = ["viewings", "leads", "details", "advertising", "staging", "notes"] as const;
+const tabIds = ["viewings", "owner", "leads", "details", "advertising", "staging", "notes"] as const;
+
+const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+const accessLabel = { agent: "The agency has the key", owner: "Lived in by the owner", tenant: "Rented out, tenant lives there" } as const;
 type TabId = (typeof tabIds)[number];
 
 export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
@@ -25,6 +30,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
     runTool(tools.findMatchingClients, ctx, { listingId: id }),
   ]);
   if (!listing) notFound();
+  const occupancy = tab === "owner" ? await runTool(tools.listListingOccupants, ctx, { listingId: listing.id }) : null;
 
   const base = `/listings/${listing.id}`;
   const street = address(listing.street, listing.houseNumber, listing.city);
@@ -99,6 +105,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
           active={tab}
           tabs={[
             { id: "viewings", label: `Viewings · ${listing.appointments.length}`, href: base, icon: <CalendarDays className="size-3.5" /> },
+            { id: "owner", label: "Owner", href: `${base}?tab=owner`, icon: <KeyRound className="size-3.5" /> },
             { id: "leads", label: `Leads · ${listing.leads.length}`, href: `${base}?tab=leads`, icon: <MessageSquare className="size-3.5" /> },
             { id: "details", label: "Details", href: `${base}?tab=details`, icon: <FileText className="size-3.5" /> },
             { id: "advertising", label: "Advertising", href: `${base}?tab=advertising`, icon: <Megaphone className="size-3.5" /> },
@@ -125,6 +132,106 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                 </div>
               ))}
             </Panel>
+          )}
+
+          {occupancy && (
+            <div className="flex flex-col gap-4">
+              <Panel className="p-4">
+                <form action={setListingAccessAction.bind(null, listing.id)} className="flex flex-wrap items-end gap-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[12px] font-medium text-muted">Who opens the door for viewings</span>
+                    <select name="access" defaultValue={occupancy.access} className="h-8 rounded-md border border-line bg-panel px-2">
+                      {Object.entries(accessLabel).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[12px] font-medium text-muted">Notice the occupants need</span>
+                    <select name="notice" defaultValue={occupancy.viewingNoticeHours ?? 0} className="h-8 rounded-md border border-line bg-panel px-2">
+                      {[0, 12, 24, 48, 72].map((h) => (
+                        <option key={h} value={h}>
+                          {h === 0 ? "Usual (2 hours)" : h < 24 ? `${h} hours` : `${h / 24} ${h === 24 ? "day" : "days"}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button size="md">Save</Button>
+                </form>
+                <p className="mt-3 text-muted">
+                  {occupancy.access === "agent"
+                    ? "Viewings follow the agent's agenda only. Owners you add below still get an alert for each viewing."
+                    : "Only the times the occupants give through their link can be booked, inside the agent's agenda. Viewings of this home are planned back to back."}
+                </p>
+                {occupancy.access !== "agent" && listing.status === "active" && (occupancy.awaitingOccupant || occupancy.slotsNext14Days === 0) && (
+                  <p className="mt-2 flex items-center gap-2">
+                    <StatusDot color="var(--warning)" />
+                    {occupancy.awaitingOccupant
+                      ? "No visiting times yet: visitors can only request a viewing."
+                      : "No common time with the agent in the next 14 days."}
+                  </p>
+                )}
+                {occupancy.access !== "agent" && occupancy.windows.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {occupancy.windows.map((w, i) => (
+                      <Pill key={i}>
+                        {weekdayNames[w.weekday]} {hhmm(w.startMinute)}–{hhmm(w.endMinute)}
+                      </Pill>
+                    ))}
+                    {occupancy.slotsNext14Days !== null && <span className="self-center text-[12px] text-muted">{occupancy.slotsNext14Days} bookable times in the next 14 days</span>}
+                  </div>
+                )}
+                {occupancy.blocks.length > 0 && (
+                  <p className="mt-2 text-muted">
+                    Away: {occupancy.blocks.map((b) => `${formatDay(b.startsAt)} – ${formatDay(new Date(b.endsAt.getTime() - 1))}`).join(", ")}
+                  </p>
+                )}
+              </Panel>
+
+              <Panel className="divide-y divide-line">
+                {occupancy.occupants.length === 0 && (
+                  <EmptyState icon={<KeyRound className="size-5" />} title="No owner or tenant yet" description="Add them to give them a private link for their visiting times and an alert for each viewing." />
+                )}
+                {occupancy.occupants.map((o) => (
+                  <div key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{fullName(o.contact.firstName, o.contact.lastName)}</span>
+                        <Pill>{o.role === "tenant" ? "Tenant" : "Owner"}</Pill>
+                      </div>
+                      <div className="truncate text-[12px] text-muted">
+                        {[o.contact.email, o.contact.phone].filter(Boolean).join(" · ")} · {o.lastSeenAt ? `opened ${formatRelative(o.lastSeenAt)}` : "hasn't opened the link yet"}
+                      </div>
+                    </div>
+                    <span className="flex items-center gap-1.5 text-[12px] text-muted">
+                      <StatusDot color={o.alerts ? "var(--success)" : "var(--faint)"} />
+                      {o.alerts ? "Alerts on" : "Alerts off"}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <CopyLinkButton path={o.link} label="Copy link" />
+                      <form action={updateOccupantAction.bind(null, listing.id, o.id, { alerts: !o.alerts })}>
+                        <Button size="sm">{o.alerts ? "Turn alerts off" : "Turn alerts on"}</Button>
+                      </form>
+                      <form action={updateOccupantAction.bind(null, listing.id, o.id, { newLink: true })}>
+                        <Button size="sm">New link</Button>
+                      </form>
+                      <form action={updateOccupantAction.bind(null, listing.id, o.id, { remove: true })}>
+                        <Button size="sm" variant="ghost">
+                          Remove
+                        </Button>
+                      </form>
+                    </div>
+                  </div>
+                ))}
+              </Panel>
+
+              <Panel className="p-4">
+                <h2 className="mb-3 font-medium">Add owner or tenant</h2>
+                <OccupantForm defaultRole={occupancy.access === "tenant" ? "tenant" : "owner"} action={addOccupantAction.bind(null, listing.id)} />
+              </Panel>
+            </div>
           )}
 
           {tab === "leads" && matches.length > 0 && listing.status === "active" && (

@@ -38,6 +38,13 @@ Sign up, then click **Load demo data** on the dashboard.
 - `/a/<token>`: the client's own page to change or cancel; this link goes into every confirmation and reminder.
 - Calendar sync (Google, Outlook) lives in `packages/core/src/calendar`; see [docs/setup-calendars.md](docs/setup-calendars.md).
 
+## Owners and tenants
+
+- Each listing has an **access mode** (`listings.access`): "agent" (the agency has the key, only the agent's agenda counts), "owner" or "tenant" (someone lives there). Set it on the listing's **Owner** tab.
+- Owners and tenants (`listing_occupants`) get a private link `/s/<token>`, no account: they give the weekly times the home can be visited, days away and the notice they need, see the upcoming viewings (visitors by first name and initial only), report a problem with one, and can subscribe to an iCal feed. The invitation with the link is a draft for approval.
+- For an occupied home, bookable slots = the agent's free time ∩ the occupants' windows − their days away, with the larger notice. Viewings at the same house go back to back (no travel buffer). Booking takes a per-listing lock after the agent's. Without any window, visitors can only request a viewing.
+- Occupants get an alert for each booked, moved or cancelled viewing and the evening before (fixed templates, sent automatically unless Settings → Automations says to ask first). If they change their times or report a problem, nothing is cancelled: the visitor's conversation gets a draft asking them to move.
+
 ## Channels
 
 - Every outbound message goes through `sendMessage` (`packages/core/src/channels`): the agent's Gmail or Outlook, the agency's inbox address via Mailgun EU, or WhatsApp Cloud API. Without a provider it is stored as "simulated" and shown as not delivered.

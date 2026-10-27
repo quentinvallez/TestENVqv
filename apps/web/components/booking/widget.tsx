@@ -24,6 +24,8 @@ export function BookingWidget({
   agentName,
   slotMinutes,
   agencyName,
+  awaitingOccupant = false,
+  occupied = false,
   action,
 }: {
   lang: WidgetLang;
@@ -32,6 +34,10 @@ export function BookingWidget({
   agentName: string;
   slotMinutes: number;
   agencyName: string;
+  /** The occupants haven't given visiting times yet. */
+  awaitingOccupant?: boolean;
+  /** Someone lives there and sees who comes, by first name and initial. */
+  occupied?: boolean;
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = widgetText[lang];
@@ -40,6 +46,8 @@ export function BookingWidget({
   const [slot, setSlot] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const firstName = agentName.split(" ")[0] ?? agentName;
+  // Without any free time, visitors leave their details instead of picking one.
+  const requesting = days.length === 0;
 
   // Let a parent page size the iframe to the content.
   useEffect(() => {
@@ -52,6 +60,18 @@ export function BookingWidget({
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
+
+  if (state?.requested) {
+    return (
+      <div className="flex flex-col items-center px-2 py-6 text-center">
+        <span className="flex size-10 items-center justify-center rounded-full bg-[var(--brand)] text-[var(--brand-fg)]">
+          <Check className="size-5" />
+        </span>
+        <h3 className="mt-3 text-[16px] font-semibold">{t.requestDoneTitle}</h3>
+        <p className="mt-2 max-w-xs text-muted">{t.requestDoneText(agencyName)}</p>
+      </div>
+    );
+  }
 
   if (state?.booked) {
     return (
@@ -76,6 +96,7 @@ export function BookingWidget({
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="startsAt" value={slot ?? ""} />
+      {requesting && <input type="hidden" name="request" value="1" />}
       {Object.entries(answers).map(([id, value]) => (
         <input key={id} type="hidden" name={`q-${id}`} value={value} />
       ))}
@@ -92,10 +113,14 @@ export function BookingWidget({
           <CalendarCheck className="size-3.5" />
           {t.with(slotMinutes, agentName)}
         </p>
-        {days.length === 0 ? <p className="rounded-lg border border-line px-4 py-6 text-center text-muted">{t.noSlots}</p> : <SlotPicker days={days} onChange={setSlot} />}
+        {requesting ? (
+          <p className="rounded-lg border border-line px-4 py-6 text-center text-muted">{awaitingOccupant ? t.awaitingOwner : t.noSlotsRequest}</p>
+        ) : (
+          <SlotPicker days={days} onChange={setSlot} />
+        )}
         <button
           type="button"
-          disabled={!slot}
+          disabled={!slot && !requesting}
           onClick={() => setStep(questions.length ? 2 : 3)}
           className="mt-4 h-10 w-full rounded-md bg-[var(--brand)] font-medium text-[var(--brand-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
         >
@@ -159,13 +184,16 @@ export function BookingWidget({
           <button type="button" onClick={() => setStep(questions.length ? 2 : 1)} className="h-11 rounded-md border border-line px-4 hover:bg-hover">
             {t.back}
           </button>
-          <button disabled={!slot || pending} className="h-11 flex-1 rounded-md bg-[var(--brand)] font-medium text-[var(--brand-fg)] transition-opacity hover:opacity-90 disabled:opacity-40">
-            {pending ? t.booking : t.confirm}
+          <button disabled={(!slot && !requesting) || pending} className="h-11 flex-1 rounded-md bg-[var(--brand)] font-medium text-[var(--brand-fg)] transition-opacity hover:opacity-90 disabled:opacity-40">
+            {pending ? t.booking : requesting ? t.request : t.confirm}
           </button>
         </div>
       </section>
 
-      <p className="text-center text-[11px] text-faint">{t.privacy(agencyName)}</p>
+      <p className="text-center text-[11px] text-faint">
+        {t.privacy(agencyName)}
+        {occupied && ` ${t.privacyOccupant}`}
+      </p>
     </form>
   );
 }
