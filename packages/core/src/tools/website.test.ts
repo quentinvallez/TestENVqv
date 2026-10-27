@@ -156,6 +156,19 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(cancelled!.status).toBe("cancelled");
   });
 
+  it("finds the units of new-build projects through the project pages", async () => {
+    const project = `${home}/nieuwbouw/aalst/hof-ten-berge`;
+    const unit = `${project}/nieuwbouwwoning-met-3-slaapkamers/7946219`;
+    site.set(home, { status: 200, html: `<a href="/aanbod/kopen">Te koop</a><a href="/nieuwbouw">Nieuwbouw</a>` });
+    site.set(`${home}/nieuwbouw`, { status: 200, html: `<a href="${project}">Hof ten Berge</a>` });
+    site.set(project, { status: 200, html: `<table><tr><td><a href="${unit}">A1</a></td><td>€ 389.000</td><td>Beschikbaar</td></tr></table>` });
+    site.set(unit, { status: 200, html: listingPage({ title: "Nieuwbouwwoning met 3 slaapkamers", price: "€ 389.000", ref: "7946219", address: "Hof ten Berge 1, 9300 Aalst", agent: "Sofie Peeters" }) });
+    await db.update(schema.agencySettings).set({ websiteSync: {} }).where(eq(schema.agencySettings.agencyId, agencyId));
+    await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+    const [found] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7946219")));
+    expect(found).toMatchObject({ status: "active", city: "Aalst", price: 389000 });
+  });
+
   it("goes back to the demo data: the import and its agents are gone, the demo is loaded again", async () => {
     const result = await runTool(tools.resetToDemoData, ctx, {});
     expect(result).toMatchObject({ seeded: true });
