@@ -1,0 +1,27 @@
+name: Website probe
+# Development aid: reads the listing overviews of a few agency sites (robots.txt obeyed) and prints
+# what it finds. Stores nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      sites:
+        description: Sites to probe, space separated
+        required: true
+  push:
+    branches: ["claude/**"]
+    paths: ["packages/core/scripts/probe-websites.ts", ".github/workflows/website-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe
+        env:
+          PROBE_PATHS: /kopen,/huren,/nieuwbouw,/kopen?page=2,/kopen?pagina=2
+        run: npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ github.event.inputs.sites || 'https://www.immo-zone.be https://www.trevi.be https://www.immodavinci.be https://www.dewaele.com/nl' }}
