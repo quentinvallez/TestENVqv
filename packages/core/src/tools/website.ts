@@ -1,37 +1,36 @@
 import { and, asc, db, eq, inArray, isNull, lt, or, schema, sql } from "@viewing/db";
-import type { WebsiteSync } from "@viewing/db/schema";
+import type { WebsiteOverview, WebsiteSync } from "@viewing/db/schema";
 import { z } from "zod";
 import { aiAvailable } from "../ai/client";
 import { recordEvent } from "../events";
 import { draftOffMarketNotices } from "../planner/off-market";
 import { defineTool, type ToolContext } from "../tool";
 import { extractWithAi, mergeExtraction } from "../website/ai";
+import { openBrowser } from "../website/browser";
+import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
-  boilerplateLines,
   extractListing,
   isListingPage,
   isRemovedListingPage,
   looksLikeListingUrl,
-  looksLikeOverviewUrl,
   matchAgent,
   missingKeyFacts,
   normalizeUrl,
-  pageLinks,
   pageText,
   referenceFromUrl,
   sameSite,
-  sitemapEntries,
   textFingerprint,
   type ExtractedListing,
 } from "../website/extract";
-import { fetchSitePage, type FetchedPage } from "../website/fetch";
-import { allowAll, disallowAll, parseRobots, type RobotsPolicy } from "../website/robots";
+import { SiteReader } from "../website/reader";
 
 /*
- * Listings from the agency's own website: we find the listing pages (sitemap,
- * then overview pages), read each one and create or update the listing, with
- * the agent the page names. Pages are remembered in website_pages, so a daily
- * run only re-reads what may have changed and archives listings that vanished.
+ * Listings from the agency's own website: we go through its overview pages
+ * (every page of them) and sitemaps to find the listing pages, read each one
+ * and create or update the listing, with the agent the page names. Pages are
+ * remembered in website_pages, so a daily run only re-reads what may have
+ * changed and archives listings that vanished. Each overview keeps the count
+ * it states next to what we found on it, so a difference shows.
  */
 
 const { agencySettings, agents, availabilityRules, listings, postcodes, websitePages } = schema;
@@ -48,20 +47,9 @@ const RECHECK_ERROR = 24 * HOUR;
 const REDISCOVER = 20 * HOUR;
 /** A page visit reported by the widget triggers a read at most this often. */
 const RECHECK_VISIT = 6 * HOUR;
-const MAX_SITEMAPS = 12;
-// Enough for the sale and rent overviews plus a page per new-build project.
-const MAX_OVERVIEW_PAGES = 40;
-const MAX_NEW_PAGES_PER_RUN = 400;
-/** The longest crawl delay we wait for; a site asking more is read at this pace. */
-const MAX_DELAY_MS = 60_000;
-
-/** At least this long between two requests to the same site, whatever its robots.txt says. Tests set it to 0. */
-export const crawlPace = { minDelayMs: 1000 };
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v3";
-
-export const ROBOTS_BLOCKED = "Not allowed by the website's robots.txt";
+const EXTRACTION_VERSION = "v4";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -78,125 +66,15 @@ export function websiteFromInput(input: string): string | null {
   return normalizeUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
 }
 
-type ReadResult = FetchedPage | { error: string; blocked?: boolean };
-
 /**
- * Reads one site the way its robots.txt asks: only paths it allows for our
- * crawler (or for all crawlers), one request at a time, with the delay it
- * sets between requests. Without a robots.txt everything is allowed; when the
- * file can't be read because the site fails, nothing is (as search engines do).
+ * Reads one page and creates, updates or archives its listing. `overviewsWhole`: the site's overviews were read in
+ * full and hold what they state, so a listing page only a sitemap lists is no longer on offer (sitemaps keep old pages).
  */
-class SiteReader {
-  private lastRequest = 0;
-  /** The agency's own details repeated on every page (office address), left out when reading a listing. */
-  private boilerplate: Set<string> | null = null;
-  private constructor(
-    readonly site: string,
-    readonly robots: RobotsPolicy,
-  ) {}
-
-  static async open(site: string) {
-    let robots = allowAll;
-    try {
-      const file = await fetchSitePage(`${new URL(site).origin}/robots.txt`, site);
-      if (file.status === 200) robots = parseRobots(file.html);
-      else if (file.status >= 500) robots = disallowAll;
-    } catch {
-      robots = disallowAll;
-    }
-    const reader = new SiteReader(site, robots);
-    reader.lastRequest = Date.now();
-    return reader;
-  }
-
-  /** Read from the home page once per run, on first use. */
-  async siteBoilerplate(): Promise<Set<string>> {
-    if (!this.boilerplate) {
-      const home = await this.read(this.site);
-      this.boilerplate = "html" in home && home.status < 400 ? boilerplateLines(home.html) : new Set();
-    }
-    return this.boilerplate;
-  }
-
-  get delayMs() {
-    return Math.max(crawlPace.minDelayMs, Math.min((this.robots.crawlDelay ?? 0) * 1000, MAX_DELAY_MS));
-  }
-
-  /** Whether one more request still fits before the deadline, counting the wait. */
-  fits(deadline: number) {
-    return Math.max(Date.now(), this.lastRequest + this.delayMs) < deadline;
-  }
-
-  async read(url: string): Promise<ReadResult> {
-    if (!this.robots.allowed(url)) return { error: ROBOTS_BLOCKED, blocked: true };
-    const wait = this.lastRequest + this.delayMs - Date.now();
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    try {
-      return await fetchSitePage(url, this.site, this.robots.allowed);
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
-    } finally {
-      this.lastRequest = Date.now();
-    }
-  }
-}
-
-/** Candidate listing URLs: from overview pages linked from the home page, then from sitemaps. */
-async function discover(reader: SiteReader, deadline: number): Promise<{ listings: Set<string>; error?: string }> {
-  const { site } = reader;
-  const found = new Set<string>();
-  const origin = new URL(site).origin;
-
-  // Overview pages first: they show what is on offer today, while sitemaps are often stale. They get
-  // at most two thirds of the time, so sitemaps still add the listings the overviews don't link.
-  const overviewDeadline = Date.now() + (deadline - Date.now()) * (2 / 3);
-  const home = await reader.read(site);
-  if (!("html" in home)) return { listings: found, error: "blocked" in home ? `${ROBOTS_BLOCKED} (home page)` : `The website could not be read: ${home.error}` };
-  if (home.status >= 400) return { listings: found, error: `The website answered with error ${home.status}` };
-  const queue = [home];
-  const visited = new Set([normalizeUrl(home.url) ?? site]);
-  let overviews = 0;
-  while (queue.length && reader.fits(overviewDeadline)) {
-    const page = queue.shift()!;
-    // Shallow overview pages first: "/kopen" lists everything, "/kopen/aalst/huis" a slice.
-    const depth = (url: string) => new URL(url).pathname.split("/").filter(Boolean).length;
-    const links = pageLinks(page.html, page.url).sort((a, b) => depth(a) - depth(b));
-    for (const link of links) {
-      if (looksLikeListingUrl(link, site)) found.add(link);
-      else if (overviews < MAX_OVERVIEW_PAGES && !visited.has(link) && looksLikeOverviewUrl(link, site) && reader.robots.allowed(link) && reader.fits(overviewDeadline)) {
-        visited.add(link);
-        overviews++;
-        const next = await reader.read(link);
-        if ("html" in next && next.status === 200) queue.push(next);
-      }
-    }
-  }
-
-  const sitemapQueue: string[] = [...reader.robots.sitemaps];
-  if (!sitemapQueue.length) sitemapQueue.push(`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`);
-  const seenSitemaps = new Set<string>();
-  while (sitemapQueue.length && seenSitemaps.size < MAX_SITEMAPS && reader.fits(deadline)) {
-    const next = sitemapQueue.shift()!;
-    if (seenSitemaps.has(next)) continue;
-    seenSitemaps.add(next);
-    const page = await reader.read(next);
-    if (!("html" in page) || page.status !== 200) continue;
-    const entries = sitemapEntries(page.html);
-    // Listing sitemaps first: their names usually say so.
-    sitemapQueue.push(...entries.sitemaps.sort((a, b) => Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(b)) - Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(a))));
-    for (const entry of entries.pages) {
-      const url = normalizeUrl(entry);
-      if (url && looksLikeListingUrl(url, site)) found.add(url);
-    }
-  }
-
-  return { listings: found };
-}
-
-/** Reads one page and creates, updates or archives its listing. */
-async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean): Promise<PageOutcome> {
+async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean, overviewsWhole = false): Promise<PageOutcome> {
   const { site } = reader;
   const now = new Date();
+  const shownOnOverview = page.foundOn.some((tag) => tag !== ELSEWHERE);
+  if (overviewsWhole && page.foundOn.length === 1 && page.foundOn[0] === ELSEWHERE) return removePage(ctx, page, now);
   const fetched = await reader.read(page.url);
   if ("blocked" in fetched) {
     // The site doesn't want this page read: we stop using what we read from it before.
@@ -229,13 +107,13 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
   // Some sites keep a removed listing's page up with a notice instead of a 404.
   if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
-  let isListing = isListingPage(listing, fetched.html);
+  let isListing = isListingPage(listing, fetched.html, shownOnOverview);
   const knownAgent = matchAgent(team, listing.agentName, text);
   const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
   if (useAi && aiAvailable() && (isListing || looksLikeListingUrl(page.url, site)) && missing.length > 1) {
     try {
       const ai = await extractWithAi(page.url, text);
-      isListing = ai.isListing;
+      isListing = ai.isListing || (shownOnOverview && isListing);
       listing = mergeExtraction(listing, ai.listing);
       extractedBy = "ai";
     } catch (error) {
@@ -246,6 +124,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     await ctx.db.update(websitePages).set({ kind: "other", contentHash: hash, lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
     return "other";
   }
+  // "Optie" or "Verkocht" on the overview's card counts when the page itself says nothing else: some sites show it only there.
+  if (page.cardStatus && (listing.status ?? "active") === "active") listing = { ...listing, status: page.cardStatus };
 
   const agent = matchAgent(team, listing.agentName) ?? knownAgent ?? (await addWebsiteAgent(ctx, team, listing));
   if (agent && (listing.agentEmail || listing.agentPhone)) await completeAgent(ctx, agent.id, listing);
@@ -272,12 +152,39 @@ async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gon
   return "removed";
 }
 
+/**
+ * Whether a listing we have is the one this page shows: it has no page yet (made by hand), it is this page, or it is
+ * the same property in another language (the same id in the address). A reference alone doesn't say so: some sites
+ * show the same number on different properties.
+ */
+function isSameListing(listing: { websiteUrl: string | null }, url: string) {
+  if (!listing.websiteUrl || listing.websiteUrl === url) return true;
+  const id = referenceFromUrl(url);
+  return id != null && id === referenceFromUrl(listing.websiteUrl);
+}
+
 async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedListing, agentId: string | null, extractedBy: string) {
-  const byPage = page.listingId ? await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, page.listingId))) : [];
-  const byUrl = byPage.length ? byPage : await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.websiteUrl, page.url)));
-  const reference = (facts.reference ?? referenceFromUrl(page.url) ?? `WEB-${textFingerprint(page.url).slice(0, 8)}`).slice(0, 40);
-  const byReference = byUrl.length ? byUrl : await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.reference, reference)));
-  const existing = byReference[0];
+  const mine = (where: ReturnType<typeof eq>) => ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), where));
+  const fromUrl = referenceFromUrl(page.url);
+  const wanted = (facts.reference ?? fromUrl ?? `WEB-${textFingerprint(page.url).slice(0, 8)}`).slice(0, 40);
+  const candidates = [
+    ...(page.listingId ? await mine(eq(listings.id, page.listingId)) : []),
+    ...(await mine(eq(listings.websiteUrl, page.url))),
+    ...(await mine(eq(listings.reference, wanted))),
+  ];
+  const existing = candidates.find((l) => isSameListing(l, page.url));
+  // A reference another property already has: this one goes by the id in its address, so the two stay apart.
+  let reference = wanted;
+  if (!existing) {
+    for (const option of [wanted, fromUrl, `WEB-${textFingerprint(page.url).slice(0, 8)}`]) {
+      if (!option) continue;
+      const [taken] = await mine(eq(listings.reference, option.slice(0, 40)));
+      if (!taken) {
+        reference = option.slice(0, 40);
+        break;
+      }
+    }
+  }
 
   // Sites that show "street number, city" without a postcode: look the postcode up by town.
   if (!facts.postcode && facts.city) {
@@ -397,6 +304,55 @@ async function completeAgent(ctx: ToolContext, agentId: string, listing: Extract
   await ctx.db.update(agents).set(changes).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, agentId))).catch(() => undefined);
 }
 
+/** Marks a listing page found outside any overview (the home page, a sitemap) in this search. */
+const ELSEWHERE = "*";
+
+/** The search's findings go into website_pages, each page marked with the overviews that show it. */
+function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: number) => void): DiscoveryHooks {
+  return {
+    async found(urls, root, badges) {
+      const unique = [...new Set(urls)];
+      const allowed = unique.filter((url) => reader.robots.allowed(url));
+      onBlocked(unique.length - allowed.length);
+      if (!allowed.length) return { newToOverview: 0, newToSite: 0 };
+      const tag = root ?? ELSEWHERE;
+      const inserted = await ctx.db
+        .insert(websitePages)
+        .values(allowed.map((url) => ({ agencyId: ctx.agencyId, url, foundOn: [tag], cardStatus: root ? (badges?.get(url) ?? null) : null })))
+        .onConflictDoNothing()
+        .returning({ url: websitePages.url });
+      const added = new Set(inserted.map((row) => row.url));
+      const known = allowed.filter((url) => !added.has(url));
+      const marked = known.length
+        ? await ctx.db
+            .update(websitePages)
+            .set({ foundOn: sql`array_append(${websitePages.foundOn}, ${tag}::text)` })
+            .where(and(eq(websitePages.agencyId, ctx.agencyId), inArray(websitePages.url, known), sql`not (${tag}::text = any(${websitePages.foundOn}))`))
+            .returning({ foundOn: websitePages.foundOn })
+        : [];
+      if (root && known.length) {
+        // What the card shows now ("Optie" added or gone): the page is read again so its listing follows. A page we
+        // had given up as gone that an overview shows again is read again too.
+        for (const status of [null, "under_offer", "sold", "rented"] as const) {
+          const group = known.filter((url) => (badges?.get(url) ?? null) === status);
+          if (!group.length) continue;
+          await ctx.db
+            .update(websitePages)
+            .set({ cardStatus: status, contentHash: null, kind: sql`case when ${websitePages.kind} = 'gone' then 'pending' else ${websitePages.kind} end` })
+            .where(
+              and(
+                eq(websitePages.agencyId, ctx.agencyId),
+                inArray(websitePages.url, group),
+                or(sql`${websitePages.cardStatus} is distinct from ${status}::text`, eq(websitePages.kind, "gone")),
+              ),
+            );
+        }
+      }
+      return { newToOverview: inserted.length + marked.length, newToSite: inserted.length + marked.filter((row) => row.foundOn.length === 1).length };
+    },
+  };
+}
+
 async function team(ctx: ToolContext): Promise<AgentRow[]> {
   return ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true)));
 }
@@ -422,25 +378,31 @@ export const importWebsiteListings = defineTool({
       await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, websiteUrl: site }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { websiteUrl: site } });
     }
 
-    // Finding the listing pages takes at most two thirds of the budget; reading them the rest. While pages
-    // found earlier are still waiting, a run goes straight to reading them (runs follow each other).
+    // Finding the listing pages takes at most two thirds of the budget; reading them the rest. A search of the site
+    // goes on over runs until it is done; a new one starts when nothing is waiting, or after a day.
     const reader = await SiteReader.open(site);
     const previous = settings?.websiteSync ?? {};
     const [{ count: waiting } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
       .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "pending")));
+    const searching = Boolean(previous.discovery && !previous.discovery.doneAt && !siteChanged);
     const recentlyDiscovered = previous.discoveredAt && Date.now() - new Date(previous.discoveredAt).getTime() < REDISCOVER;
-    const rediscover = siteChanged || waiting === 0 || !recentlyDiscovered;
-    const discovered = rediscover ? await discover(reader, started + ((deadline - started) * 2) / 3) : { listings: new Set<string>() };
-    const allowed = [...discovered.listings].filter((url) => reader.robots.allowed(url));
-    const blockedLinks = discovered.listings.size - allowed.length;
-    const candidates = allowed.slice(0, MAX_NEW_PAGES_PER_RUN);
-    if (candidates.length) {
-      await ctx.db
-        .insert(websitePages)
-        .values(candidates.map((url) => ({ agencyId: ctx.agencyId, url })))
-        .onConflictDoNothing();
+    let state: DiscoveryState | null = searching ? { discovery: previous.discovery!, overviews: previous.overviews ?? [] } : null;
+    if (!state && (siteChanged || waiting === 0 || !recentlyDiscovered)) {
+      state = newDiscovery(site);
+      // Which overview shows which page is counted again in each search.
+      await ctx.db.update(websitePages).set({ foundOn: [] }).where(eq(websitePages.agencyId, ctx.agencyId));
+    }
+    let blockedLinks = 0;
+    let discoveryError: string | undefined;
+    if (state) {
+      const browser = await openBrowser(reader);
+      try {
+        discoveryError = (await continueDiscovery(reader, state, foundPages(ctx, reader, (n) => (blockedLinks += n)), started + ((deadline - started) * 2) / 3, browser?.render)).error;
+      } finally {
+        await browser?.close();
+      }
     }
 
     const now = Date.now();
@@ -468,15 +430,24 @@ export const importWebsiteListings = defineTool({
           ),
         ),
       )
-      .orderBy(asc(sql`case ${websitePages.kind} when 'pending' then 0 when 'listing' then 1 else 2 end`), asc(websitePages.lastCheckedAt));
+      // New pages an overview shows first, then new pages only a sitemap lists (often old or sold), then the known ones.
+      .orderBy(
+        asc(
+          sql`case when ${websitePages.kind} = 'pending' and ${websitePages.foundOn} <> array[${ELSEWHERE}]::text[] and cardinality(${websitePages.foundOn}) > 0 then 0 when ${websitePages.kind} = 'pending' then 1 when ${websitePages.kind} = 'listing' then 2 else 3 end`,
+        ),
+        asc(websitePages.lastCheckedAt),
+      );
     const people = await team(ctx);
+    // Overviews read in full that hold what they state: a page only a sitemap lists is then an old one.
+    const overviewsNow = state?.overviews ?? previous.overviews ?? [];
+    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && (o.stated == null || o.found >= o.stated));
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
-    let done = 0;
+    let checked = 0;
     for (const page of due) {
       // Blocked pages cost no request, so they don't wait for a slot.
       if (reader.robots.allowed(page.url) && !reader.fits(deadline)) break;
-      tally[await processPage(ctx, reader, page, people, input.useAi)]++;
-      done++;
+      tally[await processPage(ctx, reader, page, people, input.useAi, overviewsWhole)]++;
+      checked++;
     }
 
     // Listings on offer: sold, rented and under option are kept (valuations use sales) but not counted.
@@ -489,24 +460,31 @@ export const importWebsiteListings = defineTool({
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
       .where(and(eq(websitePages.agencyId, ctx.agencyId), inArray(websitePages.kind, ["pending", "listing", "error"])));
+    const done = state?.discovery.doneAt;
     const summary: WebsiteSync = {
       lastRunAt: new Date().toISOString(),
-      discoveredAt: rediscover ? new Date(started).toISOString() : previous.discoveredAt,
+      discoveredAt: done ?? previous.discoveredAt,
       found: listingPages,
       pages: pagesFound,
       created: tally.created,
       updated: tally.updated + tally.unchanged,
       removed: tally.removed,
       failed: tally.failed,
-      blocked: rediscover ? tally.blocked + blockedLinks : (previous.blocked ?? 0) + tally.blocked,
+      blocked: (state && !searching ? 0 : (previous.blocked ?? 0)) + tally.blocked + blockedLinks,
       crawlDelay: reader.robots.crawlDelay ?? undefined,
-      remaining: due.length - done,
-      ...("error" in discovered && discovered.error && !due.length ? { error: discovered.error } : {}),
+      remaining: due.length - checked,
+      overviews: state?.overviews ?? previous.overviews,
+      // A finished search keeps only when it ran; one still going keeps where it is.
+      discovery: state ? (done ? { startedAt: state.discovery.startedAt, doneAt: done, queue: [], visited: [] } : state.discovery) : previous.discovery,
+      ...(discoveryError && !due.length ? { error: discoveryError } : {}),
     };
     await ctx.db.update(agencySettings).set({ websiteSync: summary }).where(eq(agencySettings.agencyId, ctx.agencyId));
-    await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...summary, site } });
-    // `checked`: pages read in this run, so a caller running several in a row can show progress.
-    return { ...summary, checked: done };
+    // The event leaves out the search's own queue and visited pages.
+    const { discovery: _, ...facts } = summary;
+    await recordEvent(ctx, { type: "website.imported", subjectType: "agency", subjectId: ctx.agencyId, data: { ...facts, site } });
+    // `checked`: pages read in this run, so a caller running several in a row can show progress. `searching`: the
+    // search for listing pages isn't done, so a next run has more to do even when no page is waiting.
+    return { ...summary, checked, searching: Boolean(state && !done) };
   },
 });
 
@@ -514,7 +492,11 @@ export const importWebsitePage = defineTool({
   name: "listings_import_page",
   description: "Read one page of the agency's website (e.g. a listing a visitor just opened) and create or update its listing. Only pages on the agency's own site are read.",
   mutates: true,
-  input: z.object({ url: z.string().min(8), useAi: z.boolean().default(true) }),
+  input: z.object({
+    url: z.string().min(8),
+    useAi: z.boolean().default(true),
+    force: z.boolean().default(false).describe("Someone at the agency says this listing is missing: read it now, also when it was read recently"),
+  }),
   run: async (ctx, input) => {
     const settings = await settingsRow(ctx);
     const site = settings?.websiteUrl;
@@ -522,7 +504,9 @@ export const importWebsitePage = defineTool({
     if (!site || !url || !sameSite(url, site)) return { status: "skipped" as const, reason: "not on the agency's website" };
     const [inserted] = await ctx.db.insert(websitePages).values({ agencyId: ctx.agencyId, url }).onConflictDoNothing().returning();
     const page = inserted ?? (await ctx.db.select().from(websitePages).where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.url, url))))[0]!;
-    if (!inserted && page.lastCheckedAt && Date.now() - page.lastCheckedAt.getTime() < RECHECK_VISIT) return { status: "skipped" as const, reason: "read recently" };
+    if (!input.force && !inserted && page.lastCheckedAt && Date.now() - page.lastCheckedAt.getTime() < RECHECK_VISIT) return { status: "skipped" as const, reason: "read recently" };
+    // A listing the search missed: kept as an event, so the search can be improved for every site like this one.
+    if (input.force) await recordEvent(ctx, { type: "website.listing_missed", subjectType: "agency", subjectId: ctx.agencyId, data: { url, known: !inserted, kind: page.kind } });
     // Claim the page so parallel visits don't read it twice.
     await ctx.db.update(websitePages).set({ lastCheckedAt: new Date() }).where(eq(websitePages.id, page.id));
     const outcome = await processPage(ctx, await SiteReader.open(site), page, await team(ctx), input.useAi);
@@ -530,6 +514,46 @@ export const importWebsitePage = defineTool({
     return { status: outcome, listingId: after?.listingId ?? null };
   },
 });
+
+/** What the listing cards of an overview turned out to be. */
+export type CardCounts = { onOffer: number; underOffer: number; soldOrRented: number; toRead: number; offline: number; notListing: number; failed: number };
+
+const cardBucket = (kind: string, status: string | null): keyof CardCounts => {
+  if (kind === "pending") return "toRead";
+  if (kind === "gone") return "offline";
+  if (kind === "other") return "notListing";
+  if (kind === "error") return "failed";
+  if (status === "under_offer") return "underOffer";
+  if (status === "sold" || status === "rented") return "soldOrRented";
+  return status === "archived" ? "offline" : "onOffer";
+};
+
+/**
+ * The overviews a visitor starts from (for sale, for rent, new builds; not their filtered slices), each with the count
+ * it states and what its cards turned out to be: on offer, under option, sold or rented, still to read.
+ */
+async function overviewCounts(ctx: ToolContext, sync: WebsiteSync | undefined) {
+  const all = sync?.overviews ?? [];
+  const path = (url: string) => new URL(url).pathname.replace(/\/$/, "").toLowerCase();
+  const sliceOf = (o: WebsiteOverview, p: WebsiteOverview) => p !== o && p.found > 0 && new URL(p.url).search === "" && path(o.url).startsWith(`${path(p.url)}/`);
+  const shown = all.filter((o) => (o.found > 0 || o.stated != null) && !all.some((p) => sliceOf(o, p)));
+  if (!shown.length) return [];
+  const { rows } = await ctx.db.execute<{ root: string; kind: string; status: string | null; count: number }>(sql`
+    select r.root, p.kind, l.status, count(distinct coalesce(p.listing_id, p.id))::int as count
+    from ${websitePages} p
+    cross join unnest(p.found_on) as r(root)
+    left join ${listings} l on l.id = p.listing_id
+    where p.agency_id = ${ctx.agencyId} and r.root in (${sql.join(
+      shown.map((o) => sql`${o.url}`),
+      sql`, `,
+    )})
+    group by r.root, p.kind, l.status`);
+  return shown.map((o) => {
+    const counts: CardCounts = { onOffer: 0, underOffer: 0, soldOrRented: 0, toRead: 0, offline: 0, notListing: 0, failed: 0 };
+    for (const row of rows) if (row.root === o.url) counts[cardBucket(row.kind, row.status)] += row.count;
+    return { ...o, counts };
+  });
+}
 
 export const websiteImportStatus = defineTool({
   name: "website_import_status",
@@ -594,6 +618,9 @@ export const websiteImportStatus = defineTool({
         error: pages.filter((p) => p.kind === "error").length,
       },
       pending: pages.filter((p) => p.kind === "pending").length,
+      overviews: await overviewCounts(ctx, settings?.websiteSync),
+      /** A search of the site for listing pages is still going; the next run continues it. */
+      searching: Boolean(settings?.websiteSync?.discovery && !settings.websiteSync.discovery.doneAt),
     };
   },
 });

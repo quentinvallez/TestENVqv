@@ -1,0 +1,40 @@
+name: Website probe
+# Development aid: runs the website search on the test site (robots.txt and crawl delay obeyed) and
+# prints, per overview, the count the site states next to what we found. Stores nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      sites:
+        description: Only the sites whose address contains these words (space separated)
+        required: false
+  push:
+    branches: ["claude/**"]
+    paths: ["packages/core/scripts/probe-websites.ts", "packages/core/src/website/**", ".github/workflows/website-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only sites whose owner agreed to be read for testing.
+        site: [immo-zone]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+      - uses: pnpm/action-setup@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+      - uses: actions/setup-node@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Probe
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          pnpm install --frozen-lockfile --filter @viewing/core...
+          npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ matrix.site }}

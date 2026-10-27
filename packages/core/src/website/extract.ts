@@ -569,13 +569,15 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
 /**
  * Whether a page is a single listing rather than an overview or an article:
  * a price, or rooms or areas, near a type of property, without dozens of prices.
+ * A page the site's own overview shows as a card needs one fact (a garage or a
+ * shop to rent has a price but no rooms).
  */
-export function isListingPage(listing: ExtractedListing, html: string): boolean {
+export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
   const text = pageText(html);
   const prices = text.match(/€\s?\d{2,3}[.\s]\d{3}|\d{2,3}[.\s]\d{3}\s?€/g)?.length ?? 0;
   if (prices > 12) return false;
   const facts = [listing.price, listing.bedrooms, listing.livingArea, listing.plotArea, listing.epcScore ?? listing.epcLabel, listing.postcode].filter((v) => v != null).length;
-  return facts >= 2 && (listing.propertyType != null || listing.transaction != null || listing.price != null);
+  return facts >= (shownOnOverview ? 1 : 2) && (listing.propertyType != null || listing.transaction != null || listing.price != null);
 }
 
 /** Which of the agency's agents the page names (the earliest mention wins), as the widget does. */

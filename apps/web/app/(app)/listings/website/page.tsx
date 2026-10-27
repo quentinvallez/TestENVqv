@@ -6,8 +6,9 @@ import { AiPill, PageHeader, Panel, Pill, Stat, StatusDot } from "@/components/u
 import { getToolContext } from "@/lib/context";
 import { address, formatPrice, formatRelative } from "@/lib/format";
 import { listingStatusMeta } from "@/lib/labels";
-import { importWebsiteAction } from "../../actions";
+import { importMissingListingAction, importWebsiteAction } from "../../actions";
 import { ImportForm } from "./import-form";
+import { MissingListingForm } from "./missing-form";
 
 export const dynamic = "force-dynamic";
 // The import runs inside the server action of this page.
@@ -47,6 +48,76 @@ function PageBreakdown({ counts }: { counts: { listing: number; offMarket: numbe
         ))}
       </div>
     </div>
+  );
+}
+
+type Overview = Awaited<ReturnType<typeof tools.websiteImportStatus.run>>["overviews"][number];
+
+const cardParts = [
+  { key: "onOffer", label: "on offer", className: "bg-fg" },
+  { key: "underOffer", label: "under option", className: "bg-muted" },
+  { key: "soldOrRented", label: "sold or rented", className: "bg-faint" },
+  { key: "toRead", label: "to read", className: "bg-info" },
+  { key: "offline", label: "taken offline", className: "bg-line-strong" },
+  { key: "notListing", label: "not a listing", className: "bg-line-strong" },
+  { key: "failed", label: "could not be read", className: "bg-danger" },
+] as const;
+
+const viaLabel: Record<Overview["via"], string> = {
+  single: "all on one page",
+  links: "through its page links",
+  form: "through its search form",
+  guess: "page by page",
+  browser: "read with a browser, scrolling",
+};
+
+/** One overview of the site (for sale, for rent, new builds): what it says it has, what we found, and what those turned out to be. */
+function OverviewRow({ overview: o }: { overview: Overview }) {
+  const url = new URL(o.url);
+  const parts = cardParts.map((p) => ({ ...p, value: o.counts[p.key] })).filter((p) => p.value > 0);
+  const total = parts.reduce((sum, p) => sum + p.value, 0);
+  const missing = o.stated != null ? Math.max(0, o.stated - o.found) : 0;
+  return (
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <a href={o.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium hover:underline">
+          {decodeURIComponent(url.pathname + url.search)}
+        </a>
+        <span className="flex items-center gap-1.5 tabular-nums">
+          {o.stated != null ? (
+            <>
+              <StatusDot color={missing ? "var(--warning)" : "var(--success)"} className="size-1.5" />
+              {missing ? `${o.found} of ${o.stated} found` : `${o.stated} on your site, all found`}
+            </>
+          ) : (
+            <span className="text-muted">{o.found} found; the page shows no total</span>
+          )}
+        </span>
+      </div>
+      {total > 0 && (
+        <>
+          <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-hover" aria-hidden>
+            {parts.map((p) => (
+              <div key={p.key} className={p.className} style={{ width: `${(p.value / total) * 100}%` }} />
+            ))}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-muted">
+            {parts.map((p) => (
+              <span key={p.key} className="flex items-center gap-1.5 tabular-nums">
+                <span className={`size-1.5 rounded-full ${p.className}`} />
+                {p.value} {p.label}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="mt-1 text-[12px] text-faint">
+        {viaLabel[o.via]}
+        {o.via !== "single" && `, ${o.pages} ${o.pages === 1 ? "page" : "pages"}`}
+        {!o.complete && "; still going through it"}
+        {o.complete && missing > 0 && `; ${missing} ${missing === 1 ? "card" : "cards"} we couldn't reach. Paste the link of a missing listing below.`}
+      </div>
+    </li>
   );
 }
 
@@ -90,6 +161,28 @@ export default async function WebsiteImportPage() {
                 {sync.error && <span className="text-danger"> {sync.error}</span>}
               </p>
               <PageBreakdown counts={status.pageCounts} />
+              {status.overviews.length > 0 && (
+                <section className="mt-5">
+                  <h2 className="font-medium">What your website shows</h2>
+                  <p className="mt-0.5 max-w-2xl text-[12px] text-muted">
+                    Each overview on your site, with the number it shows next to what we found on it. That number often counts listings under option or
+                    sold too: only listings on offer go to your listings and the planner.
+                  </p>
+                  <Panel className="mt-2">
+                    <ul className="divide-y divide-line">
+                      {status.overviews.map((o) => (
+                        <OverviewRow key={o.url} overview={o} />
+                      ))}
+                    </ul>
+                  </Panel>
+                  {status.searching && <p className="mt-2 text-[12px] text-muted">We are still going through your overview pages; the next run continues.</p>}
+                </section>
+              )}
+              <Panel className="mt-3 p-4">
+                <div className="font-medium">A listing missing?</div>
+                <p className="mt-0.5 mb-2 text-[12px] text-muted">Paste its link from your website. We read it right away, and note that our search missed it.</p>
+                <MissingListingForm action={importMissingListingAction} />
+              </Panel>
               {((sync.blocked ?? 0) > 0 || (sync.crawlDelay ?? 0) > 1) && (
                 <p className="mt-2 max-w-2xl text-[12px] text-muted">
                   We follow your website&apos;s robots.txt.

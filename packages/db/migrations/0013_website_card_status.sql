@@ -1,0 +1,1 @@
+ALTER TABLE "website_pages" ADD COLUMN "card_status" text;

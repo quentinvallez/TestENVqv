@@ -43,7 +43,7 @@ export function ImportForm({
 
   useEffect(() => {
     if (pending || !running) return;
-    if (!state || state.error || !state.remaining) {
+    if (!state || state.error || !(state.remaining || state.searching)) {
       setRunning(false);
       return;
     }
@@ -52,7 +52,7 @@ export function ImportForm({
     startTransition(() => formAction(data));
   }, [state, pending, running, formAction]);
 
-  const busy = pending || (running && Boolean(state?.remaining));
+  const busy = pending || (running && Boolean(state?.remaining || state?.searching));
   // The first result of this session tells how many pages there are; until then we're still finding them.
   const started = progress !== null && counted.current === state && !state?.error;
   return (
@@ -87,13 +87,18 @@ export function ImportForm({
           done={progress.checked}
           total={progress.checked + (state.remaining ?? 0)}
           title={
-            progress.checked + (state.remaining ?? 0) > 0 ? `${progress.checked} / ${progress.checked + (state.remaining ?? 0)} pages read` : "Everything was read recently"
+            progress.checked + (state.remaining ?? 0) > 0
+              ? `${progress.checked} / ${progress.checked + (state.remaining ?? 0)} pages read`
+              : state.searching
+                ? "Going through your overview pages…"
+                : "Everything was read recently"
           }
           detail={[
             `${state.read ?? 0} listings`,
             progress.created > 0 && `${progress.created} new`,
             progress.updated > 0 && `${progress.updated} checked`,
-            busy ? "keep this page open; if you leave, the nightly run reads the rest" : state.remaining ? "stopped; the nightly run reads the rest" : "done",
+            state.searching && "still going through your overview pages, so more may follow",
+            busy ? "keep this page open; if you leave, the nightly run reads the rest" : state.remaining || state.searching ? "stopped; the nightly run reads the rest" : "done",
           ]
             .filter(Boolean)
             .join(" · ")}
