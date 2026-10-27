@@ -128,7 +128,7 @@ export function looksLikeOverviewUrl(url: string, site: string): boolean {
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname + parsed.search).toLowerCase();
   if (notPages.test(parsed.pathname) || notListings.test(parsed.pathname)) return false;
-  return /(te-koop|te-huur|kopen|huren|aanbod|verkocht|verhuurd|a-vendre|a-louer|acheter|louer|vendus?|for-sale|for-rent|to-rent|buy|rent|sold|properties|biens|panden|page=|pagina=)/.test(path);
+  return /(te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|projets|projects|neuf|new-build|verkocht|verhuurd|a-vendre|a-louer|acheter|louer|vendus?|for-sale|for-rent|to-rent|buy|rent|sold|properties|biens|panden|page=|pagina=)/.test(path);
 }
 
 /** Every link on the page, absolute and normalised. */

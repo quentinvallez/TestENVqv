@@ -49,7 +49,8 @@ const REDISCOVER = 20 * HOUR;
 /** A page visit reported by the widget triggers a read at most this often. */
 const RECHECK_VISIT = 6 * HOUR;
 const MAX_SITEMAPS = 12;
-const MAX_OVERVIEW_PAGES = 15;
+// Enough for the sale and rent overviews plus a page per new-build project.
+const MAX_OVERVIEW_PAGES = 40;
 const MAX_NEW_PAGES_PER_RUN = 400;
 /** The longest crawl delay we wait for; a site asking more is read at this pace. */
 const MAX_DELAY_MS = 60_000;
@@ -421,7 +422,7 @@ export const importWebsiteListings = defineTool({
       await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, websiteUrl: site }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { websiteUrl: site } });
     }
 
-    // Finding the listing pages takes at most a third of the budget; reading them the rest. While pages
+    // Finding the listing pages takes at most two thirds of the budget; reading them the rest. While pages
     // found earlier are still waiting, a run goes straight to reading them (runs follow each other).
     const reader = await SiteReader.open(site);
     const previous = settings?.websiteSync ?? {};
@@ -431,7 +432,7 @@ export const importWebsiteListings = defineTool({
       .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "pending")));
     const recentlyDiscovered = previous.discoveredAt && Date.now() - new Date(previous.discoveredAt).getTime() < REDISCOVER;
     const rediscover = siteChanged || waiting === 0 || !recentlyDiscovered;
-    const discovered = rediscover ? await discover(reader, started + (deadline - started) / 3) : { listings: new Set<string>() };
+    const discovered = rediscover ? await discover(reader, started + ((deadline - started) * 2) / 3) : { listings: new Set<string>() };
     const allowed = [...discovered.listings].filter((url) => reader.robots.allowed(url));
     const blockedLinks = discovered.listings.size - allowed.length;
     const candidates = allowed.slice(0, MAX_NEW_PAGES_PER_RUN);
