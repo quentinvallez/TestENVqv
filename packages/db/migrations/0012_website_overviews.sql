@@ -1,0 +1,1 @@
+ALTER TABLE "website_pages" ADD COLUMN "found_on" text[] DEFAULT '{}'::text[] NOT NULL;

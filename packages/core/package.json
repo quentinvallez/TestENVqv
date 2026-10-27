@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.2.0",
+    "@sparticuz/chromium": "153.0.0",
     "@viewing/db": "workspace:*",
     "inngest": "^4.26.0",
+    "playwright-core": "1.63.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

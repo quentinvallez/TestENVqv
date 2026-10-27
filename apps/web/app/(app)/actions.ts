@@ -146,7 +146,7 @@ export async function markAttendanceAction(appointmentId: string, attended: bool
 }
 
 export type WebsiteImportState =
-  | { error?: string; read?: number; pages?: number; remaining?: number; checked?: number; created?: number; updated?: number }
+  | { error?: string; read?: number; pages?: number; remaining?: number; checked?: number; created?: number; updated?: number; searching?: boolean }
   | undefined;
 
 export async function importWebsiteAction(_state: WebsiteImportState, form: FormData): Promise<WebsiteImportState> {
@@ -162,9 +162,28 @@ export async function importWebsiteAction(_state: WebsiteImportState, form: Form
       checked: summary.checked,
       created: summary.created ?? 0,
       updated: summary.updated ?? 0,
+      searching: summary.searching,
     };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "The website could not be read." };
+  }
+}
+
+export type MissingListingState = { message?: string; listingId?: string | null; error?: string } | undefined;
+
+/** A listing the agency sees on its site but not here: read that page now. */
+export async function importMissingListingAction(_state: MissingListingState, form: FormData): Promise<MissingListingState> {
+  const url = String(form.get("url") ?? "").trim();
+  try {
+    const result = await runTool(tools.importWebsitePage, await getToolContext(), { url, force: true });
+    revalidatePath("/listings", "layout");
+    if (result.status === "skipped") return { error: "That page isn't on your website's address. Paste the link as it appears in the browser." };
+    if (result.status === "blocked") return { error: "Your website's robots.txt doesn't let us read that page." };
+    if (result.status === "failed") return { error: "The page could not be read. Check the link and try again." };
+    if (result.status === "other" || result.status === "removed") return { error: "We read the page, but it doesn't look like a listing that is on offer." };
+    return { message: result.status === "created" ? "Added. We noted that our search missed it, so the search gets better." : "We had it already; it is up to date now.", listingId: result.listingId };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "The page could not be read." };
   }
 }
 

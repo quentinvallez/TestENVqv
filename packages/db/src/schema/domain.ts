@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { organization, user } from "./auth";
 import { id, timestamps } from "./columns";
 
@@ -66,6 +67,36 @@ export type WebsiteSync = {
   /** Pages still to read; the next run continues with them. */
   remaining?: number;
   error?: string;
+  /** The overview pages (for sale, for rent, new builds): what each says it has and what we found on it. */
+  overviews?: WebsiteOverview[];
+  /** A search of the site for listing pages, spread over several runs until done. */
+  discovery?: WebsiteDiscovery;
+};
+
+export type WebsiteOverview = {
+  url: string;
+  /** The number of listings the page says it has ("265 resultaten"), sold and under option included. */
+  stated: number | null;
+  /** Distinct listing pages found on it, over all its pages. */
+  found: number;
+  /** Pages of the overview we went through. */
+  pages: number;
+  /** How we got past page 1: page links, the site's own search form, a guessed page address, or a browser. */
+  via: "single" | "links" | "form" | "guess" | "browser";
+  /** Every page of it was read; false while a search is still going. */
+  complete: boolean;
+};
+
+export type WebsiteDiscovery = {
+  startedAt: string;
+  doneAt?: string;
+  /** Pages still to read, each with the overview it belongs to (null: the home page, a sitemap). */
+  queue: { url: string; root: string | null; guess?: boolean; sitemap?: boolean }[];
+  visited: string[];
+  sitemapsQueued?: boolean;
+  sitemapsRead?: number;
+  /** Overviews read again with a browser. */
+  rendered?: string[];
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */
@@ -305,6 +336,8 @@ export const websitePages = pgTable(
     extractedBy: text().$type<"structured" | "rules" | "ai">(),
     /** The contact person named on the page, also when they aren't one of the agency's agents yet. */
     agentName: text(),
+    /** The overview pages that show this page as a listing card, from the latest search of the site. */
+    foundOn: text().array().notNull().default(sql`'{}'::text[]`),
     lastError: text(),
     lastCheckedAt: timestamp({ withTimezone: true }),
     ...timestamps,

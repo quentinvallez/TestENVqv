@@ -2,7 +2,7 @@ import { and, db, eq, newId, schema } from "@viewing/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tools } from "../registry";
 import { runTool, type ToolContext } from "../tool";
-import { crawlPace } from "./website";
+import { crawlPace } from "../website/reader";
 
 // A small agency website served from memory instead of the network.
 const site = new Map<string, { status: number; html: string }>();
@@ -180,5 +180,68 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
     expect(imported).toHaveLength(0);
     const [settings] = await db.select().from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, agencyId));
     expect(settings!.websiteUrl).toBeNull();
+  });
+});
+
+describe.skipIf(!process.env.DATABASE_URL)("every listing on the site, each counted once", () => {
+  const agencyId = newId("org");
+  const ctx: ToolContext = { db, agencyId, actor: { type: "user", id: null } };
+  const home = "https://www.immo-zone-test.be";
+  const card = (n: number) => `${home}/te-koop/aalst/woning-${n}/${97000 + n}`;
+  const detail = (n: number, badge = "") =>
+    listingPage({ title: `${badge}Woning ${n} te koop in Aalst`, price: `€ ${300 + n}.000`, ref: String(3628100 + (n % 5)), address: `Kerkstraat ${n}, 9300 Aalst`, agent: "Sofie Peeters" });
+
+  async function importAll() {
+    for (let run = 0; run < 20; run++) {
+      const result = await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+      if (!result.searching && !result.remaining) return result;
+    }
+    throw new Error("The import didn't finish");
+  }
+
+  beforeAll(async () => {
+    crawlPace.minDelayMs = 0;
+    await db.insert(schema.organization).values({ id: agencyId, name: "Immo Zone Test", slug: agencyId, createdAt: new Date() });
+    await db.insert(schema.agencySettings).values({ agencyId, websiteUrl: `${home}/` });
+    site.set(`${home}/robots.txt`, { status: 200, html: `User-agent: *` });
+    site.set(home, { status: 200, html: `<a href="/kopen">Te koop</a>` });
+    // 24 listings on three pages; one is under option, one sold. Their pages show only five different references.
+    const overview = (from: number, to: number, next?: number) =>
+      `<h2>24 resultaten</h2>${Array.from({ length: to - from + 1 }, (_, i) => `<a href="${card(from + i)}">Bekijk</a>`).join("")}${next ? `<a href="/kopen?page=${next}">${next}</a>` : ""}`;
+    site.set(`${home}/kopen`, { status: 200, html: overview(1, 10, 2) });
+    site.set(`${home}/kopen?page=2`, { status: 200, html: overview(11, 20, 3) });
+    site.set(`${home}/kopen?page=3`, { status: 200, html: overview(21, 24) });
+    for (let n = 1; n <= 24; n++) site.set(card(n), { status: 200, html: detail(n, n === 23 ? "In optie: " : n === 24 ? "Verkocht: " : "") });
+  });
+  afterAll(async () => {
+    await db.delete(schema.organization).where(eq(schema.organization.id, agencyId));
+  });
+
+  it("finds every listing through the pages of the overview, also when pages show the same reference", async () => {
+    await importAll();
+    const rows = await db.select().from(schema.listings).where(eq(schema.listings.agencyId, agencyId));
+    expect(rows).toHaveLength(24);
+    expect(new Set(rows.map((l) => l.reference)).size).toBe(24);
+    const status = await runTool(tools.websiteImportStatus, ctx, {});
+    expect(status.searching).toBe(false);
+    expect(status.overviews).toEqual([
+      expect.objectContaining({ url: `${home}/kopen`, stated: 24, found: 24, complete: true, counts: expect.objectContaining({ onOffer: 22, underOffer: 1, soldOrRented: 1, toRead: 0 }) }),
+    ]);
+    expect(status.listings).toHaveLength(22);
+  });
+
+  it("splits listings an earlier import merged because their pages showed the same reference", async () => {
+    const [two] = await db.select().from(schema.websitePages).where(and(eq(schema.websitePages.agencyId, agencyId), eq(schema.websitePages.url, card(2))));
+    const [seven] = await db.select().from(schema.websitePages).where(and(eq(schema.websitePages.agencyId, agencyId), eq(schema.websitePages.url, card(7))));
+    // As the old rules left it: page 7 pointing at the listing of page 2, read with older rules.
+    await db.delete(schema.listings).where(eq(schema.listings.id, seven!.listingId!));
+    await db.update(schema.websitePages).set({ listingId: two!.listingId, contentHash: "v3:old" }).where(eq(schema.websitePages.id, seven!.id));
+    await importAll();
+    const [after] = await db.select().from(schema.websitePages).where(eq(schema.websitePages.id, seven!.id));
+    expect(after!.listingId).not.toBe(two!.listingId);
+    const [listing7] = await db.select().from(schema.listings).where(eq(schema.listings.id, after!.listingId!));
+    const [listing2] = await db.select().from(schema.listings).where(eq(schema.listings.id, two!.listingId!));
+    expect(listing7).toMatchObject({ street: "Kerkstraat", houseNumber: "7", websiteUrl: card(7) });
+    expect(listing2).toMatchObject({ street: "Kerkstraat", houseNumber: "2", websiteUrl: card(2) });
   });
 });

@@ -1,11 +1,11 @@
 name: Website probe
-# Development aid: reads the listing overviews of a few agency sites (robots.txt obeyed) and prints
-# what it finds. Stores nothing.
+# Development aid: runs the website search on a few agency sites (robots.txt and crawl delay obeyed) and
+# prints, per overview, the count the site states next to what we found. Stores nothing.
 on:
   workflow_dispatch:
     inputs:
       sites:
-        description: Only the planned sites whose address contains these words (space separated)
+        description: Only the sites whose address contains these words (space separated)
         required: false
   push:
     branches: ["claude/**"]
@@ -14,12 +14,26 @@ permissions:
   contents: read
 jobs:
   probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        site: [immo-zone, trevi, dewaele, immodavinci]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+      - uses: pnpm/action-setup@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
       - uses: actions/setup-node@v4
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
         with:
           node-version: 22
+          cache: pnpm
       - name: Probe
-        run: npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ github.event.inputs.sites }}
+        if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: |
+          pnpm install --frozen-lockfile --filter @viewing/core...
+          npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ matrix.site }}

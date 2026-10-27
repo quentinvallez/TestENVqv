@@ -32,28 +32,49 @@ export function statedTotal(html: string): number | null {
   return null;
 }
 
-/** Listing URLs on a page, also when they sit in data attributes or the page's own data (JSON) instead of links. */
+// The template a URL follows: "/te-koop/aalst/charmante-woning/97188" becomes "te-koop/*/*/#". Listing cards share one.
+export function urlShape(url: string): string {
+  const u = new URL(url);
+  const segments = decodeURIComponent(u.pathname).split("/").filter(Boolean);
+  const path = segments.map((s, i) => (/\d{3,}/.test(s) ? "#" : i === 0 ? s.toLowerCase() : "*")).join("/");
+  return u.search ? `${path}?${[...u.searchParams.keys()].sort().join("&")}` : path;
+}
+
+/**
+ * The listing cards on a page: links that look like a listing, and the other links with the same template (an older
+ * listing with a shorter id), also when they sit in data attributes or the page's own data (JSON) instead of links.
+ */
 export function listingLinks(html: string, pageUrl: string, site: string): string[] {
-  const found = new Set(pageLinks(html, pageUrl).filter((url) => looksLikeListingUrl(url, site)));
+  // Links in the page itself; a script's templates ("<a href='/te-koop/' + id + '">") aren't links.
+  const links = new Set(pageLinks(html.replace(/<script\b[\s\S]*?<\/script>/gi, " "), pageUrl).filter((url) => sameSite(url, site)));
   for (const m of html.matchAll(/["'(]((?:https?:)?(?:\\?\/){1,2}[^"'\s()<>]{4,300})["')]/gi)) {
     const raw = decodeEntities(m[1]!.replace(/\\\//g, "/"));
     if (!raw.startsWith("/") && !/^https?:/i.test(raw)) continue;
     const url = normalizeUrl(raw, pageUrl);
-    if (url && looksLikeListingUrl(url, site)) found.add(url);
+    if (url && looksLikeListingUrl(url, site)) links.add(url);
   }
-  return [...found];
+  const byShape = new Map<string, string[]>();
+  for (const url of links) byShape.set(urlShape(url), [...(byShape.get(urlShape(url)) ?? []), url]);
+  const found: string[] = [];
+  for (const [shape, urls] of byShape) {
+    const listingLike = urls.filter((url) => looksLikeListingUrl(url, site));
+    // Most of a template looks like a listing and the rest has a number too: the rest are listings as well.
+    const whole = shape.includes("#") && listingLike.length >= 2 && listingLike.length * 2 >= urls.length;
+    found.push(...(whole ? urls.filter((url) => /\d{3,}/.test(new URL(url).pathname)) : listingLike));
+  }
+  return found;
 }
 
-const pageParams = ["page", "pagina", "p", "pg", "pageindex", "pagenr", "pagenumber", "paged", "pag", "currentpage", "blz"];
-const offsetParams = ["start", "offset", "from", "skip"];
+/** Query fields that number pages ("page", "pagina", "currentPage_p", "p") or count listings to skip ("start", "offset"). */
+const isPageKey = (key: string) => (/page|pagina/i.test(key) && !/size|count|limit|len|type/i.test(key)) || /^(p|pg|pag|blz)$/i.test(key);
+const isOffsetKey = (key: string) => /^(start|offset|from|skip)$/i.test(key);
 
 /** The page number a URL asks for, when it asks for one (1 for the plain overview). */
 export function pageNumber(url: string): { number: number; offset: boolean } | null {
   const u = new URL(url);
   for (const [key, value] of u.searchParams) {
-    const k = key.toLowerCase();
-    if (pageParams.includes(k) && /^\d{1,4}$/.test(value)) return { number: Number(value), offset: false };
-    if (offsetParams.includes(k) && /^\d{1,6}$/.test(value)) return { number: Number(value), offset: true };
+    if (isPageKey(key) && /^\d{1,4}$/.test(value)) return { number: Number(value), offset: false };
+    if (isOffsetKey(key) && /^\d{1,6}$/.test(value)) return { number: Number(value), offset: true };
   }
   const path = u.pathname.match(/\/(?:page|pagina|p|blz)[/-]?(\d{1,4})\/?$/i);
   return path ? { number: Number(path[1]), offset: false } : null;
@@ -62,7 +83,7 @@ export function pageNumber(url: string): { number: number; offset: boolean } | n
 /** The overview without its page number: page 1, the key the pages of one overview share. */
 export function firstPage(url: string): string {
   const u = new URL(url);
-  for (const key of [...u.searchParams.keys()]) if ([...pageParams, ...offsetParams].includes(key.toLowerCase())) u.searchParams.delete(key);
+  for (const key of [...u.searchParams.keys()]) if (isPageKey(key) || isOffsetKey(key)) u.searchParams.delete(key);
   u.pathname = u.pathname.replace(/\/(?:page|pagina|p|blz)[/-]?\d{1,4}\/?$/i, "") || "/";
   return normalizeUrl(u.toString()) ?? url;
 }
@@ -84,6 +105,42 @@ export function nextPageLinks(html: string, pageUrl: string): string[] {
   return [...out].sort((a, b) => a[1] - b[1]).map(([url]) => url);
 }
 
+/**
+ * The next page through the site's own search form, when it pages that way: a GET form for this overview with a
+ * page field ("currentPage_p"), sent with its other fields as they are.
+ */
+export function formPage(html: string, pageUrl: string, page: number): string | null {
+  const here = new URL(pageUrl);
+  for (const m of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)) {
+    const attrs = m[1]!;
+    if (/method\s*=\s*["']?post/i.test(attrs)) continue;
+    const action = new URL(decodeEntities(attrs.match(/\baction\s*=\s*["']([^"']*)["']/i)?.[1] ?? "") || pageUrl, pageUrl);
+    if (action.origin !== here.origin || action.pathname.replace(/\/$/, "") !== here.pathname.replace(/\/$/, "")) continue;
+    const fields: [string, string][] = [];
+    const nameOf = (attrs: string) => decodeEntities(attrs.match(/\bname\s*=\s*["']([^"']+)["']/i)?.[1] ?? "");
+    const valueOf = (attrs: string) => decodeEntities(attrs.match(/\bvalue\s*=\s*["']([^"']*)["']/i)?.[1] ?? "");
+    for (const input of m[2]!.matchAll(/<input\b([^>]*)>/gi)) {
+      const a = input[1]!;
+      const type = a.match(/\btype\s*=\s*["']?(\w+)/i)?.[1]?.toLowerCase() ?? "text";
+      if (["submit", "button", "image", "reset", "file", "password"].includes(type)) continue;
+      if ((type === "checkbox" || type === "radio") && !/\bchecked\b/i.test(a)) continue;
+      if (nameOf(a)) fields.push([nameOf(a), valueOf(a)]);
+    }
+    // A select sends its chosen option: the filter the overview shows (for sale, for rent).
+    for (const select of m[2]!.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/gi)) {
+      const chosen = select[2]!.match(/<option\b([^>]*\bselected\b[^>]*)>/i);
+      if (nameOf(select[1]!) && chosen) fields.push([nameOf(select[1]!), valueOf(chosen[1]!)]);
+    }
+    const pageField = fields.find(([name]) => isPageKey(name))?.[0];
+    if (!pageField) continue;
+    const next = new URL(action.origin + action.pathname);
+    for (const [name, value] of fields) if (name !== pageField && value) next.searchParams.append(name, value);
+    next.searchParams.set(pageField, String(page));
+    return normalizeUrl(next.toString());
+  }
+  return null;
+}
+
 /** Ways sites commonly number their overview pages, to try when the page shows no page links but says it has more. */
 export function guessedPages(pageUrl: string, page: number, perPage: number): string[] {
   const base = new URL(firstPage(pageUrl));
@@ -100,9 +157,4 @@ export function guessedPages(pageUrl: string, page: number, perPage: number): st
   return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
     .map((url) => normalizeUrl(url))
     .filter((url): url is string => Boolean(url));
-}
-
-/** Overview pages on a site, from the links on a page; the shallowest first ("/kopen" lists everything, "/kopen/aalst" a slice). */
-export function sameSiteLinks(html: string, pageUrl: string, site: string): string[] {
-  return pageLinks(html, pageUrl).filter((url) => sameSite(url, site));
 }
