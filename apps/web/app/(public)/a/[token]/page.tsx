@@ -30,7 +30,12 @@ export default async function ManagePage({
 
   const reschedule =
     query.change && upcoming
-      ? await runTool(tools.availableSlots, publicContext(appointment.agencyId), { agentId: appointment.agentId, days: 14, excludeAppointmentId: appointment.id })
+      ? await runTool(tools.availableSlots, publicContext(appointment.agencyId), {
+          agentId: appointment.agentId,
+          listingId: appointment.type === "viewing" ? (appointment.listingId ?? undefined) : undefined,
+          days: 14,
+          excludeAppointmentId: appointment.id,
+        })
       : null;
 
   const heading = cancelled

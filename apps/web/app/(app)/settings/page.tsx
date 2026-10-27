@@ -233,6 +233,21 @@ export default async function SettingsPage() {
                   </form>
                 </div>
               ))}
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium">Alerts to owners and tenants</div>
+                  <p className="mt-0.5 max-w-xl text-muted">
+                    A message to the occupants of a home for each booked, moved or cancelled viewing, the evening before, and a reminder when they haven&apos;t given visiting times. Fixed texts, no AI.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-muted">Sending:</span>
+                    <Pill>{automations.sendOccupantAlertsAutomatically ? "Automatically" : "After your approval"}</Pill>
+                  </div>
+                </div>
+                <form action={updateAutomationsAction.bind(null, { sendOccupantAlertsAutomatically: !automations.sendOccupantAlertsAutomatically })} className="shrink-0">
+                  <Button type="submit">{automations.sendOccupantAlertsAutomatically ? "Ask me first instead" : "Send automatically"}</Button>
+                </form>
+              </div>
             </Panel>
             {runs.length > 0 && (
               <Panel className="mt-3 divide-y divide-line">

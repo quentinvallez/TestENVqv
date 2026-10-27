@@ -199,3 +199,68 @@ export const reminderSubject = {
   fr: "Rappel : votre visite",
   en: "Reminder: your viewing",
 } satisfies Record<Lang, string>;
+
+/** Messages to the owner or tenant of a listing. `other` is a date and time, e.g. the viewing that was cancelled. */
+export const occupantTemplates: Record<"invite" | "nudge" | "booked" | "rescheduled" | "cancelled" | "digest", Record<Lang, (v: Vars) => string>> = {
+  invite: {
+    nl: (v) => `Beste ${v.name},\n\n${v.agentName} plant de bezoeken aan ${v.address}. Via de link hieronder geeft u aan wanneer de woning bezocht kan worden. Zo worden bezoekers enkel op die momenten ingepland, en krijgt u een bericht bij elk bezoek.`,
+    fr: (v) => `Bonjour ${v.name},\n\n${v.agentName} organise les visites de ${v.address}. Le lien ci-dessous vous permet d'indiquer quand le bien peut être visité. Les visiteurs ne seront planifiés qu'à ces moments, et vous recevrez un message à chaque visite.`,
+    en: (v) => `Dear ${v.name},\n\n${v.agentName} is planning the viewings of ${v.address}. Use the link below to say when the home can be visited. Visitors will only be booked at those times, and you'll get a message for every viewing.`,
+  },
+  nudge: {
+    nl: (v) => `Beste ${v.name},\n\nWe hebben nog geen momenten ontvangen waarop ${v.address} bezocht kan worden. Tot dan kunnen geïnteresseerden geen bezoek inplannen. Wilt u ze via de link hieronder doorgeven?`,
+    fr: (v) => `Bonjour ${v.name},\n\nNous n'avons pas encore reçu les moments où ${v.address} peut être visité. D'ici là, les personnes intéressées ne peuvent pas planifier de visite. Pourriez-vous les indiquer via le lien ci-dessous ?`,
+    en: (v) => `Dear ${v.name},\n\nWe haven't received any times yet when ${v.address} can be visited. Until then, people who are interested can't book a viewing. Could you add them with the link below?`,
+  },
+  booked: {
+    nl: (v) => `Beste ${v.name},\n\nEr is een bezoek gepland aan ${v.address}.`,
+    fr: (v) => `Bonjour ${v.name},\n\nUne visite de ${v.address} a été planifiée.`,
+    en: (v) => `Dear ${v.name},\n\nA viewing of ${v.address} has been booked.`,
+  },
+  rescheduled: {
+    nl: (v) => `Beste ${v.name},\n\nHet bezoek aan ${v.address} van ${v.other} is verplaatst.`,
+    fr: (v) => `Bonjour ${v.name},\n\nLa visite de ${v.address} prévue le ${v.other} a été déplacée.`,
+    en: (v) => `Dear ${v.name},\n\nThe viewing of ${v.address} on ${v.other} has moved.`,
+  },
+  cancelled: {
+    nl: (v) => `Beste ${v.name},\n\nHet bezoek aan ${v.address} van ${v.other} gaat niet door.`,
+    fr: (v) => `Bonjour ${v.name},\n\nLa visite de ${v.address} prévue le ${v.other} est annulée.`,
+    en: (v) => `Dear ${v.name},\n\nThe viewing of ${v.address} on ${v.other} is cancelled.`,
+  },
+  digest: {
+    nl: (v) => `Beste ${v.name},\n\nMorgen zijn deze bezoeken gepland aan ${v.address}:`,
+    fr: (v) => `Bonjour ${v.name},\n\nDemain, ces visites sont prévues à ${v.address} :`,
+    en: (v) => `Dear ${v.name},\n\nThese viewings of ${v.address} are planned for tomorrow:`,
+  },
+};
+
+export const occupantSubject = {
+  invite: { nl: "Bezoeken aan uw woning plannen", fr: "Planifier les visites de votre bien", en: "Planning viewings of your home" },
+  nudge: { nl: "Wanneer kan uw woning bezocht worden?", fr: "Quand votre bien peut-il être visité ?", en: "When can your home be visited?" },
+  booked: { nl: "Nieuw bezoek gepland", fr: "Nouvelle visite planifiée", en: "New viewing booked" },
+  rescheduled: { nl: "Bezoek verplaatst", fr: "Visite déplacée", en: "Viewing moved" },
+  cancelled: { nl: "Bezoek geannuleerd", fr: "Visite annulée", en: "Viewing cancelled" },
+  digest: { nl: "Bezoeken van morgen", fr: "Les visites de demain", en: "Tomorrow's viewings" },
+} satisfies Record<string, Record<Lang, string>>;
+
+export const occupantLabels = {
+  page: { nl: "Uw bezoeken en beschikbaarheid", fr: "Vos visites et disponibilités", en: "Your viewings and availability" },
+  visitor: { nl: "Bezoeker", fr: "Visiteur", en: "Visitor" },
+  was: { nl: "Was", fr: "Prévue", en: "Was" },
+} satisfies Record<string, Record<Lang, string>>;
+
+/** To a visitor whose viewing the occupants can no longer receive. `other` is the viewing's date and time. */
+export const occupantConflictTemplate: Record<Lang, (v: Vars) => string> = {
+  nl: (v) => `Beste ${v.name},\n\nDe bewoners van ${v.address} kunnen u helaas niet ontvangen op ${v.other}. Past een van deze momenten u? U kunt ook zelf een ander moment kiezen via de link hieronder.`,
+  fr: (v) => `Bonjour ${v.name},\n\nLes occupants de ${v.address} ne pourront malheureusement pas vous recevoir le ${v.other}. Un de ces moments vous conviendrait-il ? Vous pouvez aussi choisir un autre moment via le lien ci-dessous.`,
+  en: (v) => `Dear ${v.name},\n\nUnfortunately the occupants of ${v.address} can't receive you on ${v.other}. Would one of these times suit you? You can also pick another time with the link below.`,
+};
+
+export const occupantConflictSubject = { nl: "Uw bezoek verplaatsen", fr: "Déplacer votre visite", en: "Moving your viewing" } satisfies Record<Lang, string>;
+
+/** "Sophie D.": what the owner or tenant sees of a visitor; never their contact details. */
+export function visitorLabel(firstName: string | null | undefined, lastName: string | null | undefined, lang: Lang) {
+  const initial = lastName?.trim()[0];
+  const name = [firstName?.trim(), initial && `${initial.toUpperCase()}.`].filter(Boolean).join(" ");
+  return name || { nl: "Een bezoeker", fr: "Un visiteur", en: "A visitor" }[lang];
+}

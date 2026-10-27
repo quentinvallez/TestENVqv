@@ -123,6 +123,7 @@ export async function updateAutomationsAction(change: {
   nudges?: boolean;
   nudgeAfterDays?: number;
   sendRemindersAutomatically?: boolean;
+  sendOccupantAlertsAutomatically?: boolean;
 }) {
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
   revalidatePath("/settings");
@@ -170,4 +171,43 @@ export async function importWebsiteAction(_state: WebsiteImportState, form: Form
 export async function setBookingLauncherAction(on: boolean) {
   await runTool(tools.updateWidgetSettings, await getToolContext(), { bookingLauncher: on });
   revalidatePath("/widget");
+}
+
+export async function setListingAccessAction(listingId: string, form: FormData) {
+  const notice = Number(form.get("notice"));
+  await runTool(tools.setListingAccess, await getToolContext(), {
+    listingId,
+    access: String(form.get("access")) as "agent" | "owner" | "tenant",
+    viewingNoticeHours: notice > 0 ? notice : null,
+  });
+  revalidatePath(`/listings/${listingId}`);
+}
+
+export type OccupantState = { added?: boolean; error?: string } | undefined;
+
+export async function addOccupantAction(listingId: string, _state: OccupantState, form: FormData): Promise<OccupantState> {
+  const text = (key: string) => String(form.get(key) ?? "").trim() || undefined;
+  try {
+    await runTool(tools.addListingOccupant, await getToolContext(), {
+      listingId,
+      role: form.get("role") === "tenant" ? "tenant" : "owner",
+      contact: {
+        firstName: text("firstName") ?? "",
+        lastName: text("lastName"),
+        email: text("email"),
+        phone: text("phone"),
+        language: (text("language") as "nl" | "fr" | "en" | undefined) ?? undefined,
+        whatsappOptIn: form.get("whatsapp") === "on",
+      },
+    });
+  } catch {
+    return { error: "Add a first name and an email address or phone number." };
+  }
+  revalidatePath("/", "layout");
+  return { added: true };
+}
+
+export async function updateOccupantAction(listingId: string, occupantId: string, change: { alerts?: boolean; newLink?: boolean; remove?: boolean }) {
+  await runTool(tools.updateListingOccupant, await getToolContext(), { occupantId, ...change });
+  revalidatePath(`/listings/${listingId}`);
 }

@@ -85,7 +85,7 @@ export const seedDemoData = defineTool({
           { agencyId, officeId: antwerp!.id, agentId: sofie!.id, reference: "ANT-1043", status: "active", transaction: "sale", propertyType: "house", title: "Gerenoveerde burgerwoning met tuin", street: "Grote Steenweg", houseNumber: "112", postcode: "2600", city: "Berchem", price: 549000, bedrooms: 4, bathrooms: 2, livingArea: 186, plotArea: 210, epcScore: 168, epcLabel: "B", photos: [{ url: photo("1568605114967-8130f3a36994") }], portalRefs: { immoweb: "21004872" } },
           { agencyId, officeId: antwerp!.id, agentId: thomas!.id, reference: "ANT-1051", status: "active", transaction: "rent", propertyType: "apartment", title: "Penthouse aan het Eilandje", street: "Londenstraat", houseNumber: "7", postcode: "2000", city: "Antwerpen", price: 1650, bedrooms: 2, bathrooms: 2, livingArea: 120, epcScore: 64, epcLabel: "A", photos: [{ url: photo("1545324418-cc1a3fa10c00") }], portalRefs: { immoweb: "21004890" } },
           { agencyId, officeId: antwerp!.id, agentId: thomas!.id, reference: "ANT-1055", status: "under_offer", transaction: "sale", propertyType: "villa", title: "Moderne villa in het groen", street: "Kapellensteenweg", houseNumber: "301", postcode: "2930", city: "Brasschaat", price: 975000, bedrooms: 5, bathrooms: 3, livingArea: 320, plotArea: 1850, epcScore: 88, epcLabel: "A", photos: [{ url: photo("1613490493576-7fde63acd811") }] },
-          { agencyId, officeId: ghent!.id, agentId: lien!.id, reference: "GNT-2011", status: "active", transaction: "sale", propertyType: "house", title: "Karaktervolle herenwoning", street: "Coupure Links", houseNumber: "55", postcode: "9000", city: "Gent", price: 785000, bedrooms: 4, bathrooms: 2, livingArea: 240, plotArea: 160, epcScore: 245, epcLabel: "C", photos: [{ url: photo("1600596542815-ffad4c1539a9") }], portalRefs: { immoweb: "21005120" } },
+          { agencyId, officeId: ghent!.id, agentId: lien!.id, reference: "GNT-2011", status: "active", access: "owner", viewingNoticeHours: 24, transaction: "sale", propertyType: "house", title: "Karaktervolle herenwoning", street: "Coupure Links", houseNumber: "55", postcode: "9000", city: "Gent", price: 785000, bedrooms: 4, bathrooms: 2, livingArea: 240, plotArea: 160, epcScore: 245, epcLabel: "C", photos: [{ url: photo("1600596542815-ffad4c1539a9") }], portalRefs: { immoweb: "21005120" } },
           { agencyId, officeId: ghent!.id, agentId: lien!.id, reference: "GNT-2014", status: "active", transaction: "rent", propertyType: "apartment", title: "Studio vlakbij Gent-Sint-Pieters", street: "Kortrijksesteenweg", houseNumber: "210", postcode: "9000", city: "Gent", price: 795, bedrooms: 0, bathrooms: 1, livingArea: 38, epcScore: 190, epcLabel: "C", photos: [{ url: photo("1522708323590-d24dbb6b0267") }] },
           { agencyId, officeId: ghent!.id, agentId: maxime!.id, reference: "GNT-2020", status: "active", transaction: "sale", propertyType: "house", title: "Halfopen bebouwing met grote tuin", street: "Hundelgemsesteenweg", houseNumber: "480", postcode: "9820", city: "Merelbeke", price: 435000, bedrooms: 3, bathrooms: 1, livingArea: 165, plotArea: 640, epcScore: 310, epcLabel: "D", photos: [{ url: photo("1570129477492-45c003edd2be") }], portalRefs: { immoweb: "21005177" } },
           { agencyId, officeId: ghent!.id, agentId: maxime!.id, reference: "GNT-2023", status: "draft", transaction: "sale", propertyType: "land", title: "Bouwgrond voor open bebouwing", street: "Pontstraat", houseNumber: "12", postcode: "9831", city: "Sint-Martens-Latem", price: 389000, plotArea: 1100, photos: [{ url: photo("1500382017468-9049fed747ef") }] },
@@ -114,6 +114,16 @@ export const seedDemoData = defineTool({
         ])
         .returning();
       const byRef = Object.fromEntries(listingRows.map((l) => [l.reference, l]));
+
+      // The Ghent townhouse is lived in: its owner gave the times it can be visited through her link.
+      const [owner] = await tx
+        .insert(contacts)
+        .values({ agencyId, firstName: "Hilde", lastName: "Verstraete", email: "hilde.verstraete@example.com", phone: "+32 478 11 22 33", language: "nl" })
+        .returning();
+      await tx.insert(schema.listingOccupants).values({ agencyId, listingId: byRef["GNT-2011"]!.id, contactId: owner!.id, role: "owner" });
+      await tx.insert(schema.listingWindows).values(
+        [2, 4].map((weekday) => ({ agencyId, listingId: byRef["GNT-2011"]!.id, weekday, startMinute: 15 * 60, endMinute: 18 * 60 })),
+      );
 
       const people: [string, string, string, "nl" | "fr" | "en"][] = [
         ["Emma", "Claes", "emma.claes@example.com", "nl"],

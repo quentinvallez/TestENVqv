@@ -3,16 +3,20 @@ import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte
 import { conversationFor, sendMessage } from "../channels";
 import { recordEvent } from "../events";
 import { absoluteUrl, addressOf, draftFollowUp, loadThread, pickSpreadSlots, propose, type DraftPlan } from "../planner/agent";
-import { composeMessage, detailLabels, formatSlot, linkLabels, reminderSubject, signature, templates, toLang } from "../planner/language";
+import { composeMessage, detailLabels, formatSlot, linkLabels, occupantLabels, occupantTemplates, reminderSubject, signature, templates, toLang, visitorLabel } from "../planner/language";
+import { messageOccupant, occupantAlertsAutomatic, occupantsWithAlerts, placeOf } from "../planner/occupants";
 import { availableSlots } from "../tools/booking";
-import { startOfZonedDay } from "../time";
+import { AGENCY_TIMEZONE, startOfZonedDay } from "../time";
 import { runTool, type ToolContext } from "../tool";
-import { automationSettings, completionDue, followUpDue, LOOKBACK, nudgeDue, REMINDER_MIN_NOTICE, reminderDue } from "./rules";
+import { automationSettings, completionDue, followUpDue, LOOKBACK, nudgeDue, REMINDER_HOUR, REMINDER_MIN_NOTICE, reminderDue } from "./rules";
 
-const { appointments, automationRuns, agencySettings, conversations, leads, messages, organization, proposals } = schema;
+const { appointments, automationRuns, agencySettings, conversations, leads, listingOccupants, listingWindows, messages, organization, proposals } = schema;
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
+
+const localHourOf = (date: Date) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, hour: "2-digit", hourCycle: "h23" }).format(date));
+const formatTime = (date: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, hour: "2-digit", minute: "2-digit" }).format(date);
 
 /** Takes the job for this subject, or returns null when an earlier or parallel run already did it. */
 async function claim(ctx: ToolContext, rule: AutomationRule, subjectType: string, subjectId: string, dueKey: string) {
@@ -281,7 +285,7 @@ export async function draftNoShow(ctx: ToolContext, appointmentId: string, optio
       thread.listing = (await ctx.db.query.listings.findFirst({ where: and(eq(schema.listings.agencyId, ctx.agencyId), eq(schema.listings.id, apt.listingId)) })) ?? thread.listing;
     }
     const lang = toLang(thread.contact?.language);
-    const { slots } = await runTool(availableSlots, ctx, { agentId: apt.agentId, days: 10 });
+    const { slots } = await runTool(availableSlots, ctx, { agentId: apt.agentId, listingId: apt.listingId ?? undefined, days: 10 });
     const name = thread.contact?.firstName ?? "the client";
     const plan: DraftPlan = {
       kind: "no_show",
@@ -368,7 +372,7 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
         const lang = toLang(thread.contact?.language);
         const name = thread.contact?.firstName ?? "the client";
         const invite = (lead!.stage === "new" || lead!.stage === "invited") && !!thread.agent && !!thread.listing;
-        const slots = invite ? pickSpreadSlots((await runTool(availableSlots, ctx, { agentId: thread.agent!.id, days: 10 })).slots) : [];
+        const slots = invite ? pickSpreadSlots((await runTool(availableSlots, ctx, { agentId: thread.agent!.id, listingId: thread.listing!.id, days: 10 })).slots) : [];
         const days = Math.round((now.getTime() - last.sentAt.getTime()) / DAY);
         const plan: DraftPlan = invite
           ? {
@@ -397,6 +401,101 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
   return outcomes;
 }
 
+// ---------------------------------------------------------------- owners and tenants
+
+/** The evening before, each occupant gets tomorrow's viewings of their home in one message. */
+async function sendOccupantDigests(ctx: ToolContext, now: Date) {
+  if (localHourOf(now) < REMINDER_HOUR) return [];
+  const tomorrow = startOfZonedDay(now, 1);
+  const viewings = await ctx.db.query.appointments.findMany({
+    where: and(
+      eq(appointments.agencyId, ctx.agencyId),
+      eq(appointments.type, "viewing"),
+      inArray(appointments.status, ["scheduled", "confirmed"]),
+      isNotNull(appointments.listingId),
+      gte(appointments.startsAt, tomorrow),
+      lt(appointments.startsAt, startOfZonedDay(now, 2)),
+    ),
+    with: { contact: true, listing: true },
+    orderBy: asc(appointments.startsAt),
+  });
+  const byListing = new Map<string, typeof viewings>();
+  for (const v of viewings) byListing.set(v.listingId!, [...(byListing.get(v.listingId!) ?? []), v]);
+  const automatic = await occupantAlertsAutomatic(ctx);
+  const outcomes: string[] = [];
+  for (const [listingId, list] of byListing) {
+    const listing = list[0]!.listing!;
+    if (listing.status !== "active") continue;
+    for (const occupant of await occupantsWithAlerts(ctx, listingId)) {
+      const runId = await claim(ctx, "occupant_digest", "occupant", occupant.id, tomorrow.toISOString());
+      if (!runId) continue;
+      outcomes.push(
+        await attempt(ctx, runId, async () => {
+          const name = occupant.contact.firstName ?? "";
+          const place = placeOf(listing);
+          const result = await messageOccupant(ctx, occupant, listing, {
+            kind: "digest",
+            agentId: list[0]!.agentId,
+            automatic,
+            summary: `Tell ${name || "the owner"} about tomorrow's ${list.length} ${list.length === 1 ? "viewing" : "viewings"} at ${place || listing.reference}`,
+            body: (lang, agentName, agency, channel) =>
+              composeMessage({
+                lang,
+                body: occupantTemplates.digest[lang]({ name, address: place, agentName }),
+                lines: list.map((v) => `${formatTime(v.startsAt)} · ${visitorLabel(v.contact?.firstName, v.contact?.lastName, lang)}`),
+                link: { url: absoluteUrl(`/s/${occupant.token}`), label: occupantLabels.page[lang] },
+                signature: signature(lang, agentName, agency, channel),
+              }),
+            whatsappTemplate: (lang) => ({ name: "occupant_digest", language: lang, params: [name, place, list.map((v) => formatTime(v.startsAt)).join(", ")] }),
+          });
+          return result.proposalId ? { outcome: "drafted", proposalId: result.proposalId } : { outcome: result.sent === "failed" ? "failed" : "sent", messageId: result.messageId };
+        }),
+      );
+    }
+  }
+  return outcomes;
+}
+
+/** An occupied home without any visiting times two days after the invitation: its occupants get one reminder. */
+async function nudgeOccupants(ctx: ToolContext, now: Date) {
+  const waiting = await ctx.db.query.listingOccupants.findMany({
+    where: and(eq(listingOccupants.agencyId, ctx.agencyId), lte(listingOccupants.createdAt, new Date(now.getTime() - 2 * DAY)), gte(listingOccupants.createdAt, new Date(now.getTime() - LOOKBACK))),
+    with: { contact: true, listing: true },
+  });
+  const automatic = await occupantAlertsAutomatic(ctx);
+  const outcomes: string[] = [];
+  for (const occupant of waiting) {
+    const listing = occupant.listing;
+    if (listing.status !== "active" || listing.access === "agent") continue;
+    const [windows] = await ctx.db.select({ n: count() }).from(listingWindows).where(and(eq(listingWindows.agencyId, ctx.agencyId), eq(listingWindows.listingId, listing.id)));
+    if (windows!.n > 0) continue;
+    const runId = await claim(ctx, "occupant_nudge", "occupant", occupant.id, "1");
+    if (!runId) continue;
+    outcomes.push(
+      await attempt(ctx, runId, async () => {
+        const name = occupant.contact.firstName ?? "";
+        const place = placeOf(listing);
+        const result = await messageOccupant(ctx, occupant, listing, {
+          kind: "nudge",
+          agentId: listing.agentId,
+          automatic,
+          summary: `Remind ${name || "the owner"} to give the times ${place || "the home"} can be visited`,
+          body: (lang, agentName, agency, channel) =>
+            composeMessage({
+              lang,
+              body: occupantTemplates.nudge[lang]({ name, address: place, agentName }),
+              link: { url: absoluteUrl(`/s/${occupant.token}`), label: occupantLabels.page[lang] },
+              signature: signature(lang, agentName, agency, channel),
+            }),
+          whatsappTemplate: (lang) => ({ name: "occupant_nudge", language: lang, params: [name, place] }),
+        });
+        return result.proposalId ? { outcome: "drafted", proposalId: result.proposalId } : { outcome: result.sent === "failed" ? "failed" : "sent", messageId: result.messageId };
+      }),
+    );
+  }
+  return outcomes;
+}
+
 // ---------------------------------------------------------------- entry points
 
 export type AutomationSummary = {
@@ -405,6 +504,7 @@ export type AutomationSummary = {
   followUps: number;
   nudges: number;
   withdrawn: number;
+  occupants: { sent: number; drafted: number };
 };
 
 const tally = (outcomes: string[], outcome: string) => outcomes.filter((o) => o === outcome).length;
@@ -419,12 +519,14 @@ export async function runAutomations(ctx: ToolContext, now = new Date(), options
   const completed = await completeViewings(actx, now);
   const followUps = settings.followUps ? await draftFollowUps(actx, now, useAi) : [];
   const nudges = settings.nudges ? await draftNudges(actx, now, settings.nudgeAfterDays, useAi) : [];
+  const occupants = [...(await sendOccupantDigests(actx, now)), ...(await nudgeOccupants(actx, now))];
   return {
     reminders: { sent: tally(reminders, "sent"), drafted: tally(reminders, "drafted"), failed: tally(reminders, "failed") },
     completed,
     followUps: tally(followUps, "drafted"),
     nudges: tally(nudges, "drafted"),
     withdrawn,
+    occupants: { sent: tally(occupants, "sent"), drafted: tally(occupants, "drafted") },
   };
 }
 

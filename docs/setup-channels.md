@@ -92,6 +92,45 @@ Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`),
 - fr: Bonjour {{1}}, êtes-vous toujours intéressé(e) par {{2}} ? Nous organisons volontiers une visite. Répondez simplement à ce message.
 - en: Hi {{1}}, are you still interested in {{2}}? We'd be happy to plan a viewing. Just reply to this message.
 
+### Templates for owners and tenants
+
+Alerts to the occupants of a listing (see "Owners and tenants" in the README) use these, all category Utility:
+
+**occupant_invite**. Variables: 1 first name, 2 address.
+- nl: Dag {{1}}, wij plannen de bezoeken aan {{2}}. Antwoord op dit bericht om de link te krijgen waarmee u aangeeft wanneer de woning bezocht kan worden.
+- fr: Bonjour {{1}}, nous organisons les visites de {{2}}. Répondez à ce message pour recevoir le lien qui vous permet d'indiquer quand le bien peut être visité.
+- en: Hi {{1}}, we're planning the viewings of {{2}}. Reply to this message to get the link where you say when the home can be visited.
+
+**occupant_nudge**. Variables: 1 first name, 2 address.
+- nl: Dag {{1}}, we hebben nog geen momenten ontvangen waarop {{2}} bezocht kan worden. Antwoord op dit bericht om uw link opnieuw te krijgen.
+- fr: Bonjour {{1}}, nous n'avons pas encore reçu les moments où {{2}} peut être visité. Répondez à ce message pour recevoir à nouveau votre lien.
+- en: Hi {{1}}, we haven't received any times yet when {{2}} can be visited. Reply to this message to get your link again.
+
+**occupant_viewing_booked**. Variables: 1 first name, 2 address, 3 date and time, 4 visitor (first name and initial).
+- nl: Dag {{1}}, er is een bezoek gepland aan {{2}} op {{3}} ({{4}}).
+- fr: Bonjour {{1}}, une visite de {{2}} est prévue le {{3}} ({{4}}).
+- en: Hi {{1}}, a viewing of {{2}} is booked for {{3}} ({{4}}).
+
+**occupant_viewing_moved**. Variables: 1 first name, 2 address, 3 old date and time, 4 new date and time.
+- nl: Dag {{1}}, het bezoek aan {{2}} van {{3}} is verplaatst naar {{4}}.
+- fr: Bonjour {{1}}, la visite de {{2}} prévue le {{3}} est déplacée au {{4}}.
+- en: Hi {{1}}, the viewing of {{2}} on {{3}} has moved to {{4}}.
+
+**occupant_viewing_cancelled**. Variables: 1 first name, 2 address, 3 date and time.
+- nl: Dag {{1}}, het bezoek aan {{2}} van {{3}} gaat niet door.
+- fr: Bonjour {{1}}, la visite de {{2}} prévue le {{3}} est annulée.
+- en: Hi {{1}}, the viewing of {{2}} on {{3}} is cancelled.
+
+**occupant_digest**. Variables: 1 first name, 2 address, 3 times (e.g. "10:00, 10:30").
+- nl: Dag {{1}}, morgen zijn er bezoeken aan {{2}} om {{3}}.
+- fr: Bonjour {{1}}, demain, des visites de {{2}} sont prévues à {{3}}.
+- en: Hi {{1}}, tomorrow there are viewings of {{2}} at {{3}}.
+
+**viewing_move_request** (to a visitor whose viewing the occupants can't receive). Variables: 1 first name, 2 address, 3 date and time.
+- nl: Dag {{1}}, de bewoners van {{2}} kunnen u helaas niet ontvangen op {{3}}. Antwoord op dit bericht, dan zoeken we samen een ander moment.
+- fr: Bonjour {{1}}, les occupants de {{2}} ne pourront malheureusement pas vous recevoir le {{3}}. Répondez à ce message et nous trouverons un autre moment ensemble.
+- en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Reply to this message and we'll find another time together.
+
 ## For developers
 
 - Outbound: `sendMessage(ctx, { conversationId, body, subject?, kind?, whatsappTemplate?, metadata? })` and `conversationFor(ctx, { contactId, channel? })` in `packages/core/src/channels`. Returns `delivery: "sent" | "failed" | "simulated"` and records `message.sent` or `message.failed`. The `conversations_reply` tool (what approving a draft runs) calls it.

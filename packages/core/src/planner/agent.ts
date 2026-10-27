@@ -203,7 +203,7 @@ async function planFor(ctx: ToolContext, thread: Thread, t: Triage): Promise<Dra
   const name = thread.contact?.firstName ?? "";
   const slotsFor = async (excludeAppointmentId?: string) => {
     if (!thread.agent) return [];
-    const { slots } = await runTool(availableSlots, ctx, { agentId: thread.agent.id, days: 10, excludeAppointmentId });
+    const { slots } = await runTool(availableSlots, ctx, { agentId: thread.agent.id, listingId: thread.listing?.id, days: 10, excludeAppointmentId });
     return pickSpreadSlots(slots);
   };
 

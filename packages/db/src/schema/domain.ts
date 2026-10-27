@@ -180,6 +180,12 @@ export const calendarConnections = pgTable(
 );
 
 export type ListingStatus = "draft" | "active" | "under_offer" | "sold" | "rented" | "archived";
+/**
+ * Who opens the door for viewings. "agent": the agency has the key, so only the
+ * agent's agenda counts. "owner" / "tenant": someone lives there and gives the
+ * times the home can be visited through their own link.
+ */
+export type ListingAccess = "agent" | "owner" | "tenant";
 
 export const listings = pgTable(
   "listings",
@@ -213,9 +219,72 @@ export const listings = pgTable(
     // For sold or rented listings: when, and the final price, used as comparables in valuations.
     soldAt: timestamp({ withTimezone: true }),
     soldPrice: integer(),
+    access: text().$type<ListingAccess>().notNull().default("agent"),
+    // Hours of notice the occupants need before a viewing; null = the usual minimum.
+    viewingNoticeHours: smallint(),
     ...timestamps,
   },
   (t) => [index().on(t.agencyId, t.status), uniqueIndex().on(t.agencyId, t.reference)],
+);
+
+/**
+ * The owner or tenant of a listing. Their private link (`token`, no account)
+ * lets them give the times the home can be visited, see upcoming viewings and
+ * report a problem; they get an alert for each booked, moved or cancelled viewing.
+ */
+export const listingOccupants = pgTable(
+  "listing_occupants",
+  {
+    id: id("occ"),
+    agencyId: agencyId(),
+    listingId: text()
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    contactId: text()
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    role: text().$type<"owner" | "tenant">().notNull(),
+    token: text()
+      .notNull()
+      .unique()
+      .$defaultFn(() => crypto.randomUUID()),
+    alerts: boolean().notNull().default(true),
+    lastSeenAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index().on(t.agencyId, t.listingId), uniqueIndex().on(t.listingId, t.contactId)],
+);
+
+/** Weekly times a listing can be visited, as its occupants gave them; local time like availability_rules. */
+export const listingWindows = pgTable(
+  "listing_windows",
+  {
+    id: id("lsw"),
+    agencyId: agencyId(),
+    listingId: text()
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    weekday: smallint().notNull(), // 0 = Sunday
+    startMinute: smallint().notNull(),
+    endMinute: smallint().notNull(),
+  },
+  (t) => [index().on(t.listingId)],
+);
+
+/** Periods the occupants can't receive visitors, e.g. a holiday. */
+export const listingBlocks = pgTable(
+  "listing_blocks",
+  {
+    id: id("lsb"),
+    agencyId: agencyId(),
+    listingId: text()
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    startsAt: timestamp({ withTimezone: true }).notNull(),
+    endsAt: timestamp({ withTimezone: true }).notNull(),
+    note: text(),
+  },
+  (t) => [index().on(t.listingId, t.startsAt)],
 );
 
 /**
@@ -464,7 +533,7 @@ export const events = pgTable(
   (t) => [index().on(t.agencyId, t.createdAt), index().on(t.subjectType, t.subjectId)],
 );
 
-export type AutomationRule = "reminder" | "follow_up" | "no_show" | "nudge";
+export type AutomationRule = "reminder" | "follow_up" | "no_show" | "nudge" | "occupant_digest" | "occupant_nudge";
 
 /**
  * One row per thing an automatic job did, so each reminder, follow-up or nudge

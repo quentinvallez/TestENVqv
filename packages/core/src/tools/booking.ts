@@ -2,12 +2,13 @@ import { and, asc, eq, gt, inArray, lt, ne, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { syncAppointmentToCalendar, externalBusy, type CalendarEvent } from "../calendar";
 import { recordEvent } from "../events";
-import { computeSlots, type Interval } from "../planner/availability";
+import { computeSlots, expandWindows, type Interval } from "../planner/availability";
 import { qualify } from "../planner/qualification";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
+import { alertOccupants } from "../planner/occupants";
 
-const { agents, appointments, availabilityRules, contacts, leads, listings } = schema;
+const { agents, appointments, availabilityRules, contacts, leads, listingBlocks, listings, listingWindows } = schema;
 
 const MINUTE = 60_000;
 export const VALUATION_MINUTES = 60;
@@ -48,8 +49,41 @@ async function getListing(ctx: ToolContext, listingId: string) {
   return listing;
 }
 
-/** Free slots for an agent between two instants, against their appointments and connected calendars. */
-export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to: Date, excludeAppointmentId?: string, slotMinutes = agent.slotMinutes): Promise<Interval[]> {
+/** Usual minimum time between booking and the start of a viewing. */
+const MIN_NOTICE_MINUTES = 120;
+
+/**
+ * What the home allows: nothing to add when the agency has the key, else only the
+ * times its occupants gave, minus the periods they're away, with their notice.
+ */
+export async function homeConstraints(ctx: ToolContext, listing: Listing, from: Date, to: Date) {
+  if (listing.access === "agent") return null;
+  const windows = await ctx.db
+    .select({ weekday: listingWindows.weekday, startMinute: listingWindows.startMinute, endMinute: listingWindows.endMinute })
+    .from(listingWindows)
+    .where(and(eq(listingWindows.agencyId, ctx.agencyId), eq(listingWindows.listingId, listing.id)));
+  const blocks = await ctx.db
+    .select({ start: listingBlocks.startsAt, end: listingBlocks.endsAt })
+    .from(listingBlocks)
+    .where(and(eq(listingBlocks.agencyId, ctx.agencyId), eq(listingBlocks.listingId, listing.id), lt(listingBlocks.startsAt, to), gt(listingBlocks.endsAt, from)));
+  return {
+    windows: windows.length,
+    allowed: expandWindows(windows, from, to),
+    blocks,
+    noticeMinutes: Math.max(MIN_NOTICE_MINUTES, (listing.viewingNoticeHours ?? 0) * 60),
+  };
+}
+
+type SlotOptions = {
+  excludeAppointmentId?: string;
+  slotMinutes?: number;
+  /** The listing to view: other viewings there need no travel buffer, and an occupied home limits the times. */
+  listing?: Listing | null;
+};
+
+/** Free slots for an agent between two instants, against their appointments and connected calendars, and the home's own times for a viewing. */
+export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to: Date, options: SlotOptions = {}): Promise<Interval[]> {
+  const { excludeAppointmentId, slotMinutes = agent.slotMinutes, listing } = options;
   const margin = agent.bufferMinutes * MINUTE;
   // Sequential on purpose: this often runs inside a transaction, which is a single connection.
   const rules = await ctx.db
@@ -57,7 +91,7 @@ export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to:
     .from(availabilityRules)
     .where(and(eq(availabilityRules.agencyId, ctx.agencyId), eq(availabilityRules.agentId, agent.id)));
   const booked = await ctx.db
-    .select({ start: appointments.startsAt, end: appointments.endsAt })
+    .select({ start: appointments.startsAt, end: appointments.endsAt, listingId: appointments.listingId, type: appointments.type })
     .from(appointments)
     .where(
       and(
@@ -70,19 +104,34 @@ export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to:
       ),
     );
   const external = await externalBusy(ctx, agent.id, from, to);
+  const home = listing ? await homeConstraints(ctx, listing, from, to) : null;
+  // Viewings at the same house go back to back: the agent is already there.
+  const sameHouse = (b: (typeof booked)[number]) => Boolean(listing && b.listingId === listing.id && b.type === "viewing");
   return computeSlots({
     workingHours: rules,
-    busy: [...booked, ...external],
+    busy: [...booked.filter((b) => !sameHouse(b)), ...external],
+    busyNoBuffer: [...booked.filter(sameHouse), ...(home?.blocks ?? [])],
+    allowed: home?.allowed,
     from,
     to,
     slotMinutes,
     bufferMinutes: agent.bufferMinutes,
+    minNoticeMinutes: home?.noticeMinutes ?? MIN_NOTICE_MINUTES,
   });
 }
 
 /** Serialises bookings per agent so two people can never take the same slot. */
 export async function lockAgent(ctx: ToolContext, agentId: string) {
   await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtext(${agentId}))`);
+}
+
+/**
+ * Serialises bookings per occupied home, taken after the agent's lock: two agents
+ * showing the same house can't both take the occupants' only free hour.
+ */
+export async function lockListing(ctx: ToolContext, listing: Listing) {
+  if (listing.access === "agent") return;
+  await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtext(${`listing:${listing.id}`}))`);
 }
 
 function calendarEvent(listing: Listing | null, contact: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null }, start: Date, end: Date): CalendarEvent {
@@ -112,18 +161,21 @@ export const availableSlots = defineTool({
   }),
   run: async (ctx, input) => {
     let agent: Agent | undefined;
+    const listing = input.listingId ? await getListing(ctx, input.listingId) : null;
     if (input.agentId) {
       agent = await activeAgent(ctx, input.agentId);
     }
-    if (!agent && input.listingId) {
-      agent = await resolveAgentForListing(ctx, await getListing(ctx, input.listingId));
+    if (!agent && listing) {
+      agent = await resolveAgentForListing(ctx, listing);
     }
     if (!agent) throw new Error("Pass a listingId or agentId");
     const from = input.from ?? new Date();
     const to = startOfZonedDay(from, input.days);
     const minutes = input.minutes ?? agent.slotMinutes;
-    const slots = await agentSlots(ctx, agent, from, to, input.excludeAppointmentId, minutes);
-    return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots };
+    const slots = await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes, listing });
+    // An occupied home whose occupants haven't given any times yet: visitors can only ask for a viewing.
+    const awaitingOccupant = Boolean(listing && listing.access !== "agent" && !(await homeConstraints(ctx, listing, from, to))?.windows);
+    return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots, awaitingOccupant };
   },
 });
 
@@ -156,9 +208,10 @@ export const bookViewing = defineTool({
       const listing = await getListing(txCtx, input.listingId);
       const agent = (input.agentId && (await activeAgent(txCtx, input.agentId))) || (await resolveAgentForListing(txCtx, listing));
       await lockAgent(txCtx, agent.id);
+      await lockListing(txCtx, listing);
 
       const dayStart = startOfZonedDay(input.startsAt);
-      const slots = await agentSlots(txCtx, agent, dayStart, startOfZonedDay(input.startsAt, 1));
+      const slots = await agentSlots(txCtx, agent, dayStart, startOfZonedDay(input.startsAt, 1), { listing });
       const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
       if (!slot) throw new SlotUnavailableError();
 
@@ -240,6 +293,7 @@ export const bookViewing = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
     }
+    await alertOccupants(ctx, result.appointment.id, { kind: "booked" });
     return {
       appointmentId: result.appointment.id,
       manageToken: result.appointment.manageToken,
@@ -301,6 +355,7 @@ export const cancelAppointment = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, appointment.id, { kind: "cancelled" });
     }
+    await alertOccupants(ctx, appointment.id, { kind: "cancelled" });
     return { changed: true };
   },
 });
@@ -317,9 +372,11 @@ export const rescheduleAppointment = defineTool({
       const appointment = await getAppointment(txCtx, input.appointmentId);
       if (!["scheduled", "confirmed"].includes(appointment.status)) throw new Error("Only upcoming appointments can be rescheduled");
       const [agent] = await tx.select().from(agents).where(eq(agents.id, appointment.agentId));
+      const listing = appointment.type === "viewing" && appointment.listingId ? await getListing(txCtx, appointment.listingId) : null;
       await lockAgent(txCtx, agent!.id);
+      if (listing) await lockListing(txCtx, listing);
 
-      const slots = await agentSlots(txCtx, agent!, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), appointment.id);
+      const slots = await agentSlots(txCtx, agent!, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), { excludeAppointmentId: appointment.id, listing });
       const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
       if (!slot) throw new SlotUnavailableError();
 
@@ -353,6 +410,7 @@ export const rescheduleAppointment = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     }
+    await alertOccupants(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     return { appointmentId: updated.id, startsAt: updated.startsAt, endsAt: updated.endsAt };
   },
 });
@@ -427,7 +485,7 @@ export const bookValuationVisit = defineTool({
       if (!agent) throw new Error("Agent not available");
       await lockAgent(txCtx, agent.id);
       // A valuation takes longer than a viewing: the whole hour must be free.
-      const slots = await agentSlots(txCtx, agent, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), undefined, VALUATION_MINUTES);
+      const slots = await agentSlots(txCtx, agent, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), { slotMinutes: VALUATION_MINUTES });
       const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
       if (!slot) throw new SlotUnavailableError();
       const endsAt = slot.end;

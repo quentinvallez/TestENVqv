@@ -14,6 +14,7 @@ import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
+import { addListingOccupant, getOccupantPage, listListingOccupants, reportOccupantProblem, requestViewing, setListingAccess, setOccupantAvailability, updateListingOccupant } from "./tools/occupants";
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
@@ -58,6 +59,14 @@ export const tools = {
   findMatchingClients,
   suggestListingToMatches,
   getAutomationSettings,
+  setListingAccess,
+  listListingOccupants,
+  addListingOccupant,
+  updateListingOccupant,
+  getOccupantPage,
+  setOccupantAvailability,
+  reportOccupantProblem,
+  requestViewing,
   updateAutomationSettings,
   runAutomationsNow,
   listAutomationRuns,

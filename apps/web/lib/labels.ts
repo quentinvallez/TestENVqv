@@ -72,6 +72,14 @@ export const eventLabel: Record<string, string> = {
   "automation.follow_up_drafted": "Follow-up drafted",
   "automation.nudge_drafted": "Check-in drafted",
   "planner.off_market_drafted": "Planner drafted a cancellation (listing off the market)",
+  "planner.occupant_conflict_drafted": "Planner drafted a request to move (occupants unavailable)",
+  "listing.access_changed": "Viewing access changed",
+  "listing.occupant_added": "Owner or tenant added",
+  "listing.occupant_updated": "Owner or tenant updated",
+  "listing.availability_changed": "Occupants changed their visiting times",
+  "listing.occupant_problem": "Occupants can't receive a viewing",
+  "listing.occupants_alerted": "Occupants alerted",
+  "lead.viewing_requested": "Asked for a viewing",
   "settings.automations_updated": "Automations changed",
 };
 
@@ -81,6 +89,8 @@ export const automationRuleLabel: Record<string, string> = {
   follow_up: "Follow-up",
   no_show: "No-show message",
   nudge: "Check-in",
+  occupant_digest: "Owner: tomorrow's viewings",
+  occupant_nudge: "Owner: reminder to give visiting times",
 };
 
 export const categoryMeta: Record<string, { label: string; color: string }> = {

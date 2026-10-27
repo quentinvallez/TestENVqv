@@ -12,6 +12,13 @@ const draftKindLabel: Record<string, string> = {
   no_show: "After a no-show",
   nudge: "Check-in, no answer yet",
   off_market: "Viewing off: the listing is no longer on offer",
+  occupant_conflict: "The occupants can't receive this viewing",
+  occupant_invite: "Invitation to give visiting times",
+  occupant_booked: "Alert to the owner: viewing booked",
+  occupant_rescheduled: "Alert to the owner: viewing moved",
+  occupant_cancelled: "Alert to the owner: viewing cancelled",
+  occupant_digest: "Alert to the owner: tomorrow's viewings",
+  occupant_nudge: "Reminder to give visiting times",
 };
 
 export function DraftComposer({
