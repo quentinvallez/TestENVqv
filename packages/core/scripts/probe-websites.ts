@@ -97,7 +97,7 @@ async function probe(site: string) {
     }
     const first = html.get(o.url) ?? "";
     if (o.stated != null) console.log(`      stated in: "${short(statedCount(first)?.line ?? "?", 120)}"`);
-    if (o.stated != null && o.found < o.stated) {
+    if (o.found === 0 || (o.stated != null && o.found < o.stated)) {
       const cards = new Set([...(pagesOf.get(o.url)?.values() ?? [])].flat());
       const others = pageLinks(first, o.url).filter((url) => sameSite(url, site) && !cards.has(url));
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
@@ -109,7 +109,7 @@ async function probe(site: string) {
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
   const outcome = new Map<string, { status: string; why: string }>();
-  const readOne = async (url: string) => {
+  const readOne = async (url: string, shownOnOverview: boolean) => {
     const page = await reader.read(url);
     if (!("html" in page)) return outcome.set(url, { status: "unreadable", why: page.error });
     const { listing } = extractListing(page.html, page.url, boilerplate);
@@ -117,14 +117,14 @@ async function probe(site: string) {
     const title = short(page.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "", 80);
     if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });
     if (isRemovedListingPage(listing, page.html)) return outcome.set(url, { status: "offline", why: short(text.split("\n").find((l) => /niet (meer|langer)|plus disponible|no longer|verkocht|verhuurd/i.test(l)) ?? "", 100) });
-    if (!isListingPage(listing, page.html)) return outcome.set(url, { status: "not a listing", why: title });
+    if (!isListingPage(listing, page.html, shownOnOverview)) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     return outcome.set(url, { status: listing.status ?? "active", why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"}${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
   for (const url of sitemapSample) {
     if (!reader.fits(readUntil)) break;
-    await readOne(url);
+    await readOne(url, false);
   }
   const byOverview = new Map<string, string[]>();
   for (const [url, tags] of shownOn) for (const tag of tags) if (tag !== "*") byOverview.set(tag, [...(byOverview.get(tag) ?? []), url]);
@@ -133,7 +133,7 @@ async function probe(site: string) {
     if (![...byOverview.values()].some((urls) => i < urls.length)) break;
     for (const url of round) {
       if (!reader.fits(readUntil)) break;
-      await readOne(url);
+      await readOne(url, true);
     }
   }
   console.log(`read ${outcome.size} of ${shownOn.size} listing pages`);
