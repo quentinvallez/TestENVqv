@@ -1,26 +1,35 @@
 /*
- * Development probe: how do agency sites list their listings? Prints, per overview page, the count
- * the site states, the links we find, pagination and data hints. Stores nothing.
- * Run: npx tsx packages/core/scripts/probe-websites.ts https://www.immo-zone.be ...
+ * Development probe: how do agency sites list their listings, and how do we read them? Prints what it
+ * finds; stores nothing. Obeys robots.txt and its crawl delay.
+ * Run: npx tsx packages/core/scripts/probe-websites.ts
  */
-import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, pageText } from "../src/website/extract";
+import { boilerplateLines, extractListing, isListingPage, isRemovedListingPage, normalizeUrl, pageLinks, pageText } from "../src/website/extract";
 import { fetchSitePage } from "../src/website/fetch";
+import { listingLinks, statedTotal } from "../src/website/overview";
 import { allowAll, parseRobots, type RobotsPolicy } from "../src/website/robots";
 
-const sites = process.argv.slice(2);
+type Plan = { site: string; overviews: string[]; tryPages?: string[]; details?: number };
+const plans: Plan[] = [
+  { site: "https://www.immo-zone.be", overviews: ["/kopen", "/huren"], details: 90 },
+  { site: "https://www.trevi.be", overviews: ["/fr/acheter-bien-immobilier"], tryPages: ["/fr/acheter-bien-immobilier?currentPage_p=2", "/fr/acheter-bien-immobilier?page=2"], details: 6 },
+  { site: "https://www.dewaele.com/nl", overviews: ["/nl/te-koop"], tryPages: ["/nl/te-koop?page=2", "/nl/te-koop/alle?page=2"], details: 6 },
+  { site: "https://www.immodavinci.be", overviews: ["/residentieel/kopen"], tryPages: ["/residentieel/kopen?page=2"], details: 3 },
+];
+
 const short = (s: string, n = 160) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ");
 
 async function main() {
-  for (const site of sites) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.message : e}`));
+  const only = process.argv.slice(2);
+  for (const plan of plans) if (!only.length || only.some((o) => plan.site.includes(o))) await probe(plan).catch((e) => console.log(`!! ${plan.site}: ${e instanceof Error ? e.stack : e}`));
 }
 
-async function probe(site: string) {
+async function probe(plan: Plan) {
+  const { site } = plan;
   console.log(`\n================ ${site}`);
   let robots: RobotsPolicy = allowAll;
   const r = await fetchSitePage(`${new URL(site).origin}/robots.txt`, site).catch(() => null);
   if (r?.status === 200) robots = parseRobots(r.html);
-  const delay = Math.max(1000, (robots.crawlDelay ?? 0) * 1000);
-  console.log(`robots: status ${r?.status} crawl-delay ${robots.crawlDelay} sitemaps ${robots.sitemaps.join(" ")}`);
+  const delay = Math.max(1000, Math.min(15, robots.crawlDelay ?? 0) * 1000);
   let last = 0;
   const get = async (url: string) => {
     if (!robots.allowed(url)) {
@@ -39,72 +48,63 @@ async function probe(site: string) {
     }
   };
 
-  const home = await get(site);
-  if (!home) return;
-  console.log(`home: ${home.status} ${home.url} ${home.html.length} bytes`);
-  const depth = (u: string) => new URL(u).pathname.split("/").filter(Boolean).length;
-  const homeLinks = pageLinks(home.html, home.url);
-  const overviews = homeLinks.filter((l) => looksLikeOverviewUrl(l, site)).sort((a, b) => depth(a) - depth(b));
-  console.log(`home links ${homeLinks.length}, listing-like ${homeLinks.filter((l) => looksLikeListingUrl(l, site)).length}, overview-like ${overviews.length}:`);
-  for (const o of overviews.slice(0, 25)) console.log(`  ${o}`);
-
-  const extra = (process.env.PROBE_PATHS ?? "").split(",").filter(Boolean).map((p) => new URL(p, site).toString());
-  const toRead = [...new Set([...extra.filter((u) => new URL(u).hostname === new URL(site).hostname), ...overviews.slice(0, 6)])];
-  for (const url of toRead) {
+  const cards = new Set<string>();
+  for (const path of plan.overviews) {
+    const url = new URL(path, site).toString();
     const page = await get(url);
     if (!page) continue;
-    analyse(page.url, page.status, page.html, site);
+    const found = listingLinks(page.html, page.url, site);
+    found.forEach((c) => cards.add(c));
+    const text = pageText(page.html);
+    console.log(`\n--- ${url} (${page.status}, ${page.html.length} bytes) stated ${statedTotal(page.html)}, cards ${found.length}`);
+    console.log(`count lines: ${text.split("\n").filter((l) => /\d/.test(l) && /(resultat|résultat|result|panden|biens|woningen|propert)/i.test(l)).slice(0, 6).map((l) => short(l, 80)).join(" | ")}`);
+    for (const m of page.html.matchAll(/<form\b[^>]*method=["']?get["']?[^>]*>[\s\S]{0,4000}?<\/form>/gi)) {
+      const inputs = [...m[0].matchAll(/<(?:input|select)\b[^>]*\bname=["']([^"']+)["'][^>]*?(?:\bvalue=["']([^"']*)["'])?[^>]*>/gi)].map((i) => `${i[1]}=${i[2] ?? ""}`);
+      console.log(`  GET form ${short(m[0].match(/<form[^>]*>/i)![0], 160)} inputs: ${inputs.slice(0, 30).join(" ")}`);
+    }
+    for (const word of ["Suivant", "Volgende", "Toon meer", "Meer laden", "Load more", "page=", "currentPage"]) {
+      const i = page.html.indexOf(word);
+      if (i > 0) console.log(`  around "${word}": ${short(page.html.slice(Math.max(0, i - 500), i + 300), 800)}`);
+    }
+    const pageLinksFound = pageLinks(page.html, page.url).filter((l) => /[?&](page|pagina|p|currentPage\w*)=\d/i.test(l));
+    console.log(`  page links: ${pageLinksFound.slice(0, 6).join(" ")}`);
   }
-}
+  for (const path of plan.tryPages ?? []) {
+    const url = new URL(path, site).toString();
+    const page = await get(url);
+    if (!page) continue;
+    const found = listingLinks(page.html, page.url, site);
+    const fresh = found.filter((c) => !cards.has(c));
+    console.log(`\n--- try ${url}: ${page.status}, cards ${found.length}, new ${fresh.length}; e.g. ${fresh.slice(0, 2).join(" ")}`);
+  }
 
-function shape(url: string) {
-  const u = new URL(url);
-  const segs = u.pathname.split("/").filter(Boolean);
-  return `${segs.map((s, i) => (i === 0 ? s : /\d{3,}/.test(s) ? "#" : "*")).join("/")}${u.search ? "?" + [...u.searchParams.keys()].join("&") : ""}`;
-}
-
-function analyse(url: string, status: number, html: string, site: string) {
-  console.log(`\n--- ${url} (${status}, ${html.length} bytes)`);
-  const text = pageText(html);
-  const counts = [...text.matchAll(/(.{0,40}?)(\d[\d.  ]{0,6}\d|\d)\s*(resultaten|resultaat|results?|résultats?|panden|biens|woningen|properties|objecten|zoekertjes|annonces|immeubles|eigendommen|items)(.{0,30})/gi)]
-    .slice(0, 8)
-    .map((m) => short(m[0], 100));
-  console.log(`stated: ${counts.length ? counts.join(" | ") : "(none)"}`);
-  const links = pageLinks(html, url).filter((l) => new URL(l).hostname.replace(/^www\./, "") === new URL(site).hostname.replace(/^www\./, ""));
-  const listing = links.filter((l) => looksLikeListingUrl(l, site));
-  console.log(`same-site links ${links.length}, listing-like ${listing.length}; e.g. ${listing.slice(0, 3).join(" ")}`);
-  const groups = new Map<string, string[]>();
-  for (const l of links) groups.set(shape(l), [...(groups.get(shape(l)) ?? []), l]);
-  for (const [k, v] of [...groups].sort((a, b) => b[1].length - a[1].length).slice(0, 8)) console.log(`  shape ${k}: ${v.length}  e.g. ${v[0]}`);
-  // Any quoted URL-ish strings that look like listings but aren't <a href>.
-  const quoted = new Set<string>();
-  for (const m of html.matchAll(/["'(]((?:https?:\/\/[^"'\s)]+)|(?:\/[a-z0-9][^"'\s)<>]{4,200}))["')]/gi)) {
-    const u = normalizeUrl(m[1]!.replace(/\\\//g, "/"), url);
-    if (u && looksLikeListingUrl(u, site) && !listing.includes(u)) quoted.add(u);
+  // Read some cards the way the importer does.
+  const n = plan.details ?? 0;
+  if (!n) return;
+  const home = await get(site);
+  const boilerplate = home ? boilerplateLines(home.html) : new Set<string>();
+  const refs = new Map<string, number>();
+  const statuses = new Map<string, number>();
+  for (const url of [...cards].slice(0, n)) {
+    const page = await get(url);
+    if (!page) continue;
+    const { listing, structured } = extractListing(page.html, url, boilerplate);
+    const listingPage = isListingPage(listing, page.html);
+    const removed = isRemovedListingPage(listing, page.html);
+    const key = `${removed ? "REMOVED" : listingPage ? listing.status ?? "active?" : "NOT-A-LISTING"}`;
+    statuses.set(key, (statuses.get(key) ?? 0) + 1);
+    refs.set(listing.reference ?? "-", (refs.get(listing.reference ?? "-") ?? 0) + 1);
+    console.log(
+      `  ${page.status} ${key} ref=${listing.reference} ${listing.transaction}/${listing.propertyType} €${listing.price} ${listing.street ?? ""} ${listing.houseNumber ?? ""} ${listing.postcode ?? ""} ${listing.city ?? ""} agent=${listing.agentName} ${structured ? "[structured]" : ""} ${normalizeUrl(page.url) !== url ? `→ ${page.url}` : ""} ${short(url.replace(site, ""), 70)}`,
+    );
+    if (key !== "active" && key !== "active?") {
+      const text = pageText(page.html);
+      const hits = text.split("\n").filter((l) => /(verkocht|verhuurd|optie|voorbehoud|compromis|vendu|lou[ée]|option|sold|rented|niet meer|plus disponible|offline)/i.test(l)).slice(0, 5);
+      console.log(`      status lines: ${hits.map((l) => short(l, 90)).join(" | ")}`);
+    }
   }
-  console.log(`listing-like urls outside <a href>: ${quoted.size}; e.g. ${[...quoted].slice(0, 3).join(" ")}`);
-  const pagination = links.filter((l) => /[?&](page|pagina|p|pg|pageindex|start|offset|from|skip)=\d|\/(page|pagina|p)\/\d/i.test(l));
-  console.log(`pagination links ${pagination.length}: ${pagination.slice(0, 8).join(" ")}`);
-  for (const m of html.matchAll(/<link[^>]+rel=["']?(next|prev)["']?[^>]*>/gi)) console.log(`  ${short(m[0])}`);
-  for (const m of html.matchAll(/<(a|button|div|span)[^>]*>[^<]{0,40}(meer laden|toon meer|meer tonen|load more|show more|voir plus|plus de biens|charger plus|volgende|suivant|next)[^<]{0,40}<\/\1>/gi)) console.log(`  more: ${short(m[0], 300)}`);
-  for (const m of html.matchAll(/<[^>]+(data-(?:url|href|src|endpoint|api|ajax|source|next|page|total|count|pages)[a-z-]*)=["']([^"']{1,200})["'][^>]*>/gi)) console.log(`  attr ${m[1]}="${short(m[2]!, 120)}"`);
-  const scripts = [...html.matchAll(/<script[^>]*\bsrc=["']([^"']+)["']/gi)].map((m) => m[1]!);
-  console.log(`scripts ${scripts.length}: ${scripts.map((s) => short(s, 90)).join(" ")}`);
-  const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]!);
-  console.log(`inline scripts ${inline.length}, sizes ${inline.map((s) => s.length).join(",")}`);
-  const hints = new Set<string>();
-  for (const s of inline) for (const m of s.matchAll(/["'`]([^"'`\s]{0,80}(?:api|ajax|json|search|zoek|load|page|pand|propert|estate|listing|biens?)[^"'`\s]{0,80})["'`]/gi)) hints.add(short(m[1]!, 140));
-  console.log(`inline hints: ${[...hints].slice(0, 25).join(" | ")}`);
-  for (const marker of ["__NEXT_DATA__", "__NUXT__", "__INITIAL_STATE__", "__APOLLO_STATE__", "application/ld+json", "wp-json", "admin-ajax", "x-data", "hx-get", "infinite", "lazy", "omnicasa", "whise", "skarabee", "sweepbright", "zabun", "realo", "immoweb"]) {
-    const n = html.split(marker).length - 1;
-    if (n) console.log(`  marker ${marker}: ${n}`);
-  }
-  for (const m of html.matchAll(/<form[^>]*>/gi)) console.log(`  form ${short(m[0], 200)}`);
-  // One card, to see its markup.
-  if (listing[0]) {
-    const i = html.indexOf(new URL(listing[0]).pathname);
-    if (i > 0) console.log(`card: ${short(html.slice(Math.max(0, i - 700), i + 600), 1300)}`);
-  }
+  console.log(`  statuses: ${[...statuses].map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  console.log(`  repeated references: ${[...refs].filter(([, v]) => v > 1).map(([k, v]) => `${k}×${v}`).join(", ") || "none"}`);
 }
 
 main();

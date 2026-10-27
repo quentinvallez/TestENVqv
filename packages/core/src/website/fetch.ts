@@ -50,7 +50,13 @@ export type FetchedPage = { url: string; status: number; html: string };
  * GET a page of the agency's site. Redirects are followed by hand (at most
  * five) and must stay on the same site, on paths its robots.txt allows.
  */
-export async function fetchSitePage(input: string, site: string, allowed: (url: string) => boolean = () => true, timeoutMs = 12_000): Promise<FetchedPage> {
+export async function fetchSitePage(
+  input: string,
+  site: string,
+  allowed: (url: string) => boolean = () => true,
+  timeoutMs = 12_000,
+  headers: Record<string, string> = {},
+): Promise<FetchedPage> {
   let url = new URL(input);
   for (let hop = 0; hop < 6; hop++) {
     if (!sameSite(url, site)) throw new FetchError(`${url.hostname} is not on the agency's website`);
@@ -59,7 +65,7 @@ export async function fetchSitePage(input: string, site: string, allowed: (url: 
     const response = await fetch(url, {
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
-      headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5", "accept-language": "nl-BE,nl;q=0.9,fr-BE;q=0.8,en;q=0.6" },
+      headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5", "accept-language": "nl-BE,nl;q=0.9,fr-BE;q=0.8,en;q=0.6", ...headers, "user-agent": USER_AGENT },
     });
     if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
       url = new URL(response.headers.get("location")!, url);
@@ -67,7 +73,7 @@ export async function fetchSitePage(input: string, site: string, allowed: (url: 
       continue;
     }
     const type = response.headers.get("content-type") ?? "";
-    if (response.ok && !/html|xml|text\/plain/i.test(type)) {
+    if (response.ok && !/html|xml|json|text\/plain/i.test(type)) {
       await response.body?.cancel();
       throw new FetchError(`Not a web page (${type || "unknown type"})`, response.status);
     }
