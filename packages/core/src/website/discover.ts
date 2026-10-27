@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sitemapEntries } from "./extract";
-import { firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
+import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -34,8 +34,11 @@ export type DiscoveryReader = {
 export type Renderer = (url: string, deadline: number) => Promise<string | null>;
 
 export type DiscoveryHooks = {
-  /** Saves listing pages found on an overview (root null: found elsewhere) and says how many were new to it and to the search. */
-  found(urls: string[], root: string | null): Promise<{ newToOverview: number; newToSite: number }>;
+  /**
+   * Saves listing pages found on an overview (root null: found elsewhere), with the status badges their cards show
+   * there, and says how many were new to it and to the search.
+   */
+  found(urls: string[], root: string | null, badges?: Map<string, CardBadge>): Promise<{ newToOverview: number; newToSite: number }>;
 };
 
 export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[] };
@@ -119,7 +122,11 @@ export async function continueDiscovery(
         continue;
       }
       for (const o of overviews) o.complete = true;
-      if (await renderShortOverviews(state, hooks, renderer, reader, deadline)) discovery.doneAt = new Date().toISOString();
+      if (await renderShortOverviews(state, hooks, renderer, reader, deadline)) {
+        // A count on a page where not a single listing shows (a project's title, "9 woningen") says nothing we can check.
+        for (const o of overviews) if (o.found === 0) o.stated = null;
+        discovery.doneAt = new Date().toISOString();
+      }
       break;
     }
     if (visited.has(item.url) || (item.root === item.url && coveredBy(item.url, overviews))) continue;
@@ -153,7 +160,7 @@ export async function continueDiscovery(
       discovery.language = homeLanguage(page.url, overviewLinks);
     }
     const cards = listingLinks(page.html, page.url, site).filter(inLanguage);
-    const fresh = await hooks.found(cards, item.root);
+    const fresh = await hooks.found(cards, item.root, item.root ? cardStatuses(page.html, page.url, cards) : undefined);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
 
     // Overviews this page links to (the home page's menu, "new builds" on an overview): page 1 of each, the shallowest first.
@@ -185,7 +192,9 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   }
   o.pages++;
   o.found += fresh;
-  o.stated ??= statedTotal(html);
+  // A page showing more cards than it says it has isn't saying how many it has.
+  const said = statedTotal(html);
+  if (o.stated == null && said != null && said >= cardCount) o.stated = said;
 
   const queued = new Set(discovery.queue.map((q) => q.url));
   const unseen = (url: string | null): url is string => Boolean(url && !visited.has(url) && !queued.has(url) && url !== pageUrl);
@@ -244,7 +253,7 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
     if (!html) continue;
     const language = state.discovery.language ?? null;
     const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
-    const fresh = await hooks.found(cards, o.url);
+    const fresh = await hooks.found(cards, o.url, cardStatuses(html, o.url, cards));
     if (fresh.newToOverview > 0) {
       o.found += fresh.newToOverview;
       o.via = "browser";

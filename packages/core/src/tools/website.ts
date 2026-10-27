@@ -66,10 +66,15 @@ export function websiteFromInput(input: string): string | null {
   return normalizeUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
 }
 
-/** Reads one page and creates, updates or archives its listing. */
-async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean): Promise<PageOutcome> {
+/**
+ * Reads one page and creates, updates or archives its listing. `overviewsWhole`: the site's overviews were read in
+ * full and hold what they state, so a listing page only a sitemap lists is no longer on offer (sitemaps keep old pages).
+ */
+async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean, overviewsWhole = false): Promise<PageOutcome> {
   const { site } = reader;
   const now = new Date();
+  const shownOnOverview = page.foundOn.some((tag) => tag !== ELSEWHERE);
+  if (overviewsWhole && page.foundOn.length === 1 && page.foundOn[0] === ELSEWHERE) return removePage(ctx, page, now);
   const fetched = await reader.read(page.url);
   if ("blocked" in fetched) {
     // The site doesn't want this page read: we stop using what we read from it before.
@@ -102,13 +107,13 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
   // Some sites keep a removed listing's page up with a notice instead of a 404.
   if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
-  let isListing = isListingPage(listing, fetched.html);
+  let isListing = isListingPage(listing, fetched.html, shownOnOverview);
   const knownAgent = matchAgent(team, listing.agentName, text);
   const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
   if (useAi && aiAvailable() && (isListing || looksLikeListingUrl(page.url, site)) && missing.length > 1) {
     try {
       const ai = await extractWithAi(page.url, text);
-      isListing = ai.isListing;
+      isListing = ai.isListing || (shownOnOverview && isListing);
       listing = mergeExtraction(listing, ai.listing);
       extractedBy = "ai";
     } catch (error) {
@@ -119,6 +124,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     await ctx.db.update(websitePages).set({ kind: "other", contentHash: hash, lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
     return "other";
   }
+  // "Optie" or "Verkocht" on the overview's card counts when the page itself says nothing else: some sites show it only there.
+  if (page.cardStatus && (listing.status ?? "active") === "active") listing = { ...listing, status: page.cardStatus };
 
   const agent = matchAgent(team, listing.agentName) ?? knownAgent ?? (await addWebsiteAgent(ctx, team, listing));
   if (agent && (listing.agentEmail || listing.agentPhone)) await completeAgent(ctx, agent.id, listing);
@@ -303,7 +310,7 @@ const ELSEWHERE = "*";
 /** The search's findings go into website_pages, each page marked with the overviews that show it. */
 function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: number) => void): DiscoveryHooks {
   return {
-    async found(urls, root) {
+    async found(urls, root, badges) {
       const unique = [...new Set(urls)];
       const allowed = unique.filter((url) => reader.robots.allowed(url));
       onBlocked(unique.length - allowed.length);
@@ -311,7 +318,7 @@ function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: num
       const tag = root ?? ELSEWHERE;
       const inserted = await ctx.db
         .insert(websitePages)
-        .values(allowed.map((url) => ({ agencyId: ctx.agencyId, url, foundOn: [tag] })))
+        .values(allowed.map((url) => ({ agencyId: ctx.agencyId, url, foundOn: [tag], cardStatus: root ? (badges?.get(url) ?? null) : null })))
         .onConflictDoNothing()
         .returning({ url: websitePages.url });
       const added = new Set(inserted.map((row) => row.url));
@@ -323,6 +330,24 @@ function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: num
             .where(and(eq(websitePages.agencyId, ctx.agencyId), inArray(websitePages.url, known), sql`not (${tag}::text = any(${websitePages.foundOn}))`))
             .returning({ foundOn: websitePages.foundOn })
         : [];
+      if (root && known.length) {
+        // What the card shows now ("Optie" added or gone): the page is read again so its listing follows. A page we
+        // had given up as gone that an overview shows again is read again too.
+        for (const status of [null, "under_offer", "sold", "rented"] as const) {
+          const group = known.filter((url) => (badges?.get(url) ?? null) === status);
+          if (!group.length) continue;
+          await ctx.db
+            .update(websitePages)
+            .set({ cardStatus: status, contentHash: null, kind: sql`case when ${websitePages.kind} = 'gone' then 'pending' else ${websitePages.kind} end` })
+            .where(
+              and(
+                eq(websitePages.agencyId, ctx.agencyId),
+                inArray(websitePages.url, group),
+                or(sql`${websitePages.cardStatus} is distinct from ${status}::text`, eq(websitePages.kind, "gone")),
+              ),
+            );
+        }
+      }
       return { newToOverview: inserted.length + marked.length, newToSite: inserted.length + marked.filter((row) => row.foundOn.length === 1).length };
     },
   };
@@ -413,12 +438,15 @@ export const importWebsiteListings = defineTool({
         asc(websitePages.lastCheckedAt),
       );
     const people = await team(ctx);
+    // Overviews read in full that hold what they state: a page only a sitemap lists is then an old one.
+    const overviewsNow = state?.overviews ?? previous.overviews ?? [];
+    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && (o.stated == null || o.found >= o.stated));
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
     let checked = 0;
     for (const page of due) {
       // Blocked pages cost no request, so they don't wait for a slot.
       if (reader.robots.allowed(page.url) && !reader.fits(deadline)) break;
-      tally[await processPage(ctx, reader, page, people, input.useAi)]++;
+      tally[await processPage(ctx, reader, page, people, input.useAi, overviewsWhole)]++;
       checked++;
     }
 

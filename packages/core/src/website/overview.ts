@@ -1,4 +1,4 @@
-import { decodeEntities, looksLikeListingUrl, normalizeUrl, pageLinks, pageText, sameSite } from "./extract";
+import { decodeEntities, looksLikeListingUrl, normalizeUrl, pageLinks, pageText, sameSite, type WebsiteListingStatus } from "./extract";
 
 /*
  * Overview pages ("Te koop", "À louer", "Nieuwbouw"): the count the site says
@@ -28,10 +28,11 @@ export function statedCount(html: string): { total: number; line: string } | nul
   const range = text.match(/\b\d{1,5}\s*(?:-|–|à|tot|to)\s*\d{1,5}\s*(?:van|of|sur|de|\/)\s*(\d{1,3}(?:[.\s  ]\d{3})*|\d{1,6})\b/i);
   const total = range && toNumber(range[1]!);
   if (total) return { total, line: range[0] };
-  // "265 resultaten", "(265) panden", but not "3 slaapkamers" or a price.
+  // "265 resultaten", "(265) panden", but not "3 slaapkamers", a price, or a card's title ("Project X – 9 woningen met tuin").
+  const linkTexts = [...html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((m) => pageText(m[1]!)).filter((t) => /\d/.test(t));
   const counted = new RegExp(`(?:^|[^\\d€.,])(\\d{1,3}(?:[.\\u00a0\\u202f]\\d{3})*|\\d{1,6})\\)?\\s*(?:${countWords})\\b`, "im");
   for (const line of text.split("\n")) {
-    if (line.length > 120 || /€|eur\b/i.test(line)) continue;
+    if (line.length > 120 || /€|eur\b/i.test(line) || linkTexts.some((t) => t.includes(line))) continue;
     const m = line.match(counted);
     const found = m && toNumber(m[1]!);
     if (found) return { total: found, line: line.trim() };
@@ -185,4 +186,63 @@ export function pagingKey(url: string): string | null {
   if (!n) return null;
   for (const [key, value] of new URL(url).searchParams) if (value === String(n.number)) return key.toLowerCase();
   return "path";
+}
+
+const VOID_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+/** What a card's badge can say: a listing on offer has none. */
+export type CardBadge = Exclude<WebsiteListingStatus, "active">;
+
+const BADGES: [RegExp, CardBadge][] = [
+  [/\b(verkocht|vendus?|sold)\b/i, "sold"],
+  [/\b(verhuurd|lou[ée]s?|rented|let agreed)\b/i, "rented"],
+  [/\b(optie|option|compromis|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
+];
+
+/**
+ * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element:
+ * the largest element around its link that holds no other card. Some sites show it only there, not on the listing's
+ * page. Cards without such a badge are left out.
+ */
+export function cardStatuses(html: string, pageUrl: string, cards: string[]): Map<string, CardBadge> {
+  const wanted = new Set(cards);
+  // Scripts, styles and comments blanked out with spaces, so offsets stay the same.
+  const doc = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[\s\S]*?<\/\1>/gi, (m) => " ".repeat(m.length));
+  type Element = { name: string; start: number; end: number };
+  const open: Element[] = [];
+  const anchors: { url: string; at: number; around: Element[] }[] = [];
+  for (const m of doc.matchAll(/<(\/?)([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
+    const name = m[2]!.toLowerCase();
+    if (m[1]) {
+      // A closing tag closes its element and anything left open inside it.
+      const i = open.map((e) => e.name).lastIndexOf(name);
+      if (i >= 0) for (const e of open.splice(i)) e.end = m.index! + m[0].length;
+      continue;
+    }
+    if (VOID_ELEMENTS.has(name) || m[3]) continue;
+    open.push({ name, start: m.index!, end: doc.length });
+    if (name !== "a") continue;
+    const href = m[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const url = href && normalizeUrl(decodeEntities(href[1] ?? href[2] ?? href[3] ?? ""), pageUrl);
+    if (url && wanted.has(url)) anchors.push({ url, at: m.index!, around: [...open] });
+  }
+  const statuses = new Map<string, CardBadge>();
+  const done = new Set<string>();
+  for (const { url, around } of anchors) {
+    if (done.has(url)) continue;
+    done.add(url);
+    let card: Element | null = null;
+    for (let i = around.length - 1; i >= 0; i--) {
+      const e = around[i]!;
+      // Not past another card, and not the page itself (a page with one card would read its menu as the card).
+      if (anchors.some((a) => a.url !== url && a.at >= e.start && a.at < e.end)) break;
+      if (["html", "body", "main", "header", "nav", "footer"].includes(e.name) || e.end - e.start > 15_000) break;
+      card = e;
+    }
+    if (!card) continue;
+    const part = doc.slice(card.start, card.end);
+    const text = `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;
+    const badge = BADGES.find(([pattern]) => pattern.test(text));
+    if (badge) statuses.set(url, badge[1]);
+  }
+  return statuses;
 }

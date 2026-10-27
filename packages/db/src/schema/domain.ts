@@ -342,6 +342,8 @@ export const websitePages = pgTable(
     agentName: text(),
     /** The overview pages that show this page as a listing card, from the latest search of the site. */
     foundOn: text().array().notNull().default(sql`'{}'::text[]`),
+    /** The status the listing's card shows on an overview ("Optie", "Verkocht"), which some sites show only there. */
+    cardStatus: text().$type<"under_offer" | "sold" | "rented">(),
     lastError: text(),
     lastCheckedAt: timestamp({ withTimezone: true }),
     ...timestamps,

@@ -1,5 +1,5 @@
 name: Website probe
-# Development aid: runs the website search on a few agency sites (robots.txt and crawl delay obeyed) and
+# Development aid: runs the website search on the test site (robots.txt and crawl delay obeyed) and
 # prints, per overview, the count the site states next to what we found. Stores nothing.
 on:
   workflow_dispatch:
@@ -17,7 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        site: [immo-zone, trevi, dewaele, immodavinci]
+        # Only sites whose owner agreed to be read for testing.
+        site: [immo-zone]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

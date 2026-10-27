@@ -8,11 +8,12 @@
  */
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
-import { extractListing, isListingPage, isRemovedListingPage, pageLinks, pageText, sameSite, statusFrom } from "../src/website/extract";
-import { statedCount } from "../src/website/overview";
+import { extractListing, isListingPage, isRemovedListingPage, pageLinks, pageText, sameSite } from "../src/website/extract";
+import { cardStatuses, statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
-const sites = ["https://www.immo-zone.be", "https://www.trevi.be", "https://www.dewaele.com/nl", "https://www.immodavinci.be"];
+// Only sites whose owner agreed to be read for testing.
+const sites = ["https://www.immo-zone.be"];
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
 const tally = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([k, v]) => `${k} ${v}`).join(", ");
@@ -22,14 +23,11 @@ async function main() {
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
 }
 
-/** The status a card shows next to its link on an overview ("Verkocht", "In optie"), from the text around it. */
-function cardBadge(html: string, url: string): string {
+/** The text around a card's first link, as a rough check of what the card shows. */
+function cardText(html: string, url: string): string {
   const u = new URL(url);
   const at = html.indexOf(u.pathname + u.search);
-  if (at < 0) return "not in html";
-  const text = pageText(html.slice(Math.max(0, at - 500), at + 700));
-  const status = statusFrom(text.match(/\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard)\b/i)?.[0]);
-  return status ?? "no badge";
+  return at < 0 ? "(not in the html)" : pageText(html.slice(Math.max(0, at - 300), at + 500));
 }
 
 async function probe(site: string) {
@@ -86,14 +84,23 @@ async function probe(site: string) {
   console.log(`listing pages found: ${shownOn.size}, of which ${sitemapOnly.length} only in a sitemap`);
   for (const o of overviews) {
     const verdict = o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`;
-    const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => urls.map((url) => cardBadge(html.get(page) ?? "", url)));
+    const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
+      const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+      return urls.map((url) => statuses.get(url) ?? "on offer");
+    });
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
+    // What a few cards' own elements say, to check the badges are read from the right card.
+    const [page, urls] = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())][0] ?? ["", []];
+    const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+    for (const url of [...urls.filter((u) => statuses.has(u)).slice(0, 3), ...urls.filter((u) => !statuses.has(u)).slice(0, 2)]) {
+      console.log(`      card ${statuses.get(url) ?? "on offer"}: ${url.replace(site, "")}  "${short(cardText(html.get(page) ?? "", url), 200)}"`);
+    }
     const first = html.get(o.url) ?? "";
     if (o.stated != null) console.log(`      stated in: "${short(statedCount(first)?.line ?? "?", 120)}"`);
     if (o.stated != null && o.found < o.stated) {
       const cards = new Set([...(pagesOf.get(o.url)?.values() ?? [])].flat());
       const others = pageLinks(first, o.url).filter((url) => sameSite(url, site) && !cards.has(url));
-      console.log(`      other links on it: ${others.slice(0, 30).map((url) => url.replace(site, "")).join(" ")}`);
+      console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);

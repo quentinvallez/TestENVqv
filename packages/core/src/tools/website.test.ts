@@ -205,19 +205,23 @@ describe.skipIf(!process.env.DATABASE_URL)("every listing on the site, each coun
     await db.insert(schema.agencySettings).values({ agencyId, websiteUrl: `${home}/` });
     site.set(`${home}/robots.txt`, { status: 200, html: `User-agent: *` });
     site.set(home, { status: 200, html: `<a href="/kopen">Te koop</a>` });
-    // 24 listings on three pages; one is under option, one sold. Their pages show only five different references.
+    // 24 listings on three pages; two are under option (one says so only on its card), one sold. Their pages show only
+    // five different references.
     const overview = (from: number, to: number, next?: number) =>
-      `<h2>24 resultaten</h2>${Array.from({ length: to - from + 1 }, (_, i) => `<a href="${card(from + i)}">Bekijk</a>`).join("")}${next ? `<a href="/kopen?page=${next}">${next}</a>` : ""}`;
+      `<h2>24 resultaten</h2>${Array.from({ length: to - from + 1 }, (_, i) => `<div class="card"><a href="${card(from + i)}">Bekijk</a>${from + i === 22 ? `<span class="badge">Optie</span>` : ""}</div>`).join("")}${next ? `<a href="/kopen?page=${next}">${next}</a>` : ""}`;
     site.set(`${home}/kopen`, { status: 200, html: overview(1, 10, 2) });
     site.set(`${home}/kopen?page=2`, { status: 200, html: overview(11, 20, 3) });
     site.set(`${home}/kopen?page=3`, { status: 200, html: overview(21, 24) });
     for (let n = 1; n <= 24; n++) site.set(card(n), { status: 200, html: detail(n, n === 23 ? "In optie: " : n === 24 ? "Verkocht: " : "") });
+    // An old listing the sitemap still lists, whose page still shows it, but that no overview shows any more.
+    site.set(`${home}/sitemap.xml`, { status: 200, html: `<urlset><url><loc>${card(99)}</loc></url></urlset>` });
+    site.set(card(99), { status: 200, html: detail(99) });
   });
   afterAll(async () => {
     await db.delete(schema.organization).where(eq(schema.organization.id, agencyId));
   });
 
-  it("finds every listing through the pages of the overview, also when pages show the same reference", async () => {
+  it("finds every listing through the pages of the overview, also when pages show the same reference, and counts what the cards say", async () => {
     await importAll();
     const rows = await db.select().from(schema.listings).where(eq(schema.listings.agencyId, agencyId));
     expect(rows).toHaveLength(24);
@@ -225,9 +229,11 @@ describe.skipIf(!process.env.DATABASE_URL)("every listing on the site, each coun
     const status = await runTool(tools.websiteImportStatus, ctx, {});
     expect(status.searching).toBe(false);
     expect(status.overviews).toEqual([
-      expect.objectContaining({ url: `${home}/kopen`, stated: 24, found: 24, complete: true, counts: expect.objectContaining({ onOffer: 22, underOffer: 1, soldOrRented: 1, toRead: 0 }) }),
+      expect.objectContaining({ url: `${home}/kopen`, stated: 24, found: 24, complete: true, counts: expect.objectContaining({ onOffer: 21, underOffer: 2, soldOrRented: 1, toRead: 0 }) }),
     ]);
-    expect(status.listings).toHaveLength(22);
+    expect(status.listings).toHaveLength(21);
+    const [old] = await db.select().from(schema.websitePages).where(and(eq(schema.websitePages.agencyId, agencyId), eq(schema.websitePages.url, card(99))));
+    expect(old).toMatchObject({ kind: "gone", listingId: null });
   });
 
   it("splits listings an earlier import merged because their pages showed the same reference", async () => {

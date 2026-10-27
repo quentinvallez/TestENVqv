@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { firstPage, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
+import { cardStatuses, firstPage, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -79,5 +79,20 @@ describe("the pages of an overview", () => {
     expect(followingPage(`${site}/nl/te-koop?page=2`, 12)).toBe(`${site}/nl/te-koop?page=3`);
     expect(followingPage(`${site}/nl/te-koop?start=12`, 12)).toBe(`${site}/nl/te-koop?start=24`);
     expect(followingPage(`${site}/nl/te-koop/page/2`, 12)).toBe(`${site}/nl/te-koop/page/3`);
+  });
+});
+
+describe("the status a card shows", () => {
+  it("reads the badge on each card, not its neighbour's", () => {
+    const card = (id: number, badge = "") =>
+      `<div class="card"><a href="/te-koop/gent/woning/${id}"><img src="/p/${id}.jpg" alt="Woning">${badge}</a><h3><a href="/te-koop/gent/woning/${id}">Woning te koop</a></h3><p>€ 349 000</p></div>`;
+    const html = `<header><a href="/verkocht">Verkocht</a></header><div class="grid">${card(97001)}${card(97002, '<span class="label">Optie</span>')}${card(97003)}<div class="card"><span class="ribbon">Verkocht</span><a href="/te-koop/gent/woning/97004">Woning</a></div></div>`;
+    const cards = [97001, 97002, 97003, 97004].map((id) => `${site}/te-koop/gent/woning/${id}`);
+    expect(Object.fromEntries(cardStatuses(html, `${site}/kopen`, cards))).toEqual({ [cards[1]!]: "under_offer", [cards[3]!]: "sold" });
+  });
+
+  it("doesn't take the page's menu for the card when a page shows one card", () => {
+    const html = `<body><nav><a href="/verkocht">Verkocht</a></nav><main><div><a href="/te-koop/gent/woning/97001">Woning</a></div></main></body>`;
+    expect(cardStatuses(html, `${site}/kopen`, [`${site}/te-koop/gent/woning/97001`]).size).toBe(0);
   });
 });
