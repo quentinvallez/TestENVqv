@@ -9,7 +9,7 @@ on:
         required: false
   push:
     branches: ["claude/**"]
-    paths: ["packages/core/scripts/probe-websites.ts", "packages/core/src/website/**", ".github/workflows/website-probe.yml"]
+    paths: ["packages/core/scripts/probe-websites.ts", "packages/core/scripts/probe-html.ts", "packages/core/src/website/**", ".github/workflows/website-probe.yml"]
 permissions:
   contents: read
 jobs:
@@ -38,3 +38,19 @@ jobs:
         run: |
           pnpm install --frozen-lockfile --filter @viewing/core...
           npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ matrix.site }}
+  markup:
+    # The markup of chosen parts of the test sites, to see how their cards and prices are built.
+    if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, 'markup') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Markup
+        run: |
+          pnpm install --frozen-lockfile --filter @viewing/core...
+          npx -y tsx@4.20.6 packages/core/scripts/probe-html.ts
