@@ -105,6 +105,26 @@ async function probe(site: string) {
   }
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);
 
+  // New-build projects: are their units also cards on another overview, or only on the project page?
+  const projects = new Set(
+    overviews.flatMap((o) => pageLinks(html.get(o.url) ?? "", o.url).filter((url) => sameSite(url, site) && /\/(nieuwbouw|projecten|projets|projects)\/[^/]+\/[^/]+/i.test(new URL(url).pathname))),
+  );
+  if (projects.size) console.log(`new-build projects: ${projects.size}`);
+  for (const project of projects) {
+    const page = await reader.read(project);
+    if (!("html" in page)) {
+      console.log(`  ${project.replace(site, "")}: unreadable (${page.error})`);
+      continue;
+    }
+    const links = pageLinks(page.html, page.url).filter((url) => sameSite(url, site) && url !== project && /\d{5,9}/.test(new URL(url).pathname) && !/\.(pdf|jpe?g|png)$/i.test(url));
+    const known = links.filter((url) => [...(shownOn.get(url) ?? [])].some((t) => t !== "*"));
+    const { listing } = extractListing(page.html, page.url, await reader.siteBoilerplate());
+    const units = pageText(page.html).split("\n").filter((l) => /€|\bm²|slaapkamer|lot\b|woning \d|app(artement)?\.? ?\d/i.test(l)).length;
+    console.log(`  ${project.replace(site, "")}: ${links.length} links with an id, ${known.length} of them already a card on an overview; ~${units} unit-like lines; read as: €${listing.price ?? "?"} ${listing.city ?? ""} ${listing.propertyType ?? ""}`);
+    for (const url of links.slice(0, 6)) console.log(`      ${url.replace(site, "")}${known.includes(url) ? "  (on " + [...(shownOn.get(url) ?? [])].map((t) => t.replace(site, "")).join(",") + ")" : ""}`);
+    if (!links.length) console.log(`      text: "${short(pageText(page.html).split("\n").filter((l) => /€|slaapkamer|m²|verkocht|beschikbaar/i.test(l)).slice(0, 6).join(" | "), 400)}"`);
+  }
+
   // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
