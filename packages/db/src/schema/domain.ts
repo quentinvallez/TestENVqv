@@ -91,10 +91,12 @@ export type WebsiteDiscovery = {
   startedAt: string;
   doneAt?: string;
   /** Pages still to read, each with the overview it belongs to (null: the home page, a sitemap). */
-  queue: { url: string; root: string | null; guess?: boolean; sitemap?: boolean }[];
+  queue: { url: string; root: string | null; guess?: boolean; sitemap?: boolean; project?: boolean }[];
   visited: string[];
   sitemapsQueued?: boolean;
   sitemapsRead?: number;
+  /** New-build project pages queued so far. */
+  projects?: number;
   /** Overviews read again with a browser. */
   rendered?: string[];
   /** The site's language we read ("nl" for "/nl/…"; null: the one without a language in its addresses). Others are skipped. */
