@@ -171,4 +171,22 @@ describe("searching a site for its listing pages", () => {
     // The second overview tries only "?pagina=", and goes on that way.
     expect(read.filter((url) => url.startsWith(`${site}/huren?`))).toEqual([`${site}/huren?pagina=2`, `${site}/huren?pagina=3`]);
   });
+
+  it("reads each new-build project for its units, or takes the project as one listing when it has none", async () => {
+    const { reader, hooks, found } = fakeSite({
+      "/": `<a href="/nieuwbouw">Nieuwbouw</a>`,
+      "/nieuwbouw": `<a href="/nieuwbouw/aalst/hof-ten-berge">Hof ten Berge</a><a href="/nieuwbouw/lede/magnolia">Magnolia</a><a href="/nieuwbouw/aalst">Aalst</a>`,
+      "/nieuwbouw/aalst/hof-ten-berge": `${cards(1, 3, "/nieuwbouw/aalst/hof-ten-berge/woning")}<a href="/te-koop/gent/woning-9/90009">Ook te koop</a>`,
+      "/nieuwbouw/lede/magnolia": `<h1>Magnolia</h1><p>Vanaf € 350 000</p>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    // The units below the project's address, not what it shows next to them; the project without units is one listing.
+    expect([...found.keys()].sort()).toEqual([
+      ...[1, 2, 3].map((i) => `${site}/nieuwbouw/aalst/hof-ten-berge/woning-${i}/${90000 + i}`),
+      `${site}/nieuwbouw/lede/magnolia`,
+    ].sort());
+    expect(found.get(`${site}/nieuwbouw/lede/magnolia`)).toEqual(new Set([`${site}/nieuwbouw`]));
+    expect(state.overviews.find((o) => o.url === `${site}/nieuwbouw`)).toMatchObject({ found: 4, complete: true });
+  });
 });

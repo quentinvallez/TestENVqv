@@ -1,5 +1,5 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
-import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sitemapEntries } from "./extract";
+import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
 import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
@@ -13,6 +13,8 @@ import type { RobotsPolicy } from "./robots";
  * overviews don't link. The search is spread over runs: its state is saved.
  * One language is read (a site in Dutch, French and English shows every
  * listing three times), and overviews of what was sold are skipped.
+ * A new-build overview shows projects: each project page gives its units, or
+ * is one listing itself when it has no page per unit.
  */
 
 /** Overviews we follow from the home page and other overviews; their filtered slices are skipped once the overview is complete. */
@@ -22,6 +24,10 @@ const MAX_PAGES_PER_OVERVIEW = 600;
 const MAX_SITEMAPS = 12;
 /** A page with fewer cards is an article or a teaser, not an overview whose further pages are worth trying. */
 const MIN_CARDS = 6;
+/** Project pages read per site. */
+const MAX_PROJECTS = 200;
+/** Overviews of new builds, whose links one level deeper are projects. */
+const PROJECTS = /\/(nieuwbouw|nieuwbouwprojecten|projecten|projets?|projects?|neuf|immobilier-neuf|new-builds?|new-developments?)$/i;
 
 export type DiscoveryReader = {
   site: string;
@@ -155,6 +161,16 @@ export async function continueDiscovery(
       continue;
     }
 
+    if (item.project && item.root) {
+      // A new-build project: the units it links below its own address, or the project itself when it has no page per unit.
+      const units = listingLinks(page.html, page.url, site).filter((url) => inLanguage(url) && pathOf(url).startsWith(`${pathOf(item.url)}/`));
+      const fresh = await hooks.found(units.length ? units : [item.url], item.root, cardStatuses(page.html, page.url, units));
+      const o = overviews.find((x) => x.url === item.root);
+      if (o) o.found += fresh.newToOverview;
+      settle(state, item.root);
+      continue;
+    }
+
     if (isHome && discovery.language === undefined) {
       const overviewLinks = pageLinks(page.html, page.url).filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site));
       discovery.language = homeLanguage(page.url, overviewLinks);
@@ -162,11 +178,12 @@ export async function continueDiscovery(
     const cards = listingLinks(page.html, page.url, site).filter(inLanguage);
     const fresh = await hooks.found(cards, item.root, item.root ? cardStatuses(page.html, page.url, cards) : undefined);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
+    const projects = item.root && PROJECTS.test(pathOf(item.root)) ? queueProjects(state, item.root, page.html, page.url, cards, visited, reader, inLanguage) : [];
 
     // Overviews this page links to (the home page's menu, "new builds" on an overview): page 1 of each, the shallowest first.
     const roots = new Set([...overviews.map((o) => o.url), ...discovery.queue.filter((q) => q.root === q.url).map((q) => q.url)]);
     const links = pageLinks(page.html, page.url)
-      .filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site) && !cards.includes(url) && inLanguage(url) && !isArchiveUrl(url))
+      .filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site) && !cards.includes(url) && !projects.includes(url) && inLanguage(url) && !isArchiveUrl(url))
       .map((url) => firstPage(url))
       .filter((url, i, all) => all.indexOf(url) === i && !visited.has(url) && !roots.has(url) && reader.robots.allowed(url))
       .sort((a, b) => depth(a) - depth(b));
@@ -229,6 +246,41 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   }
   discovery.queue.unshift(...next);
   settle(state, root);
+}
+
+/**
+ * The projects a new-build overview links, queued to be read: pages below its address without a listing id, at
+ * /nieuwbouw/<city>/<name> when there are such, else /nieuwbouw/<name>.
+ */
+function queueProjects(
+  state: DiscoveryState,
+  root: string,
+  html: string,
+  pageUrl: string,
+  cards: string[],
+  visited: Set<string>,
+  reader: DiscoveryReader,
+  inLanguage: (url: string) => boolean,
+): string[] {
+  const { discovery } = state;
+  const below = [...new Set(pageLinks(html, pageUrl))].filter(
+    (url) =>
+      sameSite(url, reader.site) &&
+      pathOf(url).startsWith(`${pathOf(root)}/`) &&
+      new URL(url).search === "" &&
+      firstPage(url) === url &&
+      !cards.includes(url) &&
+      !looksLikeListingUrl(url, reader.site) &&
+      inLanguage(url) &&
+      reader.robots.allowed(url),
+  );
+  const twoDown = below.filter((url) => depth(url) === depth(root) + 2);
+  const projects = twoDown.length ? twoDown : below.filter((url) => depth(url) === depth(root) + 1);
+  const queued = new Set(discovery.queue.map((q) => q.url));
+  const fresh = projects.filter((url) => !visited.has(url) && !queued.has(url)).slice(0, Math.max(0, MAX_PROJECTS - (discovery.projects ?? 0)));
+  discovery.projects = (discovery.projects ?? 0) + fresh.length;
+  discovery.queue.unshift(...fresh.map((url) => ({ url, root, project: true })));
+  return below;
 }
 
 /** An overview with nothing left in the queue is complete. */

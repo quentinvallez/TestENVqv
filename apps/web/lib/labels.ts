@@ -12,7 +12,7 @@ export const leadStageMeta = {
 export const listingStatusMeta = {
   draft: { label: "Draft", color: "#a1a1aa" },
   active: { label: "Active", color: "#16a34a" },
-  under_offer: { label: "Under offer", color: "#f59e0b" },
+  under_offer: { label: "Under option", color: "#f59e0b" },
   sold: { label: "Sold", color: "#6366f1" },
   rented: { label: "Rented", color: "#6366f1" },
   archived: { label: "Archived", color: "#d4d4d8" },

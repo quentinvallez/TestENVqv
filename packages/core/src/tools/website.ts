@@ -39,7 +39,8 @@ const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
 const RECHECK_LISTING = 20 * HOUR;
 /** Listings the agency still offers; the import page leaves out the rest (sold, rented, under option). */
-const ON_OFFER: ("draft" | "active")[] = ["draft", "active"];
+/** Listings shown in the list: on offer, or under option (shown with that status, no bookings on the site). */
+const LISTED: ("draft" | "active" | "under_offer")[] = ["draft", "active", "under_offer"];
 /** Pages that weren't listings, or failed, are tried again after this. */
 const RECHECK_OTHER = 14 * 24 * HOUR;
 const RECHECK_ERROR = 24 * HOUR;
@@ -450,12 +451,12 @@ export const importWebsiteListings = defineTool({
       checked++;
     }
 
-    // Listings on offer: sold, rented and under option are kept (valuations use sales) but not counted.
+    // Listings on offer or under option: sold and rented are kept (valuations use sales) but not counted.
     const [{ count: listingPages } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(distinct ${listings.id})::int` })
       .from(websitePages)
       .innerJoin(listings, eq(listings.id, websitePages.listingId))
-      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing"), inArray(listings.status, ON_OFFER)));
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "listing"), inArray(listings.status, LISTED)));
     const [{ count: pagesFound } = { count: 0 }] = await ctx.db
       .select({ count: sql<number>`count(*)::int` })
       .from(websitePages)
@@ -591,7 +592,7 @@ export const websiteImportStatus = defineTool({
     // A listing can have several pages (a project, or the same house in two languages): show it once.
     const seen = new Set<string>();
     const all = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
-    const imported = all.filter((p) => p.status && (ON_OFFER as string[]).includes(p.status));
+    const imported = all.filter((p) => p.status && (LISTED as string[]).includes(p.status));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,

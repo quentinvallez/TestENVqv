@@ -105,6 +105,7 @@ async function probe(site: string) {
   }
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);
 
+
   // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
