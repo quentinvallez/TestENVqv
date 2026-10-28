@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { cardStatuses, firstPage, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
+import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -37,6 +37,32 @@ describe("the listing cards on an overview", () => {
   it("finds listing links in data attributes and the page's own data", () => {
     const html = `<div data-href="/aanbod/detail/7900001/woning"></div><script>window.items=[{"url":"\\/aanbod\\/detail\\/7900002\\/appartement"}]</script>`;
     expect(listingLinks(html, `${site}/aanbod`, site).sort()).toEqual([`${site}/aanbod/detail/7900001/woning`, `${site}/aanbod/detail/7900002/appartement`]);
+  });
+
+  it("recognises cards without an id in their address by how the page shows them", () => {
+    const card = (slug: string, price: string) =>
+      `<div class="col"><article class="bien"><a href="/${slug}"><img src="/p/${slug}.jpg"></a><h3><a href="/${slug}">${slug}</a></h3><p>${price}</p><p>120 m²</p></article></div>`;
+    const html = `<header><nav><a href="/biens">Biens</a><a href="/a-vendre">À vendre</a><a href="/contact">Contact</a></nav></header>
+      <main><ul class="filters"><li><a href="/biens?ville=arlon">Arlon</a></li><li><a href="/biens?ville=virton">Virton</a></li><li><a href="/biens?ville=habay">Habay</a></li></ul>
+      <div class="grid">${card("arlon-app-004-rue-du-camp", "285.000 €")}${card("avendre-maison-habay", "€ 349.000")}${card("virton-terrain-a-batir", "Prix sur demande")}${card("louer-studio-arlon", "650 €/mois")}</div>
+      <div class="news"><a href="/actu-1">Actu</a><a href="/actu-2">Actu</a><a href="/actu-3">Actu</a></div></main>`;
+    const expected = ["arlon-app-004-rue-du-camp", "avendre-maison-habay", "louer-studio-arlon", "virton-terrain-a-batir"].map((s) => `${site}/${s}`);
+    expect(repeatedCards(html, `${site}/biens`, site).sort()).toEqual(expected);
+    expect(listingLinks(html, `${site}/biens`, site).sort()).toEqual(expected);
+  });
+
+  it("recognises a page builder's cards, whose elements each carry their own class, and the status in their photo's name", () => {
+    let n = 0;
+    const card = (slug: string, photo: string) => {
+      n++;
+      return `<section class="Le88gL comp-a${n}x wixui-section"><div class="Ak0vpt"><div class="comp-b${n}y FDI5TK"><p class="font_3">Maison 3 chambres</p><h2>195.000 &euro;</h2>
+        <div class="comp-c${n}z"><a href="https://www.tadam.immo/${slug}" class="StylableButton">+ d'infos</a></div>
+        <div class="W4V2qg comp-d${n}w wixui-image"><a href="https://www.tadam.immo/${slug}" class="apPOZK"><img src="x.jpg" alt="${photo}"></a></div></div></div></section>`;
+    };
+    const html = `<header><nav><a href="https://www.tadam.immo/biens">Biens</a></nav></header><main>${card("arlon-app-004-rue-du-camp", "TADAM immobiliere_a vendre_Arlon_9,rue du Camp - 5.jpg")}${card("bonnert-29-rue-du-vicinal", "TADAM immobiliere_a vendre_Bonnert_29, rue du Vicinal - Sous offre.jpg")}${card("waltzing-15-rue-de-steinchen", "2679_TADAM_Waltzing_Maison_15,rue de Steinchen_Sous compromis.jpg")}${card("arlon-53-ruedesmartyrs", "TADAM_Arlon_53_VENDU.jpg")}</main>`;
+    const cards = listingLinks(html, "https://www.tadam.immo/biens", "https://www.tadam.immo");
+    expect(cards).toHaveLength(4);
+    expect([...cardStatuses(html, "https://www.tadam.immo/biens", cards).values()]).toEqual(["under_offer", "under_offer", "sold"]);
   });
 
   it("names the template of an address", () => {
@@ -89,6 +115,21 @@ describe("the status a card shows", () => {
     const html = `<header><a href="/verkocht">Verkocht</a></header><div class="grid">${card(97001)}${card(97002, '<span class="label">Optie</span>')}${card(97003)}<div class="card"><span class="ribbon">Verkocht</span><a href="/te-koop/gent/woning/97004">Woning</a></div></div>`;
     const cards = [97001, 97002, 97003, 97004].map((id) => `${site}/te-koop/gent/woning/${id}`);
     expect(Object.fromEntries(cardStatuses(html, `${site}/kopen`, cards))).toEqual({ [cards[1]!]: "under_offer", [cards[3]!]: "sold" });
+  });
+
+  it("doesn't take a sort menu above the first card for its badge", () => {
+    const html = `<div class="list"><div class="bar"><select name="sort"><option>Nieuwste</option><option>Verkocht</option></select></div>
+      <div class="card"><a href="/aanbod/4295691/grond-te-koop-in-3600-genk">Grond te koop</a></div>
+      <div class="card"><a href="/aanbod/4295692/huis-te-koop-in-3600-genk">Huis te koop</a><span>Verkocht</span></div></div>`;
+    const statuses = cardStatuses(html, `${site}/aanbod`, [`${site}/aanbod/4295691/grond-te-koop-in-3600-genk`, `${site}/aanbod/4295692/huis-te-koop-in-3600-genk`]);
+    expect([...statuses]).toEqual([[`${site}/aanbod/4295692/huis-te-koop-in-3600-genk`, "sold"]]);
+  });
+
+  it("doesn't take a word in a card's description for its badge", () => {
+    const html = `<div class="card"><a href="/aanbod/4295691/grond-te-koop-in-3600-genk">Grond te koop</a><p>Beschikbare loten: Lot 1: 4a 97ca – halfopen bebouwing: VERKOCHT ! Lot 3: 5a 63ca – open bebouwing</p></div>
+      <div class="card"><a href="/aanbod/4295692/huis-te-koop-in-3600-genk">Huis te koop</a><span class="badge">Verkocht</span></div>`;
+    const statuses = cardStatuses(html, `${site}/aanbod`, [`${site}/aanbod/4295691/grond-te-koop-in-3600-genk`, `${site}/aanbod/4295692/huis-te-koop-in-3600-genk`]);
+    expect([...statuses]).toEqual([[`${site}/aanbod/4295692/huis-te-koop-in-3600-genk`, "sold"]]);
   });
 
   it("doesn't take the page's menu for the card when a page shows one card", () => {

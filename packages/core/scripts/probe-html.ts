@@ -19,16 +19,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  { url: "https://www.tadam.immo/biens", needle: "arlon-app-004-rue-du-camp", show: ["markup"] },
-  { url: "https://www.tadam.immo/biens", needle: "bonnert-29-rue-du-vicinal", show: ["markup"] },
-  { url: "https://www.tadam.immo/arlon-app-004-rue-du-camp", show: ["text"] },
-  { url: "https://www.tadam.immo/bonnert-29-rue-du-vicinal", show: ["text"] },
-  { url: "https://jurimex.be/nl", show: ["links"] },
-  { url: "https://www.immobolle.be/fr/2/chercher-bien/a-vendre", show: ["links", "markup"], needle: "chercher-bien/a-vendre?" },
-  { url: "https://www.ngimmo.be/fr/a-vendre", show: ["links", "markup"], needle: "InfiniteScroll" },
-  { url: "https://www.leximmo.be/nl/te-huur-te-koop", show: ["links"] },
-  { url: "https://www.vlaemynck.be/te-koop", needle: "/te-koop/", show: ["markup"] },
-  { url: "https://www.caenen.be/nl/te-koop", needle: "/project-", pages: 4, show: ["markup"] },
+  { url: "https://jurimex.be/nl/te-koop/alle-types", needle: "4295691", pages: 6, show: ["markup"] },
+  { url: "https://www.caenen.be/nl/te-koop/project-nieuwpoort-residentie-naudi-4443999.htm", show: ["links"] },
+  { url: "https://www.vlaemynck.be/nieuwbouw/tielt/11111316/t-park-tielt-de-linde", show: ["links"] },
+  { url: "https://www.vlaemynck.be/te-koop", needle: "pager", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
