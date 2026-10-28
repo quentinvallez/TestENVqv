@@ -19,20 +19,16 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  { url: "https://www.tadam.immo", show: ["links"] },
-  { url: "https://www.tadam.immo/biens", show: ["links", "markup"] },
-  { url: "https://www.immotop.be/fr/", show: ["links"] },
-  { url: "https://www.immotop.be/fr/a-vendre", show: ["links", "markup"], needle: "view=detail" },
-  { url: "https://www.immotop.be/fr/component/properties/?view=detail&id=1462", show: ["text", "links"] },
-  { url: "https://jurimex.be/nl/aanbod", needle: "4295691", pages: 8, show: ["markup"] },
-  { url: "https://jurimex.be/nl/aanbod", needle: "4406798", pages: 8, show: ["markup"] },
-  { url: "https://jurimex.be/nl/aanbod/4295691/grond-te-koop-in-3600-genk", show: ["text"] },
-  { url: "https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111", show: ["text"] },
-  { url: "https://www.leximmo.be", show: ["links"] },
-  { url: "https://www.leximmo.be/nl/te-koop", needle: "/woning/", show: ["markup", "links"] },
-  { url: "https://www.vlaemynck.be/nl/te-koop", needle: "11171819", show: ["markup"] },
-  { url: "https://www.caenen.be/nl/te-koop", needle: "project", pages: 4, show: ["markup"] },
-  { url: "https://www.immobolle.be/fr", show: ["links"] },
+  { url: "https://www.tadam.immo/biens", needle: "arlon-app-004-rue-du-camp", show: ["markup"] },
+  { url: "https://www.tadam.immo/biens", needle: "bonnert-29-rue-du-vicinal", show: ["markup"] },
+  { url: "https://www.tadam.immo/arlon-app-004-rue-du-camp", show: ["text"] },
+  { url: "https://www.tadam.immo/bonnert-29-rue-du-vicinal", show: ["text"] },
+  { url: "https://jurimex.be/nl", show: ["links"] },
+  { url: "https://www.immobolle.be/fr/2/chercher-bien/a-vendre", show: ["links", "markup"], needle: "chercher-bien/a-vendre?" },
+  { url: "https://www.ngimmo.be/fr/a-vendre", show: ["links", "markup"], needle: "InfiniteScroll" },
+  { url: "https://www.leximmo.be/nl/te-huur-te-koop", show: ["links"] },
+  { url: "https://www.vlaemynck.be/te-koop", needle: "/te-koop/", show: ["markup"] },
+  { url: "https://www.caenen.be/nl/te-koop", needle: "/project-", pages: 4, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
