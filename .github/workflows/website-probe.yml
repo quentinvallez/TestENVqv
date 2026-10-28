@@ -17,8 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Only sites whose owner agreed to be read for testing.
-        site: [immo-zone]
+        # Only sites Quentin chose for testing.
+        site: [immo-zone, ngimmo, tadam, alterimmo, immotop, jurimex, immo-center, immobolle, leximmo, caenen, vlaemynck]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

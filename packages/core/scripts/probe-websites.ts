@@ -8,12 +8,34 @@
  */
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
-import { extractListing, isListingPage, isRemovedListingPage, pageLinks, pageText, sameSite } from "../src/website/extract";
+import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites whose owner agreed to be read for testing.
-const sites = ["https://www.immo-zone.be"];
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28).
+const sites = [
+  "https://www.immo-zone.be",
+  "https://www.ngimmo.be",
+  "https://www.tadam.immo",
+  "https://www.alterimmoprestige.be",
+  "https://www.immotop.be/fr/",
+  "https://jurimex.be/nl",
+  "https://immo-center.be/nl",
+  "https://www.immobolle.be/fr",
+  "https://www.leximmo.be",
+  "https://www.caenen.be/nl",
+  "https://www.vlaemynck.be",
+];
+/** Pages Quentin found missing or wrong, checked one by one. */
+const checks: Record<string, string[]> = {
+  ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
+  jurimex: [
+    "https://jurimex.be/nl/aanbod/4295691/grond-te-koop-in-3600-genk",
+    "https://jurimex.be/nl/aanbod/4012131/handelspand-te-koop-in-3600-genk",
+    "https://jurimex.be/nl/aanbod/4406798/kantoorruimte-te-huur-in-3600-genk",
+  ],
+  immobolle: ["https://www.immobolle.be/fr/page/10004/protection-juridique"],
+};
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
 const tally = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([k, v]) => `${k} ${v}`).join(", ");
@@ -77,6 +99,19 @@ async function probe(site: string) {
     await browser?.close();
   }
   const { discovery, overviews } = state;
+  // The home page: what a visitor's first read shows, and where the search went from it.
+  const home = await reader.read(reader.site);
+  if ("html" in home) {
+    const links = pageLinks(home.html, home.url).filter((url) => sameSite(url, site));
+    const scripts = (home.html.match(/<script\b/gi) ?? []).length;
+    const app = /__NEXT_DATA__|data-reactroot|ng-version|id="(app|root|__nuxt)"|window\.__NUXT__/i.test(home.html);
+    console.log(`home ${home.status} ${home.url}: ${home.html.length} chars, ${links.length} links on the site, ${scripts} scripts${app ? ", script-built app" : ""}`);
+    console.log(`  overview-like: ${links.filter((url) => looksLikeOverviewUrl(url, site)).slice(0, 25).map((u) => u.replace(site, "")).join(" ") || "-"}`);
+    console.log(`  listing-like: ${links.filter((url) => looksLikeListingUrl(url, site)).length}`);
+    console.log(`  other links: ${links.filter((url) => !looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site)).slice(0, 40).map((u) => u.replace(site, "")).join(" ")}`);
+  } else console.log(`home unreadable: ${home.error}`);
+  console.log(`robots sitemaps: ${reader.robots.sitemaps.join(" ") || "-"}`);
+  const browser2 = await openBrowser(reader);
   const sitemapOnly = [...shownOn].filter(([, t]) => t.size === 1 && t.has("*")).map(([url]) => url);
   console.log(
     `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, language ${discovery.language ?? "(none)"}, paging ${discovery.pagingKey ?? "-"}, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
@@ -100,6 +135,11 @@ async function probe(site: string) {
     if (o.found === 0 || (o.stated != null && o.found < o.stated)) {
       const cards = new Set([...(pagesOf.get(o.url)?.values() ?? [])].flat());
       const others = pageLinks(first, o.url).filter((url) => sameSite(url, site) && !cards.has(url));
+      if (browser2) {
+        const rendered = await browser2.render(o.url, Date.now() + 60_000).catch((e) => `ERROR ${e}`);
+        const renderedLinks = rendered && !rendered.startsWith("ERROR") ? pageLinks(rendered, o.url).filter((url) => sameSite(url, site)) : [];
+        console.log(`      with a browser: ${rendered?.startsWith("ERROR") ? rendered : `${renderedLinks.filter((url) => looksLikeListingUrl(url, site)).length} listing-like of ${renderedLinks.length} links`}; e.g. ${renderedLinks.filter((url) => !looksLikeOverviewUrl(url, site)).slice(0, 15).map((u) => u.replace(site, "")).join(" ")}`);
+      }
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
@@ -151,6 +191,15 @@ async function probe(site: string) {
       console.log(`      ${status}: ${url.replace(site, "")}  ${why}`);
     }
   };
+  for (const [word, urls] of Object.entries(checks)) {
+    if (!site.includes(word)) continue;
+    for (const url of urls) {
+      if (!outcome.has(url)) await readOne(url, shownOn.has(url));
+      const { status, why } = outcome.get(url)!;
+      console.log(`  check ${url.replace(site, "")}: listing-like ${looksLikeListingUrl(url, site)}, found on ${[...(shownOn.get(url) ?? [])].map((t) => t.replace(site, "") || "/").join(",") || "nothing"}; read as ${status}: ${why}`);
+    }
+  }
+  await browser2?.close();
   report("(only in a sitemap)", sitemapOnly);
   for (const [root, urls] of byOverview) report(root.replace(site, "") || "/", urls);
 }
