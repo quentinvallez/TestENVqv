@@ -277,7 +277,10 @@ const cardText = (part: string) => `${pageText(part)} ${[...part.matchAll(/\b(?:
  * or the name of its photo when the label is drawn on it ("…rue du Vicinal - Sous offre.jpg").
  */
 const badgeText = (part: string) =>
-  [...pageText(part).split("\n").filter((line) => line.trim().length <= 40), ...[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => decodeEntities(m[1]!).replace(/[_]/g, " "))].join("\n");
+  [...pageText(part).split("\n").filter((line) => line.trim().length <= 40), ...[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => decodeEntities(m[1]!).replace(/[_]/g, " "))]
+    .join("\n")
+    // "81% verkocht" on a new-build project: some units are sold, the project isn't.
+    .replace(/\b\d{1,2}\s?%\s*(verkocht|vendus?|sold)\b/gi, "");
 
 /**
  * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element.

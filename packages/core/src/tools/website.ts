@@ -91,9 +91,10 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     await ctx.db.update(websitePages).set({ lastError: `HTTP ${fetched.status}`, lastCheckedAt: now, kind: page.kind === "listing" ? "listing" : "error" }).where(eq(websitePages.id, page.id));
     return "failed";
   }
-  // Sites often redirect a removed listing to the overview.
+  // Sites often redirect a removed listing to the overview or the home page.
   const landed = normalizeUrl(fetched.url) ?? page.url;
-  if (landed !== page.url && page.kind === "listing" && !looksLikeListingUrl(landed, site)) return removePage(ctx, page, now);
+  const home = /^(\/[a-z]{2})?\/?$/i.test(new URL(landed).pathname);
+  if (landed !== page.url && (home || (page.kind === "listing" && !looksLikeListingUrl(landed, site)))) return removePage(ctx, page, now);
 
   const text = pageText(fetched.html);
   // A new version of the rules reads every page again, even when it didn't change.

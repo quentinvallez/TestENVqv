@@ -25,6 +25,8 @@ const looks: Look[] = [
   { url: "https://www.leximmo.be/nl/te-huur-te-koop", follow: "/woning/", show: ["text"] },
   // Jurimex pages of rented and sold listings read as not a listing.
   { url: "https://jurimex.be/nl/aanbod/4346385/huis-verhuurd-in-3600-genk", show: ["text"] },
+  // Jurimex cards of listings on offer get a rented or sold badge.
+  { url: "https://jurimex.be/nl/te-huur/woningen", needle: "4493977", show: ["markup"] },
   { url: "https://jurimex.be/nl/aanbod/3807305/penthouse-verkocht-in-3600-genk", show: ["markup"] },
 ];
 
@@ -63,6 +65,14 @@ async function main() {
           break;
         }
         Object.assign(read, followed);
+        // The same address on a later visit: home page first (as each import run starts), then the address.
+        const later = await SiteReader.open(origin);
+        await later.read(`${origin}/`);
+        const again = await later.read(next);
+        console.log(`-- on a later visit: ${"html" in again ? `${again.status} ${again.url}` : again.error}`);
+        const trimmed = next.replace(/(\/\d{5,9})\/[\d/]+$/, "$1/0/0/0/0/0/0/");
+        const plain = await later.read(trimmed);
+        console.log(`-- ${trimmed}: ${"html" in plain ? `${plain.status} ${plain.url}` : plain.error}`);
       }
       const html = read.html;
       const at = look.needle ? html.indexOf(look.needle) : -1;

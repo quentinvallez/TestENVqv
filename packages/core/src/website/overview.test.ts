@@ -117,6 +117,14 @@ describe("the status a card shows", () => {
     expect(Object.fromEntries(cardStatuses(html, `${site}/kopen`, cards))).toEqual({ [cards[1]!]: "under_offer", [cards[3]!]: "sold" });
   });
 
+  it("doesn't take a project's share of sold units for a badge", () => {
+    const card = (id: number, badge: string) =>
+      `<div class="card"><a href="/nieuwbouw/tielt/${id}/project"><img src="/p/${id}.jpg" alt="Project"></a><span class="label">${badge}</span><p>Vanaf € 195 000</p></div>`;
+    const html = `<div class="grid">${card(11090085, "81% verkocht")}${card(11091807, "Reeds 50% verkocht")}${card(11091808, "Verkocht")}</div>`;
+    const cards = [11090085, 11091807, 11091808].map((id) => `${site}/nieuwbouw/tielt/${id}/project`);
+    expect(Object.fromEntries(cardStatuses(html, `${site}/nieuwbouw`, cards))).toEqual({ [cards[2]!]: "sold" });
+  });
+
   it("doesn't take a sort menu above the first card for its badge", () => {
     const html = `<div class="list"><div class="bar"><select name="sort"><option>Nieuwste</option><option>Verkocht</option></select></div>
       <div class="card"><a href="/aanbod/4295691/grond-te-koop-in-3600-genk">Grond te koop</a></div>

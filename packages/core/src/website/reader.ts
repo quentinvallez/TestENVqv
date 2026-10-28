@@ -22,6 +22,9 @@ export class SiteReader {
   private lastRequest = 0;
   /** The agency's own details repeated on every page (office address), left out when reading a listing. */
   private boilerplate: Set<string> | null = null;
+  /** The site's cookies during this run only; never stored. */
+  private readonly cookies = new Map<string, string>();
+
   private constructor(
     readonly site: string,
     readonly robots: RobotsPolicy,
@@ -72,7 +75,7 @@ export class SiteReader {
     if (!this.robots.allowed(url)) return { error: ROBOTS_BLOCKED, blocked: true };
     await this.turn();
     try {
-      return await fetchSitePage(url, this.site, this.robots.allowed, undefined, headers);
+      return await fetchSitePage(url, this.site, this.robots.allowed, undefined, headers, this.cookies);
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     } finally {
