@@ -4,6 +4,7 @@ import {
   contactNear,
   extractListing,
   isListingPage,
+  withoutVisitNumbers,
   listingKey,
   looksLikeListingUrl,
   looksLikeOverviewUrl,
@@ -193,6 +194,12 @@ describe("reading a listing page", () => {
     const { listing } = extractListing(html, "https://www.site.be/te-koop/project-de-panne-residentie-le-fox-4443928.htm");
     expect(isListingPage(listing, html)).toBe(false);
     expect(isListingPage(listing, html, true)).toBe(true);
+  });
+
+  it("drops the numbers of the visit that found a listing from its address", () => {
+    expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
+    expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();
+    expect(withoutVisitNumbers("https://jurimex.be/nl/aanbod/4346385/huis-verhuurd-in-3600-genk")).toBeNull();
   });
 
   it("parses Belgian amounts and street lines", () => {

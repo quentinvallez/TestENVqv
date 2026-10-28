@@ -229,7 +229,8 @@ function anchorsOf(html: string, pageUrl: string): { doc: string; anchors: Ancho
     const classes = m[0].match(/\bclass\s*=\s*["']([^"']*)/i)?.[1]?.split(/\s+/) ?? [];
     const cls = classes.find((c) => c && !/^(comp|elementor-element|node|post|item|block)-/i.test(c))?.replace(/\d+/g, "") ?? "";
     open.push({ name, start: m.index!, end: doc.length, shape: `${name}.${cls}` });
-    if (name !== "a") continue;
+    // Some sites draw the cards of sold listings as an element with an address but no link ("<div href=…>").
+    if (name !== "a" && !/\shref\s*=/i.test(m[0])) continue;
     const href = m[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const url = href && normalizeUrl(decodeEntities(href[1] ?? href[2] ?? href[3] ?? ""), pageUrl);
     if (url) anchors.push({ url, at: m.index!, around: [...open] });

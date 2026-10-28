@@ -20,6 +20,7 @@ import {
   referenceFromUrl,
   sameSite,
   textFingerprint,
+  withoutVisitNumbers,
   type ExtractedListing,
 } from "../website/extract";
 import { SiteReader } from "../website/reader";
@@ -76,7 +77,12 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   const now = new Date();
   const shownOnOverview = page.foundOn.some((tag) => tag !== ELSEWHERE);
   if (overviewsWhole && page.foundOn.length === 1 && page.foundOn[0] === ELSEWHERE) return removePage(ctx, page, now);
-  const fetched = await reader.read(page.url);
+  let fetched = await reader.read(page.url);
+  const lasting = "html" in fetched && isHomePage(fetched.url) && withoutVisitNumbers(page.url);
+  if (lasting) {
+    const again = await reader.read(lasting);
+    if ("html" in again && !isHomePage(again.url)) fetched = again;
+  }
   if ("blocked" in fetched) {
     // The site doesn't want this page read: we stop using what we read from it before.
     await ctx.db.update(websitePages).set({ kind: "error", lastError: fetched.error, lastCheckedAt: now }).where(eq(websitePages.id, page.id));
@@ -93,8 +99,7 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   }
   // Sites often redirect a removed listing to the overview or the home page.
   const landed = normalizeUrl(fetched.url) ?? page.url;
-  const home = /^(\/[a-z]{2})?\/?$/i.test(new URL(landed).pathname);
-  if (landed !== page.url && (home || (page.kind === "listing" && !looksLikeListingUrl(landed, site)))) return removePage(ctx, page, now);
+  if (landed !== page.url && (isHomePage(landed) || (page.kind === "listing" && !looksLikeListingUrl(landed, site)))) return removePage(ctx, page, now);
 
   const text = pageText(fetched.html);
   // A new version of the rules reads every page again, even when it didn't change.
@@ -138,6 +143,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     .where(eq(websitePages.id, page.id));
   return outcome.created ? "created" : "updated";
 }
+
+const isHomePage = (url: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(url).pathname);
 
 async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gone" | "error" = "gone"): Promise<PageOutcome> {
   if (kind === "gone") await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));

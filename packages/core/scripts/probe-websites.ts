@@ -8,7 +8,7 @@
  */
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
-import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite } from "../src/website/extract";
+import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
@@ -154,13 +154,20 @@ async function probe(site: string) {
   const boilerplate = await reader.siteBoilerplate();
   const outcome = new Map<string, { status: string; why: string }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
-    const page = await reader.read(url);
+    const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
+    let page = await reader.read(url);
+    // As the importer: a page sent to the home page is read again without the numbers of the visit that found it.
+    const lasting = "html" in page && home(page.url) && withoutVisitNumbers(url);
+    if (lasting) {
+      const again = await reader.read(lasting);
+      if ("html" in again && !home(again.url)) page = again;
+    }
     if (!("html" in page)) return outcome.set(url, { status: "unreadable", why: page.error });
     const { listing } = extractListing(page.html, page.url, boilerplate);
     const text = pageText(page.html);
     const title = short(page.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "", 80);
     if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });
-    if (page.url !== url && /^(\/[a-z]{2})?\/?$/i.test(new URL(page.url).pathname)) return outcome.set(url, { status: "offline", why: `sent to ${page.url}` });
+    if (page.url !== url && home(page.url)) return outcome.set(url, { status: "offline", why: `sent to ${page.url}` });
     if (isRemovedListingPage(listing, page.html)) return outcome.set(url, { status: "offline", why: short(text.split("\n").find((l) => /niet (meer|langer)|plus disponible|no longer|verkocht|verhuurd/i.test(l)) ?? "", 100) });
     if (!isListingPage(listing, page.html, shownOnOverview)) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));

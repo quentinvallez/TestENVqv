@@ -150,6 +150,20 @@ export function listingKey(url: string): string {
   return `${host}${u.pathname}${u.search}`;
 }
 
+/**
+ * The address without the numbers of the visit that found it ("/4493114/0/70089374/1/2/0/0" → "/4493114/0/0/0/0/0/0"):
+ * some sites tie those to a search that expires and send a later visit to the home page. Null when there are none.
+ */
+export function withoutVisitNumbers(url: string): string | null {
+  const u = new URL(url);
+  const segments = u.pathname.split("/");
+  const at = segments.findIndex((segment) => /(^|[^\d])\d{5,9}([^\d]|$)/.test(segment));
+  const tail = segments.slice(at + 1).filter(Boolean);
+  if (at < 0 || tail.length < 2 || !tail.every((segment) => /^\d+$/.test(segment)) || tail.every((segment) => segment === "0")) return null;
+  u.pathname = [...segments.slice(0, at + 1), ...tail.map(() => "0"), ""].join("/");
+  return u.toString();
+}
+
 /** The listing id a query string carries ("?view=detail&id=1462"), if any. */
 function queryId(url: URL): string | null {
   for (const [key, value] of url.searchParams) if (idKeys.test(key) && /^\d{3,9}$/.test(value)) return value;

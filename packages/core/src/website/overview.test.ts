@@ -117,6 +117,12 @@ describe("the status a card shows", () => {
     expect(Object.fromEntries(cardStatuses(html, `${site}/kopen`, cards))).toEqual({ [cards[1]!]: "under_offer", [cards[3]!]: "sold" });
   });
 
+  it("ends a card at the next card, also when that one is drawn without a link", () => {
+    const html = `<div class="row"><div class="col"><a href="/nl/aanbod/4493977/huis-te-huur-in-3600-genk"><div class="estate"><div class="lbl">Nieuw</div><span>€ 1.280</span></div></a></div><div class="col"><div href="/nl/aanbod/4346385/huis-verhuurd-in-3600-genk"><div class="estate"><div class="lbl">Verhuurd</div></div></div></div><div class="col"><div href="/nl/aanbod/4172000/huis-verhuurd-in-3600-genk"><div class="estate"><div class="lbl">Verhuurd</div></div></div></div></div>`;
+    const cards = ["4493977/huis-te-huur-in-3600-genk", "4346385/huis-verhuurd-in-3600-genk", "4172000/huis-verhuurd-in-3600-genk"].map((p) => `${site}/nl/aanbod/${p}`);
+    expect(Object.fromEntries(cardStatuses(html, `${site}/nl/te-huur/woningen`, cards))).toEqual({ [cards[1]!]: "rented", [cards[2]!]: "rented" });
+  });
+
   it("doesn't take a project's share of sold units for a badge", () => {
     const card = (id: number, badge: string) =>
       `<div class="card"><a href="/nieuwbouw/tielt/${id}/project"><img src="/p/${id}.jpg" alt="Project"></a><span class="label">${badge}</span><p>Vanaf € 195 000</p></div>`;
