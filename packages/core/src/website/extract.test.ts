@@ -187,6 +187,14 @@ describe("reading a listing page", () => {
     expect(isListingPage(listing, html)).toBe(false);
   });
 
+  it("keeps a project shown as a card as one listing, however many unit prices it lists", () => {
+    const units = Array.from({ length: 20 }, (_, i) => `<tr><td>App ${i}</td><td>€ ${300 + i}.000</td></tr>`).join("");
+    const html = `<html><body><h1>Residentie Le Fox</h1><p>Nieuwbouw te koop, 8660 De Panne</p><table>${units}</table></body></html>`;
+    const { listing } = extractListing(html, "https://www.site.be/te-koop/project-de-panne-residentie-le-fox-4443928.htm");
+    expect(isListingPage(listing, html)).toBe(false);
+    expect(isListingPage(listing, html, true)).toBe(true);
+  });
+
   it("parses Belgian amounts and street lines", () => {
     expect(parseAmount("€ 1.250.000")).toBe(1250000);
     expect(parseAmount("995 000 €")).toBe(995000);

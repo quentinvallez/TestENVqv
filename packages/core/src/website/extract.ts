@@ -635,7 +635,8 @@ export function isListingPage(listing: ExtractedListing, html: string, shownOnOv
   // Prices in the blocks of other listings below it ("Net gemist") don't make a listing page an overview.
   const text = mainPart(pageText(html));
   const prices = text.match(/€\s?\d{2,3}[.\s]\d{3}|\d{2,3}[.\s]\d{3}\s?€/g)?.length ?? 0;
-  if (prices > 12) return false;
+  // A new-build project shown as a card lists the prices of its units, and is one listing when it has no unit pages.
+  if (prices > 12 && !shownOnOverview) return false;
   const facts = [listing.price, listing.bedrooms, listing.livingArea, listing.plotArea, listing.epcScore ?? listing.epcLabel, listing.postcode].filter((v) => v != null).length;
   return facts >= (shownOnOverview ? 1 : 2) && (listing.propertyType != null || listing.transaction != null || listing.price != null);
 }

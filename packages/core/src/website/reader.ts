@@ -28,13 +28,15 @@ export class SiteReader {
   ) {}
 
   static async open(site: string) {
-    let robots = allowAll;
-    try {
-      const file = await fetchSitePage(`${new URL(site).origin}/robots.txt`, site);
-      if (file.status === 200) robots = parseRobots(file.html);
-      else if (file.status >= 500) robots = disallowAll;
-    } catch {
-      robots = disallowAll;
+    // A robots.txt that can't be read closes the site for this run, so one slow answer gets a second try.
+    let robots = disallowAll;
+    for (let attempt = 0; attempt < 2 && robots === disallowAll; attempt++) {
+      try {
+        const file = await fetchSitePage(`${new URL(site).origin}/robots.txt`, site);
+        robots = file.status === 200 ? parseRobots(file.html) : file.status >= 500 ? disallowAll : allowAll;
+      } catch {
+        robots = disallowAll;
+      }
     }
     const reader = new SiteReader(site, robots);
     reader.lastRequest = Date.now();
