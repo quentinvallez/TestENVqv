@@ -7,7 +7,7 @@ import { draftOffMarketNotices } from "../planner/off-market";
 import { defineTool, type ToolContext } from "../tool";
 import { extractWithAi, mergeExtraction } from "../website/ai";
 import { openBrowser } from "../website/browser";
-import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
+import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
   extractListing,
   isListingPage,
@@ -50,7 +50,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v4";
+const EXTRACTION_VERSION = "v5";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -400,7 +400,9 @@ export const importWebsiteListings = defineTool({
     if (state) {
       const browser = await openBrowser(reader);
       try {
-        discoveryError = (await continueDiscovery(reader, state, foundPages(ctx, reader, (n) => (blockedLinks += n)), started + ((deadline - started) * 2) / 3, browser?.render)).error;
+        // The browser reads at the end of a search get the whole run: scrolling a long list takes a while.
+        const until = onlyBrowserLeft(state) ? deadline - 5_000 : started + ((deadline - started) * 2) / 3;
+        discoveryError = (await continueDiscovery(reader, state, foundPages(ctx, reader, (n) => (blockedLinks += n)), until, browser?.render)).error;
       } finally {
         await browser?.close();
       }

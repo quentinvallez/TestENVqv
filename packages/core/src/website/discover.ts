@@ -52,6 +52,11 @@ export type DiscoveryHooks = {
 export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[] };
 type QueueItem = WebsiteDiscovery["queue"][number];
 
+/** Whether the search has only the browser reads left, which deserve a run's whole time. */
+export function onlyBrowserLeft(state: DiscoveryState): boolean {
+  return !state.discovery.doneAt && state.discovery.queue.length === 0 && Boolean(state.discovery.sitemapsQueued);
+}
+
 export function newDiscovery(site: string, now = new Date()): DiscoveryState {
   return { discovery: { startedAt: now.toISOString(), queue: [{ url: site, root: null }], visited: [], language: languageOf(site) ?? undefined }, overviews: [] };
 }
@@ -321,12 +326,18 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
   for (const o of state.overviews) {
     // Short of what it states, or a for-sale or for-rent overview where not one listing showed (built by its scripts).
     const short = o.stated != null ? o.found < o.stated : o.found === 0 && SALE_OR_RENT.test(pathOf(o.url));
-    if (!short || rendered.includes(o.url) || !reader.robots.allowed(o.url)) continue;
+    // Twice at most: a read cut short by the end of a run gets one more go in a run of its own.
+    if (!short || rendered.filter((url) => url === o.url).length >= 2 || !reader.robots.allowed(o.url)) continue;
     // A browser read takes a while: leave it to the next run when this one is nearly over.
     if (deadline - Date.now() < 25_000) return false;
     rendered.push(o.url);
     const html = await renderer(o.url, deadline).catch(() => null);
-    if (!html) continue;
+    // Stopped by the end of the run rather than by the list's end: what it saw counts, and the next run reads it again.
+    const cut = Date.now() >= deadline - 2_000;
+    if (!html) {
+      if (cut) return false;
+      continue;
+    }
     const language = state.discovery.language ?? null;
     const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
     const fresh = await hooks.found(cards, o.url, cardStatuses(html, o.url, cards));
@@ -334,6 +345,7 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
       o.found += fresh.newToOverview;
       o.via = "browser";
     }
+    if (cut) return false;
   }
   return true;
 }
