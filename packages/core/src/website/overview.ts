@@ -245,17 +245,27 @@ const PAGE_PARTS = ["html", "body", "main", "header", "nav", "footer"];
  */
 function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>): Map<string, string> {
   const mine = anchors.filter((a) => cards.has(a.url));
-  const out = new Map<string, string>();
+  const chains = new Map<string, Element[]>();
   for (const { url, around } of mine) {
-    if (out.has(url)) continue;
-    let card: Element | null = null;
+    if (chains.has(url)) continue;
+    const chain: Element[] = [];
     for (let i = around.length - 1; i >= 0; i--) {
       const e = around[i]!;
       if (mine.some((a) => a.url !== url && a.at >= e.start && a.at < e.end)) break;
       if (PAGE_PARTS.includes(e.name) || e.end - e.start > 40_000) break;
-      card = e;
+      chain.push(e);
     }
-    if (card) out.set(url, doc.slice(card.start, card.end));
+    if (chain.length) chains.set(url, chain);
+  }
+  // Cards of one list are elements of one kind. The first card's largest element can take in what stands above the
+  // list (a sort menu with "Verkocht"), so a card stops at the element of the kind most cards end at, when it has one.
+  const ends = new Map<string, number>();
+  for (const chain of chains.values()) ends.set(chain.at(-1)!.shape, (ends.get(chain.at(-1)!.shape) ?? 0) + 1);
+  const usual = [...ends].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const out = new Map<string, string>();
+  for (const [url, chain] of chains) {
+    const card = (chains.size >= 3 && [...chain].reverse().find((e) => e.shape === usual)) || chain.at(-1)!;
+    out.set(url, doc.slice(card.start, card.end));
   }
   return out;
 }

@@ -19,10 +19,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  { url: "https://jurimex.be/nl/te-koop/alle-types", needle: "4295691", pages: 6, show: ["markup"] },
-  { url: "https://www.caenen.be/nl/te-koop/project-nieuwpoort-residentie-naudi-4443999.htm", show: ["links"] },
-  { url: "https://www.vlaemynck.be/nieuwbouw/tielt/11111316/t-park-tielt-de-linde", show: ["links"] },
-  { url: "https://www.vlaemynck.be/te-koop", needle: "pager", show: ["markup"] },
+  { url: "https://www.leximmo.be/nl/te-huur-te-koop", needle: "4486583", show: ["markup"] },
+  { url: "https://www.leximmo.be/nl/te-huur-te-koop", needle: "pagin", show: ["markup"] },
+  { url: "https://www.leximmo.be/nl/woning/te-koop/niel/4493114", show: ["text"] },
+  { url: "https://www.leximmo.be/nl/te-koop/niel/woning/4493114", show: ["text"] },
+  { url: "https://jurimex.be/nl/te-koop/alle-types", needle: "pagin", show: ["markup", "links"] },
 ];
 
 const clean = (html: string) =>

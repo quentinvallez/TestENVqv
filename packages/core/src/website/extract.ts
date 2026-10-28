@@ -88,8 +88,14 @@ export function normalizeUrl(input: string, base?: string): string | null {
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   url.hash = "";
   url.protocol = "https:";
-  for (const key of [...url.searchParams.keys()]) {
+  for (const key of [...new Set(url.searchParams.keys())]) {
     if (/^(utm_|fbclid|gclid|mc_|_ga)/i.test(key) || NOISE_KEYS.test(key)) url.searchParams.delete(key);
+    else if (url.searchParams.getAll(key).length > 1) {
+      // "?view=list&view=list" is "?view=list".
+      const values = [...new Set(url.searchParams.getAll(key))];
+      url.searchParams.delete(key);
+      for (const value of values) url.searchParams.append(key, value);
+    }
   }
   if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
   return url.toString();
@@ -444,6 +450,17 @@ function streetCityLine(textBlock: string): { street: string; houseNumber: strin
   return null;
 }
 
+/** Headings of the blocks with other listings under a listing ("Gelijkaardige panden", "Net gemist", "Biens similaires"). */
+const otherListings =
+  /^(gelijkaardige|vergelijkbare|andere|meer|soortgelijke) (panden|woningen|eigendommen|aanbod)|^(ook interessant|misschien ook|net gemist|recent bekeken|bekijk ook)|^(biens|annonces) similaires|^(vous aimerez|autres biens|à découvrir aussi|ces biens)|^(similar|related|other) (properties|listings)|^you (may|might) also like/i;
+
+/** The page text without the blocks of other listings it shows below the listing, whose prices and places aren't this one's. */
+export function mainPart(text: string): string {
+  const lines = text.split("\n");
+  const at = lines.findIndex((line, i) => i >= 10 && line.length <= 60 && otherListings.test(line.trim()));
+  return at < 0 ? text : lines.slice(0, at).join("\n");
+}
+
 /**
  * Lines of the home page that are the agency's own details (an office
  * address, a VAT number), which every page repeats in its footer. Removing
@@ -502,12 +519,14 @@ export function contactNear(textBlock: string, name: string): { agentEmail: stri
  */
 export function extractListing(html: string, pageUrl: string, boilerplate?: Set<string>): { listing: ExtractedListing; structured: boolean } {
   const structured = structuredData(html, pageUrl);
-  const textBlock = boilerplate?.size
-    ? pageText(html)
-        .split("\n")
-        .filter((line) => !boilerplate.has(line))
-        .join("\n")
-    : pageText(html);
+  const textBlock = mainPart(
+    boilerplate?.size
+      ? pageText(html)
+          .split("\n")
+          .filter((line) => !boilerplate.has(line))
+          .join("\n")
+      : pageText(html),
+  );
   const listing = emptyListing();
   const { found, ...fromStructured } = structured;
   Object.assign(listing, Object.fromEntries(Object.entries(fromStructured).filter(([, v]) => v != null && !(Array.isArray(v) && v.length === 0))));
@@ -558,19 +577,26 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   // The city is often in the URL (/te-koop/kortrijk/…).
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;
+  let unlabelled = false;
   if (listing.price == null) {
     const found = unlabelledPrice(textBlock);
     if (found) {
       listing.price = found.price;
       rentByPrice = found.rent;
+      unlabelled = true;
     }
   }
 
   const title = headline(html) ?? listing.title ?? titleTag(html);
   listing.title = title;
   const statusLine = labelled(textBlock, { field: "status", labels: "status|statut|state", value: /^[\s:|]{0,4}([^\n]{3,40})/i, parse: (raw) => raw });
-  listing.status = statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? statusFrom(path.replace(/[-/]/g, " "));
+  // The address says "verkocht" or "optie" when the site changed it with the status ("/aanbod/4050490/magazijn-verhuurd-in-3600-genk"),
+  // also when the title still says "te huur".
+  const fromPath = statusFrom(path.replace(/[-/_]/g, " "));
+  listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
+  // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
+  if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
   listing.propertyType = propertyTypeFrom(path, title);
   listing.reference ??= referenceFromUrl(pageUrl);
   if (!listing.description) {
@@ -606,7 +632,8 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
  * shop to rent has a price but no rooms).
  */
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
-  const text = pageText(html);
+  // Prices in the blocks of other listings below it ("Net gemist") don't make a listing page an overview.
+  const text = mainPart(pageText(html));
   const prices = text.match(/€\s?\d{2,3}[.\s]\d{3}|\d{2,3}[.\s]\d{3}\s?€/g)?.length ?? 0;
   if (prices > 12) return false;
   const facts = [listing.price, listing.bedrooms, listing.livingArea, listing.plotArea, listing.epcScore ?? listing.epcLabel, listing.postcode].filter((v) => v != null).length;

@@ -125,6 +125,13 @@ describe("the status a card shows", () => {
     expect([...statuses]).toEqual([[`${site}/aanbod/4295692/huis-te-koop-in-3600-genk`, "sold"]]);
   });
 
+  it("doesn't take a sort list of links above the first card for its badge", () => {
+    const card = (id: number, label = "") => `<div class="estate"><a href="/aanbod/${id}/huis-te-koop">Huis te koop</a><p>Genk</p>${label}</div>`;
+    const html = `<section><div class="sort"><a href="#">Recent oplopend</a><a href="#">Verhuurd</a></div>${card(4406798)}${card(4406799)}${card(4406800, '<span class="lbl">Verkocht</span>')}</section>`;
+    const urls = [4406798, 4406799, 4406800].map((id) => `${site}/aanbod/${id}/huis-te-koop`);
+    expect([...cardStatuses(html, `${site}/te-huur`, urls)]).toEqual([[urls[2], "sold"]]);
+  });
+
   it("doesn't take a word in a card's description for its badge", () => {
     const html = `<div class="card"><a href="/aanbod/4295691/grond-te-koop-in-3600-genk">Grond te koop</a><p>Beschikbare loten: Lot 1: 4a 97ca – halfopen bebouwing: VERKOCHT ! Lot 3: 5a 63ca – open bebouwing</p></div>
       <div class="card"><a href="/aanbod/4295692/huis-te-koop-in-3600-genk">Huis te koop</a><span class="badge">Verkocht</span></div>`;

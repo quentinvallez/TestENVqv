@@ -224,6 +224,13 @@ describe("reading a listing page", () => {
     expect(extractListing(sale, "https://www.immotop.be/fr/a-vendre?view=detail&id=1462").listing).toMatchObject({ price: 145000, bedrooms: 2 });
   });
 
+  it("takes the status in the address over the title, and no price from the other listings below", () => {
+    const filler = Array.from({ length: 12 }, (_, i) => `<p>Kenmerk ${i}</p>`).join("");
+    const html = `<h1>Magazijn te huur in Genk</h1><p>Winterslagstraat 12, 3600 Genk</p><p>Oppervlakte 450 m²</p>${filler}<h2>Gelijkaardige panden</h2><div><a href="/aanbod/4493977/huis">Huis te huur</a><p>€ 1.280</p></div>`;
+    const { listing } = extractListing(html, "https://jurimex.be/nl/aanbod/4050490/magazijn-verhuurd-in-3600-genk");
+    expect(listing).toMatchObject({ status: "rented", price: null, livingArea: 450 });
+  });
+
   it("reads the agent from a name before a BIV number, with the phone next to it, but not the agency itself", () => {
     const html = `<html><body><h1>Handelshuis op 11a op sterke ligging te Aalst</h1>
 <p>Kerkstraat 12 , AALST</p><p>€ 395 000</p><p>Slaapkamers 3</p><p>Bewoonbare oppervlakte 180 m²</p>
