@@ -490,10 +490,15 @@ export function boilerplateLines(homeHtml: string): Set<string> {
 
 /** "€ 300 000" or "€ 1 350/mnd" near the top of a page that shows its price without a label. */
 function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | null {
-  const match = textBlock.match(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|(?<=^|\n)\d{3,}(?=\s?€[ \t]*(?:\n|$|\/)))\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/i);
-  if (!match) return null;
-  const price = parseAmount(match[1] ?? match[2] ?? "");
-  return price && price >= 100 ? { price, rent: Boolean(match[3]) } : null;
+  const amounts = textBlock.matchAll(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|(?<=^|\n)\d{3,}(?=\s?€[ \t]*(?:\n|$|\/)))\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/gi);
+  // Amounts that a label calls something else (cadastral income, charges, taxes) aren't the price.
+  const other = /(cadastr|kadastr|\b(?:KI|RC)\b|charges|kosten|provisie|provision|syndic|frais|voorheffing|pr[ée]compte|taxe|belasting|huurwaarde|garantie)[^\n]*\n?[^\n]*$/i;
+  for (const match of amounts) {
+    if (other.test(textBlock.slice(Math.max(0, (match.index ?? 0) - 80), match.index))) continue;
+    const price = parseAmount(match[1] ?? match[2] ?? "");
+    if (price && price >= 100) return { price, rent: Boolean(match[3]) };
+  }
+  return null;
 }
 
 function headline(html: string): string | null {

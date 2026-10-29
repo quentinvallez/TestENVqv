@@ -235,6 +235,12 @@ describe("reading a listing page", () => {
     expect(extractListing(other, "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois").listing.status ?? "active").toBe("active");
   });
 
+  it("doesn't take the cadastral income above an unlabelled price for the price (Tadam)", () => {
+    const html = `<html><head><title>WALTZING | Maison 3 chambres à vendre | TADAM immobilière</title></head><body><main><p>Nombre de chambres :</p><p>3</p>
+      <p>Revenu cadastral net :</p><p>986€</p><p>Les superficies mentionnées sont à titre indicatif</p><p>389.000€</p><p>WALTZING - MAISON 3 CHAMBRES</p><p>15, rue de Steinchen</p><p>6700 WALTZING</p></main></body></html>`;
+    expect(extractListing(html, "https://www.tadam.immo/waltzing-15-rue-de-steinchen").listing.price).toBe(389000);
+  });
+
   it("drops the numbers of the visit that found a listing from its address", () => {
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();
