@@ -92,6 +92,8 @@ describe("listing URLs", () => {
     expect(looksLikeListingUrl("https://www.dewaele.com/nl/te-koop/alle/huis", "https://www.dewaele.com")).toBe(false);
     expect(looksLikeListingUrl("https://www.dewaele.com/nl/blog/2024/123456-tips", "https://www.dewaele.com")).toBe(false);
     expect(looksLikeListingUrl("https://other.be/detail/7917339/x", "https://www.immodavinci.be")).toBe(false);
+    // Font and other files a page preloads, even when their names carry long numbers.
+    expect(looksLikeListingUrl("https://www.immofrance.be/f/52807ca2/700.woff2", "https://www.immofrance.be")).toBe(false);
     // The id in the query string, as Joomla sites show every listing through one page.
     expect(looksLikeListingUrl("https://www.immotop.be/fr/component/properties?view=detail&id=1462", "https://www.immotop.be/fr/")).toBe(true);
     expect(looksLikeListingUrl("https://www.immotop.be/fr/a-vendre?view=list&page=2", "https://www.immotop.be/fr/")).toBe(false);

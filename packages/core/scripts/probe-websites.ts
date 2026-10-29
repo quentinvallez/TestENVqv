@@ -12,7 +12,7 @@ import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUr
 import { cardStatuses, statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance since 2026-10-29).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -25,6 +25,7 @@ const sites = [
   "https://www.leximmo.be",
   "https://www.caenen.be/nl",
   "https://www.vlaemynck.be",
+  "https://www.immofrance.be",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
@@ -205,6 +206,8 @@ async function probe(site: string) {
     // Cards with a status whose page read says otherwise: either the page or the card is read wrong.
     const disagree = read.filter((url) => cardBadge.has(url) && outcome.get(url)!.status !== cardBadge.get(url));
     if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
+    // A small site: every address, to compare one by one with the agency's own list.
+    if (shownOn.size <= 120) console.log(`      all: ${urls.map((url) => url.replace(site, "")).join(" ")}`);
     const badged = urls.filter((url) => cardBadge.has(url));
     console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };

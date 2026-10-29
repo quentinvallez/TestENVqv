@@ -101,7 +101,7 @@ export function normalizeUrl(input: string, base?: string): string | null {
   return url.toString();
 }
 
-const notPages = /\.(jpe?g|png|gif|webp|svg|pdf|docx?|xlsx?|zip|mp4|mov|css|js|ico|xml|json)$/i;
+const notPages = /\.(jpe?g|png|gif|webp|avif|svg|pdf|docx?|xlsx?|zip|mp4|mov|webm|mp3|css|js|ico|xml|json|txt|woff2?|ttf|otf|eot)$/i;
 const notListings =
   /\/(blog|nieuws|news|actualites?|actua|jobs?|vacatures?|careers?|contact|team|over-ons|about|a-propos|privacy|cookies?|disclaimer|login|account|wp-admin|wp-content|wp-json|tag|category|auteur|author|content|cms|media|uploads?|assets?|cms-assets|files?|images?|img|downloads?|documents?|api)(\/|$)/i;
 /** CMS pages ("/fr/page/10004/protection-juridique"); "/page/2" of an overview is no listing either. */

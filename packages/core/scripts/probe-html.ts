@@ -21,8 +21,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immo-zone: a listing under option whose own page we no longer read as under option.
-  { url: "https://www.immo-zone.be/te-koop/wetteren/gunstig-gelegen-woning-met-3-slks-en-tuin/97149", show: ["text"] },
+  // Immofrance: how its overviews and listing links are built (Quentin counts 2 listings missing).
+  { url: "https://www.immofrance.be/nl/te-koop", show: ["links"] },
 ];
 
 const clean = (html: string) =>

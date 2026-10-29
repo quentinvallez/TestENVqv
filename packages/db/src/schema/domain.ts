@@ -105,6 +105,8 @@ export type WebsiteDiscovery = {
   pagingKey?: string;
   /** The first address seen for each listing, when a site gives one listing several ("?id=1462" on two pages). */
   keys?: Record<string, string>;
+  /** Address templates of the listing cards on the overviews (cards at "/nl/te-koop/ronse/huis/woning/793" give one): a link of one of them is a listing, not an overview. */
+  listingShapes?: string[];
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */

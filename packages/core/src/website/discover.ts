@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
+import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -186,6 +186,13 @@ export async function continueDiscovery(
       discovery.language = homeLanguage(page.url, overviewLinks);
     }
     let cards = listingLinks(page.html, page.url, site).filter(inLanguage);
+    // A page the menu or a teaser links like an overview, whose address follows the template of the listings on the
+    // overviews ("/te-koop/ghoy/grond/landbouwgrond-5000m2/230" next to ".../793"), is one more listing.
+    if (item.root === item.url && isListingShape(discovery, item.url)) {
+      await hooks.found([item.url, ...cards], null);
+      continue;
+    }
+    if (item.root) rememberShapes(discovery, cards);
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
     // On a new-build overview, cards without a listing id below it are projects, read for their units.
     if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
@@ -208,6 +215,20 @@ export async function continueDiscovery(
   }
   return {};
 }
+
+const MAX_SHAPES = 20;
+
+/** Remembers the address templates of an overview's cards that carry a number, to know listings linked elsewhere. */
+function rememberShapes(discovery: WebsiteDiscovery, cards: string[]) {
+  const shapes = new Set(discovery.listingShapes ?? []);
+  for (const url of cards) {
+    const shape = urlShape(url);
+    if (shape.includes("#") && shapes.size < MAX_SHAPES) shapes.add(shape);
+  }
+  if (shapes.size) discovery.listingShapes = [...shapes];
+}
+
+const isListingShape = (discovery: WebsiteDiscovery, url: string) => (discovery.listingShapes ?? []).includes(urlShape(url));
 
 /** Each listing under the first address the search saw for it, also when the site links it under several. */
 function oneAddressPerListing(state: DiscoveryState, hooks: DiscoveryHooks): DiscoveryHooks {
