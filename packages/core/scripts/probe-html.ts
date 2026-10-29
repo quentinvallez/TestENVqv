@@ -21,10 +21,13 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Tadam: listings Quentin sees as sold/under option that we read as on offer.
-  { url: "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois", show: ["text"] },
-  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", show: ["text"] },
-  { url: "https://www.tadam.immo/arlon-app-rez1-schoppach", show: ["text"] },
+  // Tadam: where a sold / under option status shows for these listings (page or overview card).
+  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", needle: "ption", show: ["markup"] },
+  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", needle: "ompromis", show: ["markup"] },
+  { url: "https://www.tadam.immo/arlon-app-rez1-schoppach", needle: "ption", show: ["markup"] },
+  { url: "https://www.tadam.immo/biens", needle: "waltzing-15", pages: 8, show: ["markup"] },
+  { url: "https://www.tadam.immo/biens", needle: "rez1-schoppach", pages: 8, show: ["markup"] },
+  { url: "https://www.tadam.immo/biens", needle: "8ruedubois", pages: 8, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
@@ -85,7 +88,7 @@ async function main() {
       if (look.show.includes("markup")) {
         const body = clean(html);
         const i = look.needle ? body.indexOf(look.needle) : Math.max(0, body.search(/<main\b/i));
-        console.log(`markup: ${body.slice(Math.max(0, i - 2500), i + 5500)}`);
+        console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
       }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);
