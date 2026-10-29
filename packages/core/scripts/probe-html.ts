@@ -21,16 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immofrance: how its overviews and listing links are built (Quentin counts 2 listings missing).
-  // Immotalenco: where a listing names its "Contactpersoon".
-  { url: "https://www.immotalenco.com/nl/te-koop?view=detail&id=5976", needle: "ontactpersoon", show: ["markup", "text"] },
-  // Immodyck: no listing found; how its home page and links are built.
-  { url: "https://www.immodyck.be/nl/", show: ["links", "markup"] },
-  // Century 21 Horizon: no listing found either.
-  { url: "https://www.century21-horizon.be/", show: ["links", "markup"] },
-  // Immotalenco: the overview says 36 for sale, we find 16; how pages 2 and 3 link their listings.
-  { url: "https://www.immotalenco.com/nl/te-koop?page=2&view=list", show: ["links"] },
-  { url: "https://www.immotalenco.com/nl/te-koop?page=3&view=list", show: ["links"] },
+  // Immodyck and Century 21 Horizon: listings found with a browser, but no price and some "not a listing".
+  { url: "https://www.immodyck.be/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626", show: ["text"] },
+  { url: "https://www.immodyck.be/nl/kopen/deurne/winkel-handelsruimte-135-m%C2%B2/5585", show: ["text"] },
+  { url: "https://www.century21-horizon.be/fr/a-vendre/tertre/maison/7712", needle: "7712", show: ["text", "markup"] },
 ];
 
 const clean = (html: string) =>
