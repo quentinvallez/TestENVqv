@@ -624,7 +624,7 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   const fromPath = statusFrom(path.replace(/[-/_]/g, " "));
   listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
   // A label of its own near the top ("Optie" under the price) says more than "te huur" in the title.
-  if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html)) ?? listing.status;
+  if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html, title)) ?? listing.status;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
@@ -663,8 +663,9 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
  * shop to rent has a price but no rooms).
  */
 /** A status shown as a label of its own in the top of the listing ("Optie", "Verkocht"), not a word in a sentence. */
-function badgeLine(html: string): string | null {
-  const badge = /^(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)\s*!?$/i;
+function badgeLine(html: string, title?: string | null): string | null {
+  // The label alone on its line, maybe decorated ("* Vendu *", "- Optie -").
+  const badge = /^[^\p{L}\d]{0,3}(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)[^\p{L}\d]{0,3}$/iu;
   // A status word next to another one is a legend or a filter ("Te koop / Optie koop / Verkocht" above a project's units).
   const statusWord = /^(te koop|te huur|beschikbaar|vrij|optie( koop| huur)?|onder optie|in optie|verkocht|verhuurd|à vendre|à louer|disponible|option|sous option|vendu|lou[ée]|for sale|for rent|available|under offer|sold|rented)\s*!?$/i;
   // A status right after a unit's area or followed by a link to open it, or repeated, belongs to cards of units or other
@@ -678,8 +679,14 @@ function badgeLine(html: string): string | null {
       badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "") && !area.test(lines[i - 1] ?? "") && !cardLink.test(lines[i + 1] ?? ""),
   );
   const [first] = found;
-  if (!first || found.some((line) => line.toLowerCase() !== first.toLowerCase())) return null;
-  return all.filter((line) => line.toLowerCase() === first.toLowerCase()).length <= 3 ? first : null;
+  if (first) {
+    if (found.some((line) => line.toLowerCase() !== first.toLowerCase())) return null;
+    return all.filter((line) => line.toLowerCase() === first.toLowerCase()).length <= 3 ? first : null;
+  }
+  // Further down, only a label right next to the listing's own heading (its words are in the page title).
+  const titleWords = new Set((title ?? "").toLowerCase().match(/\p{L}{4,}/gu) ?? []);
+  const nearTitle = (line: string | undefined) => (line?.toLowerCase().match(/\p{L}{4,}/gu) ?? []).filter((w) => titleWords.has(w)).length >= 2;
+  return all.find((line, i) => badge.test(line) && (nearTitle(all[i - 1]) || nearTitle(all[i + 1]))) ?? null;
 }
 
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {

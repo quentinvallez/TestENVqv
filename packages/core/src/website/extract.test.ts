@@ -226,6 +226,15 @@ describe("reading a listing page", () => {
     expect(extractListing(sold, "https://www.vlaemynck.be/nieuwbouw/koksijde/11179303/residentie-lucy").listing.status ?? "active").toBe("active");
   });
 
+  it("reads a decorated sold label next to the listing's heading further down the page (Tadam)", () => {
+    const facts = Array.from({ length: 50 }, (_, i) => `<p>Kenmerk ${i}</p>`).join("");
+    const html = `<html><head><title>TOERNICH | Maison 4 chambres à vendre | TADAM immobilière</title></head><body><main><p>Découvrez cette confortable maison 4 façades.</p>${facts}
+      <p>* Vendu *</p><p>MAISON 4 CHAMBRES - TOERNICH</p><p>8, rue du Bois</p><p>6700 TOERNICH</p></main></body></html>`;
+    expect(extractListing(html, "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois").listing.status).toBe("sold");
+    const other = html.replace("<p>* Vendu *</p><p>MAISON 4 CHAMBRES - TOERNICH</p>", "<p>Net gemist</p><p>Vendu</p><p>Appartement Arlon</p>");
+    expect(extractListing(other, "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois").listing.status ?? "active").toBe("active");
+  });
+
   it("drops the numbers of the visit that found a listing from its address", () => {
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();
