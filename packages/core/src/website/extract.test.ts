@@ -206,6 +206,12 @@ describe("reading a listing page", () => {
     expect(listing).toMatchObject({ status: "under_offer", transaction: "rent", price: 156, agentName: "Liselotte Deschacht", agentPhone: "+3259305050" });
   });
 
+  it("doesn't take an office or a project name next to a phone number for the agent", () => {
+    const html = (name: string) => `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>${name}</p><p>050 42 66 09</p></main></body></html>`;
+    expect(extractListing(html("Immokantoor Blankenberge"), "https://www.site.be/nl/te-koop/appartement-4478354.htm").listing.agentName).toBeNull();
+    expect(extractListing(html("Residentie Nordee"), "https://www.site.be/nl/te-koop/project-4396585.htm").listing.agentName).toBeNull();
+  });
+
   it("doesn't take a status word in a sentence or a sold block further down for the listing's status", () => {
     const html = `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>Het gebouw is voor 80% verkocht.</p></main></body></html>`;
     expect(extractListing(html, "https://www.site.be/nl/te-koop/appartement-4498685.htm").listing.status).toBe("active");
