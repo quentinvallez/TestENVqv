@@ -221,6 +221,9 @@ describe("reading a listing page", () => {
     const html = `<html><body><main><p>Terug naar overzicht</p><p>Avelgem</p><h1>De Kloostertuin</h1><p>Vanaf €260.000</p><p>Kloosterhof 2, 8580 Avelgem</p>
       <p>6 entiteiten</p><ul><li>Te koop</li><li>Optie koop</li><li>Verkocht</li></ul><p>Appartement</p><p>2 Slaapkamers</p><p>€315.000</p><p>Te koop</p></main></body></html>`;
     expect(extractListing(html, "https://www.vlaemynck.be/nieuwbouw/avelgem/11079497/de-kloostertuin").listing.status ?? "active").toBe("active");
+    const unit = (status: string) => `<p>Appartement</p><p>2 Slaapkamers</p><p>€315.000</p><p>${status}</p><p>Bekijk</p>`;
+    const sold = `<html><body><main><h1>Residentie Lucy</h1><p>Vanaf €349.000</p><p>8670 Koksijde</p>${unit("Verkocht")}${unit("Te koop")}</main></body></html>`;
+    expect(extractListing(sold, "https://www.vlaemynck.be/nieuwbouw/koksijde/11179303/residentie-lucy").listing.status ?? "active").toBe("active");
   });
 
   it("drops the numbers of the visit that found a listing from its address", () => {
