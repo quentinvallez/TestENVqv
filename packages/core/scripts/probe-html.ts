@@ -3,7 +3,7 @@
  * cards, badges and prices are built before writing rules for them. Stores nothing.
  * Run: npx tsx packages/core/scripts/probe-html.ts [words of the site addresses]
  */
-import { extractListing, looksLikeListingUrl, pageLinks, pageText, sameSite } from "../src/website/extract";
+import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
@@ -21,9 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Caenen: rentals under option, and the agent named on each listing.
-  { url: "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm", show: ["text"] },
-  { url: "https://www.caenen.be/nl/te-huur/handelspand-blankenberge-1912740.htm", show: ["text"] },
+  // Vlaemynck: projects "42% verkocht" and listings that now read as sold.
+  { url: "https://www.vlaemynck.be/nieuwbouw/meulebeke/11171836/residentie-de-kapelle", show: ["text"] },
+  { url: "https://www.vlaemynck.be/nieuwbouw/avelgem/11079497/de-kloostertuin", show: ["text"] },
+  { url: "https://www.vlaemynck.be/te-koop/avelgem/appartement/11184656/unieke-loft-met-terras", show: ["text"] },
 ];
 
 const clean = (html: string) =>
@@ -90,6 +91,7 @@ async function main() {
         const { listing } = extractListing(html, read.url);
         console.log(`facts: ${JSON.stringify({ ...listing, description: listing.description?.slice(0, 60), photos: listing.photos.length })}`);
         console.log(`canonical: ${html.match(/<link[^>]*rel=["']canonical["'][^>]*>/i)?.[0] ?? "-"}`);
+        console.log(`main (first 40):\n${mainPart(pageText(html)).split("\n").slice(0, 40).join("\n")}`);
         console.log(`text:\n${pageText(html).split("\n").slice(0, 160).join("\n")}`);
       }
       break;
