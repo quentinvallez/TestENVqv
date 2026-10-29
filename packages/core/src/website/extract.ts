@@ -665,7 +665,10 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
 /** A status shown as a label of its own in the top of the listing ("Optie", "Verkocht"), not a word in a sentence. */
 function badgeLine(html: string): string | null {
   const badge = /^(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)\s*!?$/i;
-  return mainPart(pageText(html)).split("\n").slice(0, 40).map((line) => line.trim()).find((line) => badge.test(line)) ?? null;
+  // A status word next to another one is a legend or a filter ("Te koop / Optie koop / Verkocht" above a project's units).
+  const statusWord = /^(te koop|te huur|beschikbaar|vrij|optie( koop| huur)?|onder optie|in optie|verkocht|verhuurd|à vendre|à louer|disponible|option|sous option|vendu|lou[ée]|for sale|for rent|available|under offer|sold|rented)\s*!?$/i;
+  const lines = mainPart(pageText(html)).split("\n").slice(0, 40).map((line) => line.trim());
+  return lines.find((line, i) => badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "")) ?? null;
 }
 
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {

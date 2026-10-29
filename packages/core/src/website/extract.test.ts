@@ -217,6 +217,12 @@ describe("reading a listing page", () => {
     expect(extractListing(html, "https://www.site.be/nl/te-koop/appartement-4498685.htm").listing.status).toBe("active");
   });
 
+  it("doesn't take the status legend above a project's units for the project's status (Vlaemynck)", () => {
+    const html = `<html><body><main><p>Terug naar overzicht</p><p>Avelgem</p><h1>De Kloostertuin</h1><p>Vanaf €260.000</p><p>Kloosterhof 2, 8580 Avelgem</p>
+      <p>6 entiteiten</p><ul><li>Te koop</li><li>Optie koop</li><li>Verkocht</li></ul><p>Appartement</p><p>2 Slaapkamers</p><p>€315.000</p><p>Te koop</p></main></body></html>`;
+    expect(extractListing(html, "https://www.vlaemynck.be/nieuwbouw/avelgem/11079497/de-kloostertuin").listing.status ?? "active").toBe("active");
+  });
+
   it("drops the numbers of the visit that found a listing from its address", () => {
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();
