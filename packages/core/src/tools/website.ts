@@ -621,7 +621,8 @@ export const websiteImportStatus = defineTool({
       failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
       /** Pages we know of, by what they turned out to be. */
       pageCounts: {
-        listing: imported.length,
+        onOffer: imported.filter((p) => p.status !== "under_offer").length,
+        underOffer: imported.filter((p) => p.status === "under_offer").length,
         offMarket: all.length - imported.length,
         pending: pages.filter((p) => p.kind === "pending").length,
         gone: pages.filter((p) => p.kind === "gone").length,

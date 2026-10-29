@@ -20,12 +20,13 @@ function ReadBy({ by }: { by: string | null }) {
 }
 
 /** What the pages we found on the site turned out to be, as one thin bar with a legend. */
-function PageBreakdown({ counts }: { counts: { listing: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
+function PageBreakdown({ counts }: { counts: { onOffer: number; underOffer: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
   const parts = [
-    { label: "listings", value: counts.listing, className: "bg-fg" },
-    { label: "sold, rented or under option (not listed)", value: counts.offMarket, className: "bg-muted" },
-    { label: "to read", value: counts.pending, className: "bg-line-strong" },
-    { label: "taken offline", value: counts.gone, className: "bg-faint" },
+    { label: "on offer", value: counts.onOffer, className: "bg-fg" },
+    { label: "under option", value: counts.underOffer, className: "bg-muted" },
+    { label: "sold or rented (not listed)", value: counts.offMarket, className: "bg-faint" },
+    { label: "to read", value: counts.pending, className: "bg-info" },
+    { label: "taken offline", value: counts.gone, className: "bg-line-strong" },
     { label: "not a listing", value: counts.other, className: "bg-line" },
     { label: "could not be read", value: counts.error, className: "bg-danger" },
   ].filter((p) => p.value > 0);
@@ -33,6 +34,10 @@ function PageBreakdown({ counts }: { counts: { listing: number; offMarket: numbe
   if (!total) return null;
   return (
     <div className="mt-3">
+      <div className="mb-1.5 text-[13px]">
+        <span className="font-medium tabular-nums">{counts.onOffer + counts.underOffer}</span> listings on your site:{" "}
+        <span className="tabular-nums">{counts.onOffer}</span> on offer, <span className="tabular-nums">{counts.underOffer}</span> under option
+      </div>
       <div className="flex h-1.5 overflow-hidden rounded-full bg-hover" aria-hidden>
         {parts.map((p) => (
           <div key={p.label} className={p.className} style={{ width: `${(p.value / total) * 100}%` }} />
@@ -166,7 +171,8 @@ export default async function WebsiteImportPage() {
                   <h2 className="font-medium">What your website shows</h2>
                   <p className="mt-0.5 max-w-2xl text-[12px] text-muted">
                     Each overview on your site, with the number it shows next to what we found on it. That number often counts sold listings too. Listings on
-                    offer and under option go to your listings; under option ones take no bookings and show no booking button on your site.
+                    offer and under option go to your listings; under option ones take no bookings and show no booking button on your site. A listing
+                    can show on more than one overview, so the totals for your whole site are the ones above.
                   </p>
                   <Panel className="mt-2">
                     <ul className="divide-y divide-line">
