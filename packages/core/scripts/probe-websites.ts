@@ -202,6 +202,11 @@ async function probe(site: string) {
       examples.set(status, shown + 1);
       console.log(`      ${status}: ${url.replace(site, "")}  ${why}`);
     }
+    // Cards with a status whose page read says otherwise: either the page or the card is read wrong.
+    const disagree = read.filter((url) => cardBadge.has(url) && outcome.get(url)!.status !== cardBadge.get(url));
+    if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
+    const badged = urls.filter((url) => cardBadge.has(url));
+    console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };
   for (const [word, urls] of Object.entries(checks)) {
     if (!site.includes(word)) continue;
