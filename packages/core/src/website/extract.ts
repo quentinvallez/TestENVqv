@@ -671,7 +671,8 @@ function badgeLine(html: string): string | null {
   const cardLink = /^(bekijk|bekijken|meer info|details?|voir|découvrir|view|more)\b/i;
   const lines = mainPart(pageText(html)).split("\n").slice(0, 40).map((line) => line.trim());
   const found = lines.filter((line, i) => badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "") && !cardLink.test(lines[i + 1] ?? ""));
-  return found.length && found.every((line) => line.toLowerCase() === found[0].toLowerCase()) && found.length <= 2 ? found[0] : null;
+  const [first] = found;
+  return first && found.length <= 2 && found.every((line) => line.toLowerCase() === first.toLowerCase()) ? first : null;
 }
 
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
