@@ -82,7 +82,7 @@ export async function fetchSitePage(
       }
     }
     if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
-      url = new URL(response.headers.get("location")!, url);
+      url = new URL(headerText(response.headers.get("location")!), url);
       await response.body?.cancel();
       continue;
     }
@@ -95,6 +95,19 @@ export async function fetchSitePage(
     return { url: url.toString(), status: response.status, html };
   }
   throw new FetchError("Too many redirects");
+}
+
+/**
+ * A header as the site meant it: headers arrive as Latin-1, so a redirect to "/135-m²" sent as raw UTF-8 reads
+ * "/135-mÂ²" and leads to a missing page.
+ */
+export function headerText(value: string): string {
+  if (!/[\u0080-\u00ff]/.test(value) || /[^\u0000-\u00ff]/.test(value)) return value;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(value, (c) => c.charCodeAt(0)));
+  } catch {
+    return value;
+  }
 }
 
 async function readCapped(response: Response): Promise<string> {

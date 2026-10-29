@@ -21,10 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immodyck and Century 21 Horizon: listings found with a browser, but no price and some "not a listing".
-  { url: "https://www.immodyck.be/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626", show: ["text"] },
+  // Immodyck and Century 21 Horizon ("trung" sites): the page shows its facts only after scripts run; where is the data?
+  { url: "https://www.century21-horizon.be/page-data/fr/a-vendre/tertre/maison/7712/page-data.json", needle: "rice", show: ["markup"] },
+  { url: "https://www.immodyck.be/page-data/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/page-data.json", needle: "rice", show: ["markup"] },
   { url: "https://www.immodyck.be/nl/kopen/deurne/winkel-handelsruimte-135-m%C2%B2/5585", show: ["text"] },
-  { url: "https://www.century21-horizon.be/fr/a-vendre/tertre/maison/7712", needle: "7712", show: ["text", "markup"] },
 ];
 
 const clean = (html: string) =>
