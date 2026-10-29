@@ -35,6 +35,8 @@ jobs:
         if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
+          # These sites are read without a browser, as the live server may have to.
+          WEBSITE_BROWSER: ${{ contains(fromJSON('["immodyck","century21-horizon"]'), matrix.site) && 'off' || 'on' }}
         run: |
           pnpm install --frozen-lockfile --filter @viewing/core...
           npx -y tsx@4.20.6 packages/core/scripts/probe-websites.ts ${{ matrix.site }}
