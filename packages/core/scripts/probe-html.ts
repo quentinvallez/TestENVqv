@@ -26,6 +26,8 @@ const looks: Look[] = [
   { url: "https://www.immotalenco.com/nl/te-koop?view=detail&id=5976", needle: "ontactpersoon", show: ["markup", "text"] },
   // Immodyck: no listing found; how its home page and links are built.
   { url: "https://www.immodyck.be/nl/", show: ["links", "markup"] },
+  // Century 21 Horizon: no listing found either.
+  { url: "https://www.century21-horizon.be/", show: ["links", "markup"] },
   // Immotalenco: the overview says 36 for sale, we find 16; how pages 2 and 3 link their listings.
   { url: "https://www.immotalenco.com/nl/te-koop?page=2&view=list", show: ["links"] },
   { url: "https://www.immotalenco.com/nl/te-koop?page=3&view=list", show: ["links"] },

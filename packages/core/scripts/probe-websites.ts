@@ -12,7 +12,7 @@ import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUr
 import { cardStatuses, statedCount } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco and immodyck since 2026-10-29).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -28,6 +28,7 @@ const sites = [
   "https://www.immofrance.be",
   "https://www.immotalenco.com/nl/",
   "https://www.immodyck.be/nl/",
+  "https://www.century21-horizon.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {

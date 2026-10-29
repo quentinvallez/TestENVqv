@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         # Only sites Quentin chose for testing.
-        site: [immo-zone, ngimmo, tadam, alterimmo, immotop, jurimex, immo-center, immobolle, leximmo, caenen, vlaemynck, immofrance, immotalenco, immodyck]
+        site: [immo-zone, ngimmo, tadam, alterimmo, immotop, jurimex, immo-center, immobolle, leximmo, caenen, vlaemynck, immofrance, immotalenco, immodyck, century21-horizon]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
