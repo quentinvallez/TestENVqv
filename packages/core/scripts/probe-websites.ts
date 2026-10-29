@@ -206,6 +206,8 @@ async function probe(site: string) {
     // Cards with a status whose page read says otherwise: either the page or the card is read wrong.
     const disagree = read.filter((url) => cardBadge.has(url) && outcome.get(url)!.status !== cardBadge.get(url));
     if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
+    // A small site: every address, to compare one by one with the agency's own list.
+    if (shownOn.size <= 120) console.log(`      all: ${urls.map((url) => url.replace(site, "")).join(" ")}`);
     const badged = urls.filter((url) => cardBadge.has(url));
     console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };
