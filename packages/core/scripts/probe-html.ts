@@ -23,7 +23,10 @@ type Look = {
 const looks: Look[] = [
   // Immofrance: how its overviews and listing links are built (Quentin counts 2 listings missing).
   // Immotalenco: where a listing names its "Contactpersoon".
-  { url: "https://www.immotalenco.com/nl/", show: ["links"] },
+  { url: "https://www.immotalenco.com/nl/te-koop?view=detail&id=5976", needle: "ontactpersoon", show: ["markup", "text"] },
+  // Immotalenco: the overview says 36 for sale, we find 16; how pages 2 and 3 link their listings.
+  { url: "https://www.immotalenco.com/nl/te-koop?page=2&view=list", show: ["links"] },
+  { url: "https://www.immotalenco.com/nl/te-koop?page=3&view=list", show: ["links"] },
 ];
 
 const clean = (html: string) =>
