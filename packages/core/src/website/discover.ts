@@ -1,5 +1,5 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
-import { looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
+import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
 import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
@@ -26,6 +26,8 @@ const MAX_SITEMAPS = 12;
 const MIN_CARDS = 6;
 /** Project pages read per site. */
 const MAX_PROJECTS = 200;
+/** The site's main overviews: what is for sale or for rent. */
+const SALE_OR_RENT = /\/(te-koop|te-huur|kopen|huren|aanbod|a-vendre|a-louer|acheter|louer|vente|location|biens|for-sale|for-rent|buy|rent|properties|panden)$/i;
 /** Overviews of new builds, whose links one level deeper are projects. */
 const PROJECTS = /\/(nieuwbouw|nieuwbouwprojecten|projecten|projets?|projects?|neuf|immobilier-neuf|new-builds?|new-developments?)$/i;
 
@@ -50,6 +52,11 @@ export type DiscoveryHooks = {
 export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[] };
 type QueueItem = WebsiteDiscovery["queue"][number];
 
+/** Whether the search has only the browser reads left, which deserve a run's whole time. */
+export function onlyBrowserLeft(state: DiscoveryState): boolean {
+  return !state.discovery.doneAt && state.discovery.queue.length === 0 && Boolean(state.discovery.sitemapsQueued);
+}
+
 export function newDiscovery(site: string, now = new Date()): DiscoveryState {
   return { discovery: { startedAt: now.toISOString(), queue: [{ url: site, root: null }], visited: [], language: languageOf(site) ?? undefined }, overviews: [] };
 }
@@ -72,9 +79,11 @@ const depth = (url: string) => pathOf(url).split("/").filter(Boolean).length;
 /** Whether an overview was read to its last page and holds everything it says it has. */
 const whole = (o: WebsiteOverview) => o.complete && o.stated != null && o.found >= o.stated;
 
-/** A filtered slice ("/kopen/aalst/huis") of an overview we have whole ("/kopen") adds nothing. */
+/** A filtered slice ("/kopen/aalst/huis", "/kopen?city=aalst") of an overview we have whole ("/kopen") adds nothing. */
 function coveredBy(url: string, overviews: WebsiteOverview[]): boolean {
-  return overviews.some((o) => whole(o) && o.url !== url && new URL(o.url).search === "" && pathOf(url).startsWith(`${pathOf(o.url)}/`));
+  return overviews.some(
+    (o) => whole(o) && o.url !== url && new URL(o.url).search === "" && (pathOf(url).startsWith(`${pathOf(o.url)}/`) || (pathOf(url) === pathOf(o.url) && new URL(url).search !== "")),
+  );
 }
 
 /** The same address one page further: "?page=3" → "?page=4", "?start=24" → "?start=36", "/page/3" → "/page/4". */
@@ -106,6 +115,7 @@ export async function continueDiscovery(
 ): Promise<{ error?: string }> {
   const { site } = reader;
   const { discovery, overviews } = state;
+  hooks = oneAddressPerListing(state, hooks);
   const visited = new Set(discovery.visited);
   const inLanguage = (url: string) => {
     const language = languageOf(url);
@@ -175,10 +185,13 @@ export async function continueDiscovery(
       const overviewLinks = pageLinks(page.html, page.url).filter((url) => looksLikeOverviewUrl(url, site) && !looksLikeListingUrl(url, site));
       discovery.language = homeLanguage(page.url, overviewLinks);
     }
-    const cards = listingLinks(page.html, page.url, site).filter(inLanguage);
+    let cards = listingLinks(page.html, page.url, site).filter(inLanguage);
+    const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
+    // On a new-build overview, cards without a listing id below it are projects, read for their units.
+    if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
     const fresh = await hooks.found(cards, item.root, item.root ? cardStatuses(page.html, page.url, cards) : undefined);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
-    const projects = item.root && PROJECTS.test(pathOf(item.root)) ? queueProjects(state, item.root, page.html, page.url, cards, visited, reader, inLanguage) : [];
+    const projects = projectsRoot ? queueProjects(state, projectsRoot, page.html, page.url, cards, visited, reader, inLanguage) : [];
 
     // Overviews this page links to (the home page's menu, "new builds" on an overview): page 1 of each, the shallowest first.
     const roots = new Set([...overviews.map((o) => o.url), ...discovery.queue.filter((q) => q.root === q.url).map((q) => q.url)]);
@@ -194,6 +207,19 @@ export async function continueDiscovery(
     }
   }
   return {};
+}
+
+/** Each listing under the first address the search saw for it, also when the site links it under several. */
+function oneAddressPerListing(state: DiscoveryState, hooks: DiscoveryHooks): DiscoveryHooks {
+  return {
+    found(urls, root, badges) {
+      const keys = (state.discovery.keys ??= {});
+      const same = new Map<string, string>();
+      for (const url of urls) same.set(url, (keys[listingKey(url)] ??= url));
+      const mapped = badges && new Map([...badges].map(([url, badge]) => [same.get(url) ?? url, badge]));
+      return hooks.found([...new Set(same.values())], root, mapped);
+    },
+  };
 }
 
 /** One page of an overview was read: count it, and queue the next page (by its links, the search form, or a guess). */
@@ -290,19 +316,28 @@ function settle(state: DiscoveryState, root: string) {
 }
 
 /**
- * Overviews that hold fewer listings than they say after reading all their pages: when a browser is available, read
- * them once more with it (some sites only load the rest while you scroll or click "more"). False while one is left.
+ * Overviews that hold fewer listings than they say after reading all their pages, or none at all: when a browser is
+ * available, read them once more with it (some sites only load the rest while you scroll or click "more", or build the
+ * whole list with scripts). False while one is left.
  */
 async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks, renderer: Renderer | null | undefined, reader: DiscoveryReader, deadline: number) {
   if (!renderer) return true;
   const rendered = (state.discovery.rendered ??= []);
   for (const o of state.overviews) {
-    if (o.stated == null || o.found >= o.stated || rendered.includes(o.url) || !reader.robots.allowed(o.url)) continue;
+    // Short of what it states, or a for-sale or for-rent overview where not one listing showed (built by its scripts).
+    const short = o.stated != null ? o.found < o.stated : o.found === 0 && SALE_OR_RENT.test(pathOf(o.url));
+    // Twice at most: a read cut short by the end of a run gets one more go in a run of its own.
+    if (!short || rendered.filter((url) => url === o.url).length >= 2 || !reader.robots.allowed(o.url)) continue;
     // A browser read takes a while: leave it to the next run when this one is nearly over.
     if (deadline - Date.now() < 25_000) return false;
     rendered.push(o.url);
     const html = await renderer(o.url, deadline).catch(() => null);
-    if (!html) continue;
+    // Stopped by the end of the run rather than by the list's end: what it saw counts, and the next run reads it again.
+    const cut = Date.now() >= deadline - 2_000;
+    if (!html) {
+      if (cut) return false;
+      continue;
+    }
     const language = state.discovery.language ?? null;
     const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
     const fresh = await hooks.found(cards, o.url, cardStatuses(html, o.url, cards));
@@ -310,6 +345,7 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
       o.found += fresh.newToOverview;
       o.via = "browser";
     }
+    if (cut) return false;
   }
   return true;
 }

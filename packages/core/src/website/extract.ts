@@ -74,6 +74,9 @@ export function sameSite(a: string | URL, b: string | URL): boolean {
   }
 }
 
+/** Query fields that show the same page another way (a print view, a menu position): one listing, one address. */
+const NOISE_KEYS = /^(tmpl|layout|print|goal|itemid|format|lightbox|slideshow|share)$/i;
+
 /** One spelling per page: no fragment, no tracking parameters, no trailing slash. */
 export function normalizeUrl(input: string, base?: string): string | null {
   let url: URL;
@@ -85,15 +88,28 @@ export function normalizeUrl(input: string, base?: string): string | null {
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
   url.hash = "";
   url.protocol = "https:";
-  for (const key of [...url.searchParams.keys()]) {
-    if (/^(utm_|fbclid|gclid|mc_|_ga)/i.test(key)) url.searchParams.delete(key);
+  for (const key of [...new Set(url.searchParams.keys())]) {
+    if (/^(utm_|fbclid|gclid|mc_|_ga)/i.test(key) || NOISE_KEYS.test(key)) url.searchParams.delete(key);
+    else if (url.searchParams.getAll(key).length > 1) {
+      // "?view=list&view=list" is "?view=list".
+      const values = [...new Set(url.searchParams.getAll(key))];
+      url.searchParams.delete(key);
+      for (const value of values) url.searchParams.append(key, value);
+    }
   }
   if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
   return url.toString();
 }
 
 const notPages = /\.(jpe?g|png|gif|webp|svg|pdf|docx?|xlsx?|zip|mp4|mov|css|js|ico|xml|json)$/i;
-const notListings = /\/(blog|nieuws|news|actualites?|actua|jobs?|vacatures?|careers?|contact|team|over-ons|about|a-propos|privacy|cookies?|disclaimer|login|account|wp-admin|wp-content|tag|category|auteur|author)(\/|$)/i;
+const notListings =
+  /\/(blog|nieuws|news|actualites?|actua|jobs?|vacatures?|careers?|contact|team|over-ons|about|a-propos|privacy|cookies?|disclaimer|login|account|wp-admin|wp-content|wp-json|tag|category|auteur|author|content|cms|media|uploads?|assets?|cms-assets|files?|images?|img|downloads?|documents?|api)(\/|$)/i;
+/** CMS pages ("/fr/page/10004/protection-juridique"); "/page/2" of an overview is no listing either. */
+const cmsPages = /\/(page|pages|pagina)(\/|$)/i;
+/** A file's address in a content store ("/cms-assets/3f2a9c1e-5b7d-…"): not a page. */
+const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** Query fields that carry a listing's id on sites that show every listing through one page ("?view=detail&id=1462"). */
+const idKeys = /^(id|ref|pand|pandid|bien|bienid|property|propertyid|estate|estateid|object|objectid|listing|listingid|detail)$/i;
 const listingWords = /(te-koop|te-huur|kopen|huren|aanbod|pand|panden|detail|woning|woningen|vastgoed|a-vendre|a-louer|acheter|louer|bien|biens|for-sale|for-rent|property|properties|estate|listing|immo)/i;
 
 /**
@@ -110,11 +126,48 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
   }
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname);
-  if (notPages.test(path) || notListings.test(path)) return false;
+  if (notPages.test(path) || notListings.test(path) || cmsPages.test(path) || uuid.test(path)) return false;
+  if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search))) return true;
   const segments = path.split("/").filter(Boolean);
   if (segments.length < 2) return false;
   const hasId = /(^|[^\d])\d{5,9}([^\d]|$)/.test(path);
   return hasId && (listingWords.test(path) || segments.length >= 3);
+}
+
+/**
+ * What makes two addresses one listing: its id in the query ("?view=detail&id=1462" on any page of the site), or its
+ * address without the position numbers some sites append to each card ("/te-koop/niel/4493114/0/70084328/1/2/0/0").
+ */
+export function listingKey(url: string): string {
+  const u = new URL(url);
+  const host = siteHost(u);
+  const id = queryId(u);
+  if (id) return `${host}?${id}`;
+  const segments = u.pathname.split("/").filter(Boolean);
+  const at = segments.findIndex((segment) => /(^|[^\d])\d{5,9}([^\d]|$)/.test(segment));
+  const tail = segments.slice(at + 1);
+  if (at >= 0 && tail.length >= 2 && tail.every((segment) => /^\d+$/.test(segment))) return `${host}/${segments.slice(0, at + 1).join("/")}`;
+  return `${host}${u.pathname}${u.search}`;
+}
+
+/**
+ * The address without the numbers of the visit that found it ("/4493114/0/70089374/1/2/0/0" → "/4493114/0/0/0/0/0/0"):
+ * some sites tie those to a search that expires and send a later visit to the home page. Null when there are none.
+ */
+export function withoutVisitNumbers(url: string): string | null {
+  const u = new URL(url);
+  const segments = u.pathname.split("/");
+  const at = segments.findIndex((segment) => /(^|[^\d])\d{5,9}([^\d]|$)/.test(segment));
+  const tail = segments.slice(at + 1).filter(Boolean);
+  if (at < 0 || tail.length < 2 || !tail.every((segment) => /^\d+$/.test(segment)) || tail.every((segment) => segment === "0")) return null;
+  u.pathname = [...segments.slice(0, at + 1), ...tail.map(() => "0"), ""].join("/");
+  return u.toString();
+}
+
+/** The listing id a query string carries ("?view=detail&id=1462"), if any. */
+function queryId(url: URL): string | null {
+  for (const [key, value] of url.searchParams) if (idKeys.test(key) && /^\d{3,9}$/.test(value)) return value;
+  return null;
 }
 
 /** Overview pages worth following to find listings when the site has no sitemap. */
@@ -312,7 +365,7 @@ export function structuredData(html: string, pageUrl: string): Partial<Extracted
 
 /** "Sint-Dionysiusstraat 54" → street and number; "Rue Victor Hugo 190 bus 3" too. */
 export function splitStreet(value: string): { street: string | null; houseNumber: string | null } {
-  const clean = value.replace(/\s+/g, " ").trim().replace(/,$/, "");
+  const clean = value.replace(/\s+/g, " ").trim().replace(/[\s,–-]+$/, "");
   const nl = clean.match(/^(.*?[A-Za-zÀ-ÿ.'’)-])\s+(\d+[A-Za-z]?(?:\s*(?:bus|bte|boîte|box|\/)?\s*\w+)?)$/i);
   if (nl) return { street: nl[1]!.trim(), houseNumber: nl[2]!.trim() };
   const fr = clean.match(/^(\d+[A-Za-z]?),?\s+(.+)$/);
@@ -330,7 +383,7 @@ const integer = (max: number) => (raw: string) => {
 const rules: Rule[] = [
   { field: "price", labels: "vraagprijs|prijs|price|asking price|prix|prix demandé|huurprijs|loyer|rent", value: /^[^\n\d]{0,12}((?:€\s*)?\d[\d.,\s\u00a0]{2,}(?:\s*€|\s*eur\b)?)/i, parse: parseAmount },
   { field: "reference", labels: "referentie|referentienummer|ref\\.?|réf\\.?|référence|reference|ref nr|ref\\. nr|dossiernummer", value: /^[\s:|#.]{0,6}([A-Z0-9][A-Z0-9/_-]{2,24})/i, parse: (raw) => raw },
-  { field: "bedrooms", labels: "slaapkamers|slaapkamer|slpks?|chambres?|nbre de chambres|nombre de chambres|bedrooms?", value: /^[^\n\d]{0,10}(\d{1,2})\b/i, parse: integer(40) },
+  { field: "bedrooms", labels: "slaapkamers|slaapkamer|slpks?|chambres?|chambre\\(s\\)|nbre de chambres|nombre de chambres|nombre de chambre\\(s\\)|bedrooms?", value: /^[^\n\d]{0,10}(\d{1,2})\b/i, parse: integer(40) },
   { field: "bathrooms", labels: "badkamers?|salles? de bains?|salle\\(s\\) de bain\\(s\\)|bathrooms?", value: /^[^\n\d]{0,10}(\d{1,2})\b/i, parse: integer(20) },
   { field: "livingArea", labels: "bewoonbare oppervlakte|woonoppervlakte|bewoonbare opp\\.?|oppervlakte|superficie habitable|surface habitable|living area|habitable", value: /^[^\n\d]{0,12}(\d[\d.,]*\s*(?:m²|m2|m\b)?)/i, parse: parseArea },
   { field: "plotArea", labels: "perceelsoppervlakte|perceeloppervlakte|perceel|grondoppervlakte|grond oppervlakte|oppervlakte grond|superficie terrain|superficie du terrain|terrain|plot|plot size|land area", value: /^[^\n\d]{0,12}(\d[\d.,]*\s*(?:m²|m2|ares?|a\b|ha|ca\b|m\b)?)/i, parse: parseArea },
@@ -411,6 +464,17 @@ function streetCityLine(textBlock: string): { street: string; houseNumber: strin
   return null;
 }
 
+/** Headings of the blocks with other listings under a listing ("Gelijkaardige panden", "Net gemist", "Biens similaires"). */
+const otherListings =
+  /^(gelijkaardige|vergelijkbare|andere|meer|soortgelijke) (panden|woningen|eigendommen|aanbod)|^(ook interessant|misschien ook|net gemist|recent bekeken|bekijk ook)|^(biens|annonces) similaires|^(vous aimerez|autres biens|à découvrir aussi|ces biens)|^(similar|related|other) (properties|listings)|^you (may|might) also like/i;
+
+/** The page text without the blocks of other listings it shows below the listing, whose prices and places aren't this one's. */
+export function mainPart(text: string): string {
+  const lines = text.split("\n");
+  const at = lines.findIndex((line, i) => i >= 10 && line.length <= 60 && otherListings.test(line.trim()));
+  return at < 0 ? text : lines.slice(0, at).join("\n");
+}
+
 /**
  * Lines of the home page that are the agency's own details (an office
  * address, a VAT number), which every page repeats in its footer. Removing
@@ -426,7 +490,7 @@ export function boilerplateLines(homeHtml: string): Set<string> {
 
 /** "€ 300 000" or "€ 1 350/mnd" near the top of a page that shows its price without a label. */
 function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | null {
-  const match = textBlock.match(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+)\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/i);
+  const match = textBlock.match(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|(?<=^|\n)\d{3,}(?=\s?€[ \t]*(?:\n|$|\/)))\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/i);
   if (!match) return null;
   const price = parseAmount(match[1] ?? match[2] ?? "");
   return price && price >= 100 ? { price, rent: Boolean(match[3]) } : null;
@@ -469,12 +533,14 @@ export function contactNear(textBlock: string, name: string): { agentEmail: stri
  */
 export function extractListing(html: string, pageUrl: string, boilerplate?: Set<string>): { listing: ExtractedListing; structured: boolean } {
   const structured = structuredData(html, pageUrl);
-  const textBlock = boilerplate?.size
-    ? pageText(html)
-        .split("\n")
-        .filter((line) => !boilerplate.has(line))
-        .join("\n")
-    : pageText(html);
+  const textBlock = mainPart(
+    boilerplate?.size
+      ? pageText(html)
+          .split("\n")
+          .filter((line) => !boilerplate.has(line))
+          .join("\n")
+      : pageText(html),
+  );
   const listing = emptyListing();
   const { found, ...fromStructured } = structured;
   Object.assign(listing, Object.fromEntries(Object.entries(fromStructured).filter(([, v]) => v != null && !(Array.isArray(v) && v.length === 0))));
@@ -525,19 +591,26 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   // The city is often in the URL (/te-koop/kortrijk/…).
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;
+  let unlabelled = false;
   if (listing.price == null) {
     const found = unlabelledPrice(textBlock);
     if (found) {
       listing.price = found.price;
       rentByPrice = found.rent;
+      unlabelled = true;
     }
   }
 
   const title = headline(html) ?? listing.title ?? titleTag(html);
   listing.title = title;
   const statusLine = labelled(textBlock, { field: "status", labels: "status|statut|state", value: /^[\s:|]{0,4}([^\n]{3,40})/i, parse: (raw) => raw });
-  listing.status = statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? statusFrom(path.replace(/[-/]/g, " "));
+  // The address says "verkocht" or "optie" when the site changed it with the status ("/aanbod/4050490/magazijn-verhuurd-in-3600-genk"),
+  // also when the title still says "te huur".
+  const fromPath = statusFrom(path.replace(/[-/_]/g, " "));
+  listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
+  // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
+  if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
   listing.propertyType = propertyTypeFrom(path, title);
   listing.reference ??= referenceFromUrl(pageUrl);
   if (!listing.description) {
@@ -553,9 +626,9 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
 
 /** The CRM id in a listing URL (/detail/7917339/…, …-264763), used when the page shows no reference. */
 export function referenceFromUrl(url: string): string | null {
-  const path = new URL(url).pathname;
-  const ids = [...path.matchAll(/(?:^|[^\d])(\d{5,9})(?=[^\d]|$)/g)].map((m) => m[1]!);
-  return ids.at(-1) ?? null;
+  const parsed = new URL(url);
+  const ids = [...parsed.pathname.matchAll(/(?:^|[^\d])(\d{5,9})(?=[^\d]|$)/g)].map((m) => m[1]!);
+  return ids.at(-1) ?? queryId(parsed);
 }
 
 const removedNotice =
@@ -573,9 +646,11 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
  * shop to rent has a price but no rooms).
  */
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
-  const text = pageText(html);
+  // Prices in the blocks of other listings below it ("Net gemist") don't make a listing page an overview.
+  const text = mainPart(pageText(html));
   const prices = text.match(/€\s?\d{2,3}[.\s]\d{3}|\d{2,3}[.\s]\d{3}\s?€/g)?.length ?? 0;
-  if (prices > 12) return false;
+  // A new-build project shown as a card lists the prices of its units, and is one listing when it has no unit pages.
+  if (prices > 12 && !shownOnOverview) return false;
   const facts = [listing.price, listing.bedrooms, listing.livingArea, listing.plotArea, listing.epcScore ?? listing.epcLabel, listing.postcode].filter((v) => v != null).length;
   return facts >= (shownOnOverview ? 1 : 2) && (listing.propertyType != null || listing.transaction != null || listing.price != null);
 }

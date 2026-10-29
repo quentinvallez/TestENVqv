@@ -56,6 +56,7 @@ export async function fetchSitePage(
   allowed: (url: string) => boolean = () => true,
   timeoutMs = 12_000,
   headers: Record<string, string> = {},
+  cookies?: Map<string, string>,
 ): Promise<FetchedPage> {
   let url = new URL(input);
   for (let hop = 0; hop < 6; hop++) {
@@ -65,8 +66,21 @@ export async function fetchSitePage(
     const response = await fetch(url, {
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
-      headers: { accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5", "accept-language": "nl-BE,nl;q=0.9,fr-BE;q=0.8,en;q=0.6", ...headers, "user-agent": USER_AGENT },
+      headers: {
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5",
+        "accept-language": "nl-BE,nl;q=0.9,fr-BE;q=0.8,en;q=0.6",
+        ...(cookies?.size ? { cookie: [...cookies].map(([name, value]) => `${name}=${value}`).join("; ") } : {}),
+        ...headers,
+        "user-agent": USER_AGENT,
+      },
     });
+    // Some sites tie a listing's address to the visit that found it (a session cookie), as a browser keeps it.
+    if (cookies) {
+      for (const line of response.headers.getSetCookie()) {
+        const [, name, value] = line.match(/^\s*([^=;\s]+)=([^;]*)/) ?? [];
+        if (name) cookies.set(name, value ?? "");
+      }
+    }
     if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
       url = new URL(response.headers.get("location")!, url);
       await response.body?.cancel();

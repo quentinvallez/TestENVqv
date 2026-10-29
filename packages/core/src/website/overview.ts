@@ -70,7 +70,16 @@ export function listingLinks(html: string, pageUrl: string, site: string): strin
     const whole = shape.includes("#") && listingLike.length >= 2 && listingLike.length * 2 >= urls.length;
     found.push(...(whole ? urls.filter((url) => /\d{3,}/.test(new URL(url).pathname)) : listingLike));
   }
+  // Cards whose addresses carry no id, recognised by how the page shows them.
+  for (const url of repeatedCards(html, pageUrl, site)) if (!found.includes(url) && !looksLikeOverviewOnly(url)) found.push(url);
   return found;
+}
+
+/** An address that is plainly an overview, not one property: "/te-koop", "/fr/biens", "/nl/aanbod/huizen". */
+function looksLikeOverviewOnly(url: string): boolean {
+  const segments = decodeURIComponent(new URL(url).pathname).toLowerCase().split("/").filter(Boolean);
+  const last = segments.at(-1) ?? "";
+  return segments.length === 0 || /^(nl|fr|en|de|te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|a-vendre|a-louer|acheter|louer|biens|vente|location|for-sale|for-rent|buy|rent|properties|panden|woningen|huizen|appartementen|neuf)$/.test(last);
 }
 
 /** Query fields that number pages ("page", "pagina", "currentPage_p", "p") or count listings to skip ("start", "offset"). */
@@ -195,21 +204,17 @@ export type CardBadge = Exclude<WebsiteListingStatus, "active">;
 const BADGES: [RegExp, CardBadge][] = [
   [/\b(verkocht|vendus?|sold)\b/i, "sold"],
   [/\b(verhuurd|lou[ée]s?|rented|let agreed)\b/i, "rented"],
-  [/\b(optie|option|compromis|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
+  [/\b(optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
 ];
 
-/**
- * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element:
- * the largest element around its link that holds no other card. Some sites show it only there, not on the listing's
- * page. Cards without such a badge are left out.
- */
-export function cardStatuses(html: string, pageUrl: string, cards: string[]): Map<string, CardBadge> {
-  const wanted = new Set(cards);
-  // Scripts, styles and comments blanked out with spaces, so offsets stay the same.
-  const doc = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[\s\S]*?<\/\1>/gi, (m) => " ".repeat(m.length));
-  type Element = { name: string; start: number; end: number };
+type Element = { name: string; start: number; end: number; shape: string };
+type Anchor = { url: string; at: number; around: Element[] };
+
+/** The page's elements around each link, with scripts, styles, comments and form controls blanked out (offsets kept). */
+function anchorsOf(html: string, pageUrl: string): { doc: string; anchors: Anchor[] } {
+  const doc = html.replace(/<!--[\s\S]*?-->|<(script|style|template|select|textarea)\b[\s\S]*?<\/\1>/gi, (m) => " ".repeat(m.length));
   const open: Element[] = [];
-  const anchors: { url: string; at: number; around: Element[] }[] = [];
+  const anchors: Anchor[] = [];
   for (const m of doc.matchAll(/<(\/?)([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
     const name = m[2]!.toLowerCase();
     if (m[1]) {
@@ -219,30 +224,102 @@ export function cardStatuses(html: string, pageUrl: string, cards: string[]): Ma
       continue;
     }
     if (VOID_ELEMENTS.has(name) || m[3]) continue;
-    open.push({ name, start: m.index!, end: doc.length });
-    if (name !== "a") continue;
+    // The element's kind: its tag and first class, which every card of a list shares.
+    // (Not a class that names this one element, as page builders add: "comp-kq6hr2s2", "elementor-element-3f2a9c".)
+    const classes = m[0].match(/\bclass\s*=\s*["']([^"']*)/i)?.[1]?.split(/\s+/) ?? [];
+    const cls = classes.find((c) => c && !/^(comp|elementor-element|node|post|item|block)-/i.test(c))?.replace(/\d+/g, "") ?? "";
+    open.push({ name, start: m.index!, end: doc.length, shape: `${name}.${cls}` });
+    // Some sites draw the cards of sold listings as an element with an address but no link ("<div href=…>").
+    if (name !== "a" && !/\shref\s*=/i.test(m[0])) continue;
     const href = m[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const url = href && normalizeUrl(decodeEntities(href[1] ?? href[2] ?? href[3] ?? ""), pageUrl);
-    if (url && wanted.has(url)) anchors.push({ url, at: m.index!, around: [...open] });
+    if (url) anchors.push({ url, at: m.index!, around: [...open] });
   }
-  const statuses = new Map<string, CardBadge>();
-  const done = new Set<string>();
-  for (const { url, around } of anchors) {
-    if (done.has(url)) continue;
-    done.add(url);
-    let card: Element | null = null;
+  return { doc, anchors };
+}
+
+const PAGE_PARTS = ["html", "body", "main", "header", "nav", "footer"];
+
+/**
+ * Each card's own markup: the largest element around its link that holds no other card, and isn't the page itself
+ * (a page with one card would read its menu as the card).
+ */
+function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>): Map<string, string> {
+  const mine = anchors.filter((a) => cards.has(a.url));
+  const chains = new Map<string, Element[]>();
+  for (const { url, around } of mine) {
+    if (chains.has(url)) continue;
+    const chain: Element[] = [];
     for (let i = around.length - 1; i >= 0; i--) {
       const e = around[i]!;
-      // Not past another card, and not the page itself (a page with one card would read its menu as the card).
-      if (anchors.some((a) => a.url !== url && a.at >= e.start && a.at < e.end)) break;
-      if (["html", "body", "main", "header", "nav", "footer"].includes(e.name) || e.end - e.start > 15_000) break;
-      card = e;
+      if (mine.some((a) => a.url !== url && a.at >= e.start && a.at < e.end)) break;
+      if (PAGE_PARTS.includes(e.name) || e.end - e.start > 40_000) break;
+      chain.push(e);
     }
-    if (!card) continue;
-    const part = doc.slice(card.start, card.end);
-    const text = `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;
-    const badge = BADGES.find(([pattern]) => pattern.test(text));
+    if (chain.length) chains.set(url, chain);
+  }
+  // Cards of one list are elements of one kind. The first card's largest element can take in what stands above the
+  // list (a sort menu with "Verkocht"), so a card stops at the element of the kind most cards end at, when it has one.
+  const ends = new Map<string, number>();
+  for (const chain of chains.values()) ends.set(chain.at(-1)!.shape, (ends.get(chain.at(-1)!.shape) ?? 0) + 1);
+  const usual = [...ends].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const out = new Map<string, string>();
+  for (const [url, chain] of chains) {
+    const card = (chains.size >= 3 && [...chain].reverse().find((e) => e.shape === usual)) || chain.at(-1)!;
+    out.set(url, doc.slice(card.start, card.end));
+  }
+  return out;
+}
+
+const cardText = (part: string) => `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;
+
+/**
+ * A badge is a short label on the card ("Verkocht", "Sous option"), not a word in its description ("Lot 1: verkocht !"),
+ * or the name of its photo when the label is drawn on it ("…rue du Vicinal - Sous offre.jpg").
+ */
+const badgeText = (part: string) =>
+  [...pageText(part).split("\n").filter((line) => line.trim().length <= 40), ...[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => decodeEntities(m[1]!).replace(/[_]/g, " "))]
+    .join("\n")
+    // "81% verkocht" on a new-build project: some units are sold, the project isn't.
+    .replace(/\b\d{1,2}\s?%\s*(verkocht|vendus?|sold)\b/gi, "");
+
+/**
+ * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element.
+ * Some sites show it only there, not on the listing's page. Cards without such a badge are left out.
+ */
+export function cardStatuses(html: string, pageUrl: string, cards: string[]): Map<string, CardBadge> {
+  const { doc, anchors } = anchorsOf(html, pageUrl);
+  const statuses = new Map<string, CardBadge>();
+  for (const [url, part] of cardMarkup(doc, anchors, new Set(cards))) {
+    const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)));
     if (badge) statuses.set(url, badge[1]);
   }
   return statuses;
+}
+
+/** What a listing card shows: a price, an area, rooms. */
+const LISTING_FACTS = /€\s?\d|\d\s?€|\d\s?(?:m²|m2\b)|\b(?:slaapkamers?|slpk|chambres?|bedrooms?|prijs|prix|loyer|huurprijs|vraagprijs|op aanvraag|sur demande)\b/i;
+
+/**
+ * Listing cards recognised by how the page is built, whatever their addresses look like ("/arlon-app-004-rue-du-camp"):
+ * at least three links to different pages of the site, placed in elements of the same kind, whose cards show a price,
+ * an area or rooms. Menus, headers and footers don't count.
+ */
+export function repeatedCards(html: string, pageUrl: string, site: string): string[] {
+  const { doc, anchors } = anchorsOf(html, pageUrl);
+  const groups = new Map<string, Set<string>>();
+  for (const a of anchors) {
+    if (!sameSite(a.url, site) || a.around.some((e) => ["nav", "header", "footer"].includes(e.name)) || pageNumber(a.url) || a.url === normalizeUrl(pageUrl)) continue;
+    if (/\.(jpe?g|png|gif|webp|svg|pdf|docx?|zip)$/i.test(new URL(a.url).pathname)) continue;
+    const shape = a.around.slice(-5).map((e) => e.shape).join(">");
+    groups.set(shape, (groups.get(shape) ?? new Set()).add(a.url));
+  }
+  const found = new Set<string>();
+  for (const urls of groups.values()) {
+    if (urls.size < 3) continue;
+    const parts = cardMarkup(doc, anchors, urls);
+    const withFacts = [...parts.values()].filter((part) => LISTING_FACTS.test(cardText(part))).length;
+    if (withFacts >= 3 && withFacts * 10 >= urls.size * 6) for (const url of parts.keys()) found.add(url);
+  }
+  return [...found];
 }

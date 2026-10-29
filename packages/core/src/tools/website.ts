@@ -7,7 +7,7 @@ import { draftOffMarketNotices } from "../planner/off-market";
 import { defineTool, type ToolContext } from "../tool";
 import { extractWithAi, mergeExtraction } from "../website/ai";
 import { openBrowser } from "../website/browser";
-import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
+import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
   extractListing,
   isListingPage,
@@ -20,6 +20,7 @@ import {
   referenceFromUrl,
   sameSite,
   textFingerprint,
+  withoutVisitNumbers,
   type ExtractedListing,
 } from "../website/extract";
 import { SiteReader } from "../website/reader";
@@ -50,7 +51,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v4";
+const EXTRACTION_VERSION = "v6";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -76,7 +77,12 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   const now = new Date();
   const shownOnOverview = page.foundOn.some((tag) => tag !== ELSEWHERE);
   if (overviewsWhole && page.foundOn.length === 1 && page.foundOn[0] === ELSEWHERE) return removePage(ctx, page, now);
-  const fetched = await reader.read(page.url);
+  let fetched = await reader.read(page.url);
+  const lasting = "html" in fetched && isHomePage(fetched.url) && withoutVisitNumbers(page.url);
+  if (lasting) {
+    const again = await reader.read(lasting);
+    if ("html" in again && !isHomePage(again.url)) fetched = again;
+  }
   if ("blocked" in fetched) {
     // The site doesn't want this page read: we stop using what we read from it before.
     await ctx.db.update(websitePages).set({ kind: "error", lastError: fetched.error, lastCheckedAt: now }).where(eq(websitePages.id, page.id));
@@ -91,9 +97,9 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     await ctx.db.update(websitePages).set({ lastError: `HTTP ${fetched.status}`, lastCheckedAt: now, kind: page.kind === "listing" ? "listing" : "error" }).where(eq(websitePages.id, page.id));
     return "failed";
   }
-  // Sites often redirect a removed listing to the overview.
+  // Sites often redirect a removed listing to the overview or the home page.
   const landed = normalizeUrl(fetched.url) ?? page.url;
-  if (landed !== page.url && page.kind === "listing" && !looksLikeListingUrl(landed, site)) return removePage(ctx, page, now);
+  if (landed !== page.url && (isHomePage(landed) || (page.kind === "listing" && !looksLikeListingUrl(landed, site)))) return removePage(ctx, page, now);
 
   const text = pageText(fetched.html);
   // A new version of the rules reads every page again, even when it didn't change.
@@ -137,6 +143,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     .where(eq(websitePages.id, page.id));
   return outcome.created ? "created" : "updated";
 }
+
+const isHomePage = (url: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(url).pathname);
 
 async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gone" | "error" = "gone"): Promise<PageOutcome> {
   if (kind === "gone") await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
@@ -400,7 +408,9 @@ export const importWebsiteListings = defineTool({
     if (state) {
       const browser = await openBrowser(reader);
       try {
-        discoveryError = (await continueDiscovery(reader, state, foundPages(ctx, reader, (n) => (blockedLinks += n)), started + ((deadline - started) * 2) / 3, browser?.render)).error;
+        // The browser reads at the end of a search get the whole run: scrolling a long list takes a while.
+        const until = onlyBrowserLeft(state) ? deadline - 5_000 : started + ((deadline - started) * 2) / 3;
+        discoveryError = (await continueDiscovery(reader, state, foundPages(ctx, reader, (n) => (blockedLinks += n)), until, browser?.render)).error;
       } finally {
         await browser?.close();
       }

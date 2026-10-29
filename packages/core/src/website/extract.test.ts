@@ -4,6 +4,8 @@ import {
   contactNear,
   extractListing,
   isListingPage,
+  withoutVisitNumbers,
+  listingKey,
   looksLikeListingUrl,
   looksLikeOverviewUrl,
   matchAgent,
@@ -90,6 +92,13 @@ describe("listing URLs", () => {
     expect(looksLikeListingUrl("https://www.dewaele.com/nl/te-koop/alle/huis", "https://www.dewaele.com")).toBe(false);
     expect(looksLikeListingUrl("https://www.dewaele.com/nl/blog/2024/123456-tips", "https://www.dewaele.com")).toBe(false);
     expect(looksLikeListingUrl("https://other.be/detail/7917339/x", "https://www.immodavinci.be")).toBe(false);
+    // The id in the query string, as Joomla sites show every listing through one page.
+    expect(looksLikeListingUrl("https://www.immotop.be/fr/component/properties?view=detail&id=1462", "https://www.immotop.be/fr/")).toBe(true);
+    expect(looksLikeListingUrl("https://www.immotop.be/fr/a-vendre?view=list&page=2", "https://www.immotop.be/fr/")).toBe(false);
+    // A CMS page with a number, an image in a content store, an overview's page 2: not listings.
+    expect(looksLikeListingUrl("https://www.immobolle.be/fr/page/10004/protection-juridique", "https://www.immobolle.be/fr")).toBe(false);
+    expect(looksLikeListingUrl("https://jurimex.be/cms-assets/3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90/12345678", "https://jurimex.be/nl")).toBe(false);
+    expect(looksLikeListingUrl("https://site.be/te-koop/page/123456", "https://site.be")).toBe(false);
     expect(looksLikeOverviewUrl("https://www.immodavinci.be/residentieel/kopen", "https://www.immodavinci.be")).toBe(true);
     expect(looksLikeOverviewUrl("https://www.immodavinci.be/contact", "https://www.immodavinci.be")).toBe(false);
   });
@@ -101,6 +110,15 @@ describe("listing URLs", () => {
     expect(sitemapEntries("<urlset><url><loc><![CDATA[https://s.be/p/123456]]></loc></url></urlset>").pages).toEqual(["https://s.be/p/123456"]);
     expect(robotsSitemaps("User-agent: *\nSitemap: https://s.be/sitemap.xml\n")).toEqual(["https://s.be/sitemap.xml"]);
     expect(referenceFromUrl("https://www.dewaele.com/nl/te-koop/8530-harelbeke/huis/x-d8500-26222-264763")).toBe("264763");
+    expect(referenceFromUrl("https://www.immotop.be/fr/component/properties?view=detail&id=1462")).toBe("1462");
+    // One listing under several addresses: its id on any page, or without the position numbers after its id.
+    expect(listingKey("https://www.immotop.be/fr/component/properties?id=1462&view=detail")).toBe(listingKey("https://www.immotop.be/fr/a-vendre?view=detail&id=1462"));
+    expect(listingKey("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70084328/1/2/0/0")).toBe(listingKey("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70084328/3/1/0/0"));
+    expect(listingKey("https://www.trevi.be/fr/bien/7892200/41/villa/Waterloo")).not.toBe(listingKey("https://www.trevi.be/fr/bien/7892200/41/villa/Wavre"));
+    // A print view or a menu position is the same listing.
+    expect(normalizeUrl("https://www.immotop.be/fr/component/properties/?view=detail&id=1462&layout=print&tmpl=component&Itemid=101")).toBe(
+      "https://www.immotop.be/fr/component/properties?view=detail&id=1462",
+    );
   });
 });
 
@@ -170,6 +188,20 @@ describe("reading a listing page", () => {
     expect(isListingPage(listing, html)).toBe(false);
   });
 
+  it("keeps a project shown as a card as one listing, however many unit prices it lists", () => {
+    const units = Array.from({ length: 20 }, (_, i) => `<tr><td>App ${i}</td><td>€ ${300 + i}.000</td></tr>`).join("");
+    const html = `<html><body><h1>Residentie Le Fox</h1><p>Nieuwbouw te koop, 8660 De Panne</p><table>${units}</table></body></html>`;
+    const { listing } = extractListing(html, "https://www.site.be/te-koop/project-de-panne-residentie-le-fox-4443928.htm");
+    expect(isListingPage(listing, html)).toBe(false);
+    expect(isListingPage(listing, html, true)).toBe(true);
+  });
+
+  it("drops the numbers of the visit that found a listing from its address", () => {
+    expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
+    expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();
+    expect(withoutVisitNumbers("https://jurimex.be/nl/aanbod/4346385/huis-verhuurd-in-3600-genk")).toBeNull();
+  });
+
   it("parses Belgian amounts and street lines", () => {
     expect(parseAmount("€ 1.250.000")).toBe(1250000);
     expect(parseAmount("995 000 €")).toBe(995000);
@@ -195,6 +227,23 @@ describe("reading a listing page", () => {
     expect(sale.photos).toEqual(["https://cdn.omnicasapictures.com/x/97172AL.jpg?6392"]);
     const rent = extractListing(page("Keizersplein 56 11, AALST", "€ 1 350/mnd"), "https://www.immo-zone.be/woning/97160", boilerplate).listing;
     expect(rent).toMatchObject({ street: "Keizersplein", houseNumber: "56 11", city: "Aalst", price: 1350, transaction: "rent" });
+  });
+
+  it("reads a rent shown on a line of its own and a French label/value list (ngimmo, immotop)", () => {
+    const rental = `<html><head><title>Maison - à louer - 6000 Charleroi - 750 €</title></head><body><h1>Maison - à louer</h1>
+      <p>6000 Charleroi</p><p>750 €</p><h2>Description</h2><p>Loyer : 750€/mois + 55€ de charges</p>
+      <dl><dt>Adresse</dt><dd>Grand rue 184 - 6000 Charleroi</dd><dt>Nombre de chambres</dt><dd>2</dd></dl></body></html>`;
+    const { listing } = extractListing(rental, "https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111");
+    expect(listing).toMatchObject({ price: 750, transaction: "rent", street: "Grand rue", houseNumber: "184", postcode: "6000", bedrooms: 2 });
+    const sale = `<h1>Maison à JEMAPPES (7012)</h1><div>Prix</div><div>:</div><div>145.000 €</div><div>Nombre de Chambre(s)</div><div>:</div><div>2 chr</div>`;
+    expect(extractListing(sale, "https://www.immotop.be/fr/a-vendre?view=detail&id=1462").listing).toMatchObject({ price: 145000, bedrooms: 2 });
+  });
+
+  it("takes the status in the address over the title, and no price from the other listings below", () => {
+    const filler = Array.from({ length: 12 }, (_, i) => `<p>Kenmerk ${i}</p>`).join("");
+    const html = `<h1>Magazijn te huur in Genk</h1><p>Winterslagstraat 12, 3600 Genk</p><p>Oppervlakte 450 m²</p>${filler}<h2>Gelijkaardige panden</h2><div><a href="/aanbod/4493977/huis">Huis te huur</a><p>€ 1.280</p></div>`;
+    const { listing } = extractListing(html, "https://jurimex.be/nl/aanbod/4050490/magazijn-verhuurd-in-3600-genk");
+    expect(listing).toMatchObject({ status: "rented", price: null, livingArea: 450 });
   });
 
   it("reads the agent from a name before a BIV number, with the phone next to it, but not the agency itself", () => {

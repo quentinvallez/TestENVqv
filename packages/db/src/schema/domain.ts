@@ -103,6 +103,8 @@ export type WebsiteDiscovery = {
   language?: string | null;
   /** How this site numbers its pages, once a tried page address worked ("page", "start", "path"). */
   pagingKey?: string;
+  /** The first address seen for each listing, when a site gives one listing several ("?id=1462" on two pages). */
+  keys?: Record<string, string>;
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */
