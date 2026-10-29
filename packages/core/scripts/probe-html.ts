@@ -21,14 +21,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Tadam: where a sold / under option status shows for these listings (page or overview card).
-  { url: "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois", needle: "Vendu", show: ["markup"] },
-  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", needle: "ption", show: ["markup"] },
-  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", needle: "ompromis", show: ["markup"] },
-  { url: "https://www.tadam.immo/arlon-app-rez1-schoppach", needle: "ption", show: ["markup"] },
-  { url: "https://www.tadam.immo/biens", needle: "waltzing-15", pages: 8, show: ["markup"] },
-  { url: "https://www.tadam.immo/biens", needle: "rez1-schoppach", pages: 8, show: ["markup"] },
-  { url: "https://www.tadam.immo/biens", needle: "8ruedubois", pages: 8, show: ["markup"] },
+  // Immo-zone: a listing under option whose own page we no longer read as under option.
+  { url: "https://www.immo-zone.be/te-koop/wetteren/gunstig-gelegen-woning-met-3-slks-en-tuin/97149", show: ["text"] },
 ];
 
 const clean = (html: string) =>
