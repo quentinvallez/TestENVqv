@@ -21,10 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Vlaemynck: projects "42% verkocht" and listings that now read as sold.
-  { url: "https://www.vlaemynck.be/nieuwbouw/koksijde/11179303/residentie-lucy", show: ["text"] },
-  { url: "https://www.vlaemynck.be/nieuwbouw/avelgem/11079497/de-kloostertuin", show: ["text"] },
-  { url: "https://www.vlaemynck.be/te-koop/avelgem/appartement/11184656/unieke-loft-met-terras", show: ["text"] },
+  // Tadam: listings Quentin sees as sold/under option that we read as on offer.
+  { url: "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois", show: ["text"] },
+  { url: "https://www.tadam.immo/waltzing-15-rue-de-steinchen", show: ["text"] },
+  { url: "https://www.tadam.immo/arlon-app-rez1-schoppach", show: ["text"] },
 ];
 
 const clean = (html: string) =>
