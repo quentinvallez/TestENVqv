@@ -21,10 +21,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Caenen: rentals under option read as on offer, and the agent named on each listing isn't found.
-  { url: "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm", show: ["text"] },
-  { url: "https://www.caenen.be/nl/te-huur/handelspand-blankenberge-1912740.htm", show: ["text", "markup"] },
-  { url: "https://www.caenen.be/nl/te-huur", needle: "1912740", show: ["markup"] },
+  // Caenen: how "Optie" is shown on a listing under option, and where 1912740 (under option per the agency) says so.
+  { url: "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm", needle: ">Optie", show: ["markup"] },
+  { url: "https://www.caenen.be/nl/te-huur/handelspand-blankenberge-1912740.htm", needle: "Ref. 1912740", show: ["markup"] },
+  { url: "https://www.caenen.be/nl/te-huur", needle: "handelspand-blankenberge-1912740", pages: 3, show: ["markup"] },
+  { url: "https://www.caenen.be/nl/te-huur?d_page=2", needle: "1912740", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
