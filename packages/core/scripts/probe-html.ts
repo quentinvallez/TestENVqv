@@ -21,6 +21,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
+  { url: "https://www.immodyck.be/page-data/nl/kopen/page-data.json", needle: "5626", show: ["markup"] },
+  { url: "https://www.century21-horizon.be/page-data/fr/a-vendre/page-data.json", needle: "7712", show: ["markup"] },
   // "trung" sites (Omnicasa): a listing's facts are in the page's data file (page-data.json), not in its HTML.
   { url: "https://www.immodyck.be/page-data/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/page-data.json", needle: "\"pageContext\"", show: ["markup"] },
   { url: "https://www.immodyck.be/page-data/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/page-data.json", needle: "\"Price\"", show: ["markup"] },
