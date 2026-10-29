@@ -667,12 +667,19 @@ function badgeLine(html: string): string | null {
   const badge = /^(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)\s*!?$/i;
   // A status word next to another one is a legend or a filter ("Te koop / Optie koop / Verkocht" above a project's units).
   const statusWord = /^(te koop|te huur|beschikbaar|vrij|optie( koop| huur)?|onder optie|in optie|verkocht|verhuurd|à vendre|à louer|disponible|option|sous option|vendu|lou[ée]|for sale|for rent|available|under offer|sold|rented)\s*!?$/i;
-  // A status followed by a link to open it, or repeated, belongs to cards of units or other listings, not to this listing.
+  // A status right after a unit's area or followed by a link to open it, or repeated, belongs to cards of units or other
+  // listings, not to this listing.
   const cardLink = /^(bekijk|bekijken|meer info|details?|voir|découvrir|view|more)\b/i;
-  const lines = mainPart(pageText(html)).split("\n").slice(0, 40).map((line) => line.trim());
-  const found = lines.filter((line, i) => badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "") && !cardLink.test(lines[i + 1] ?? ""));
+  const area = /^\d+(?:[.,]\d+)?\s*m²$/i;
+  const all = mainPart(pageText(html)).split("\n").map((line) => line.trim());
+  const lines = all.slice(0, 40);
+  const found = lines.filter(
+    (line, i) =>
+      badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "") && !area.test(lines[i - 1] ?? "") && !cardLink.test(lines[i + 1] ?? ""),
+  );
   const [first] = found;
-  return first && found.length <= 2 && found.every((line) => line.toLowerCase() === first.toLowerCase()) ? first : null;
+  if (!first || found.some((line) => line.toLowerCase() !== first.toLowerCase())) return null;
+  return all.filter((line) => line.toLowerCase() === first.toLowerCase()).length <= 3 ? first : null;
 }
 
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
