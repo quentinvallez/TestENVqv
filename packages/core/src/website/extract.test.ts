@@ -196,6 +196,21 @@ describe("reading a listing page", () => {
     expect(isListingPage(listing, html, true)).toBe(true);
   });
 
+  it("reads an option label under the price and the agent named in a contact block (Caenen)", () => {
+    const html = `<html><head><title>Garage te huur Middelkerke - Symfonie, ref. 4483476 | Caenen</title></head><body><main>
+      <p>Te huur</p><h1>Garage</h1><p>Middelkerke</p><p>Ref. 4483476</p><p>Duinenweg 395, 8430 Middelkerke</p><p>€ 156</p>
+      <div class="badge">Optie</div><h2>Over deze eigendom</h2><p>Automatische hoofdpoort. Onmiddellijk beschikbaar.</p>
+      <p>Interesse? Contacteer ons.</p><p>Liselotte helpt je graag verder!</p><p>Liselotte Deschacht</p><p>059 30 50 50</p><p>Mail Liselotte</p><p>Kantoor Middelkerke</p>
+    </main></body></html>`;
+    const { listing } = extractListing(html, "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm");
+    expect(listing).toMatchObject({ status: "under_offer", transaction: "rent", price: 156, agentName: "Liselotte Deschacht", agentPhone: "+3259305050" });
+  });
+
+  it("doesn't take a status word in a sentence or a sold block further down for the listing's status", () => {
+    const html = `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>Het gebouw is voor 80% verkocht.</p></main></body></html>`;
+    expect(extractListing(html, "https://www.site.be/nl/te-koop/appartement-4498685.htm").listing.status).toBe("active");
+  });
+
   it("drops the numbers of the visit that found a listing from its address", () => {
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();

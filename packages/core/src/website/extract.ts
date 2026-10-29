@@ -560,6 +560,21 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
       }
     }
   }
+  // A name on a line of its own next to the same first name or a phone number: "Liselotte helpt je graag verder!",
+  // "Liselotte Deschacht", "059 30 50 50", "Mail Liselotte".
+  if (!listing.agentName) {
+    const lines = textBlock.split("\n").map((line) => line.trim());
+    const phone = /^(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}$/;
+    for (const [i, line] of lines.entries()) {
+      if (!new RegExp(`^${personName.source}$`).test(line) || notAPerson.test(line)) continue;
+      const first = new RegExp(`\\b${line.split(/\s+/)[0]}\\b`);
+      const near = [lines[i - 1], lines[i + 1], lines[i + 2]].filter((l): l is string => l != null);
+      if (near.some((l) => first.test(l) || phone.test(l))) {
+        listing.agentName = line;
+        break;
+      }
+    }
+  }
   if (listing.agentName) Object.assign(listing, contactNear(textBlock, listing.agentName));
 
   // Address: a labelled line, else the first "postcode city" in the text.
@@ -608,6 +623,8 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   // also when the title still says "te huur".
   const fromPath = statusFrom(path.replace(/[-/_]/g, " "));
   listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
+  // A label of its own near the top ("Optie" under the price) says more than "te huur" in the title.
+  if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html)) ?? listing.status;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
@@ -645,6 +662,12 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
  * A page the site's own overview shows as a card needs one fact (a garage or a
  * shop to rent has a price but no rooms).
  */
+/** A status shown as a label of its own in the top of the listing ("Optie", "Verkocht"), not a word in a sentence. */
+function badgeLine(html: string): string | null {
+  const badge = /^(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)\s*!?$/i;
+  return mainPart(pageText(html)).split("\n").slice(0, 40).map((line) => line.trim()).find((line) => badge.test(line)) ?? null;
+}
+
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
   // Prices in the blocks of other listings below it ("Net gemist") don't make a listing page an overview.
   const text = mainPart(pageText(html));
