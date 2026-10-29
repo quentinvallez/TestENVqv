@@ -172,7 +172,7 @@ async function probe(site: string) {
     if (!isListingPage(listing, page.html, shownOnOverview)) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
-    return outcome.set(url, { status, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"}${hint ? ` | "${short(hint, 80)}"` : ""}` });
+    return outcome.set(url, { status, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
   for (const url of sitemapSample) {
@@ -202,6 +202,11 @@ async function probe(site: string) {
       examples.set(status, shown + 1);
       console.log(`      ${status}: ${url.replace(site, "")}  ${why}`);
     }
+    // Cards with a status whose page read says otherwise: either the page or the card is read wrong.
+    const disagree = read.filter((url) => cardBadge.has(url) && outcome.get(url)!.status !== cardBadge.get(url));
+    if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
+    const badged = urls.filter((url) => cardBadge.has(url));
+    console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };
   for (const [word, urls] of Object.entries(checks)) {
     if (!site.includes(word)) continue;

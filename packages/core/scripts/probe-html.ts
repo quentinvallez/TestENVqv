@@ -3,7 +3,7 @@
  * cards, badges and prices are built before writing rules for them. Stores nothing.
  * Run: npx tsx packages/core/scripts/probe-html.ts [words of the site addresses]
  */
-import { extractListing, looksLikeListingUrl, pageLinks, pageText, sameSite } from "../src/website/extract";
+import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
@@ -21,13 +21,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Leximmo's listing addresses carry a search id: does the page read with a fresh one, and name a lasting address?
-  { url: "https://www.leximmo.be/nl/te-huur-te-koop", follow: "/woning/", show: ["text"] },
-  // Jurimex pages of rented and sold listings read as not a listing.
-  { url: "https://jurimex.be/nl/aanbod/4346385/huis-verhuurd-in-3600-genk", show: ["text"] },
-  // Jurimex cards of listings on offer get a rented or sold badge.
-  { url: "https://jurimex.be/nl/te-huur/woningen", needle: "4493977", show: ["markup"] },
-  { url: "https://jurimex.be/nl/aanbod/3807305/penthouse-verkocht-in-3600-genk", show: ["markup"] },
+  // Immo-zone: a listing under option whose own page we no longer read as under option.
+  { url: "https://www.immo-zone.be/te-koop/wetteren/gunstig-gelegen-woning-met-3-slks-en-tuin/97149", show: ["text"] },
 ];
 
 const clean = (html: string) =>
@@ -88,12 +83,13 @@ async function main() {
       if (look.show.includes("markup")) {
         const body = clean(html);
         const i = look.needle ? body.indexOf(look.needle) : Math.max(0, body.search(/<main\b/i));
-        console.log(`markup: ${body.slice(Math.max(0, i - 2500), i + 5500)}`);
+        console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
       }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);
         console.log(`facts: ${JSON.stringify({ ...listing, description: listing.description?.slice(0, 60), photos: listing.photos.length })}`);
         console.log(`canonical: ${html.match(/<link[^>]*rel=["']canonical["'][^>]*>/i)?.[0] ?? "-"}`);
+        console.log(`main (first 40):\n${mainPart(pageText(html)).split("\n").slice(0, 40).join("\n")}`);
         console.log(`text:\n${pageText(html).split("\n").slice(0, 160).join("\n")}`);
       }
       break;

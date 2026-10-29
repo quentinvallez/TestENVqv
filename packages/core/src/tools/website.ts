@@ -51,7 +51,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v6";
+const EXTRACTION_VERSION = "v7";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -602,7 +602,10 @@ export const websiteImportStatus = defineTool({
     // A listing can have several pages (a project, or the same house in two languages): show it once.
     const seen = new Set<string>();
     const all = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
-    const imported = all.filter((p) => p.status && (LISTED as string[]).includes(p.status));
+    // On offer first, then under option, so the numbered list can be counted against the website.
+    const imported = all
+      .filter((p) => p.status && (LISTED as string[]).includes(p.status))
+      .sort((a, b) => Number(a.status === "under_offer") - Number(b.status === "under_offer"));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,
@@ -621,7 +624,8 @@ export const websiteImportStatus = defineTool({
       failed: pages.filter((p) => p.kind === "error").map((p) => ({ url: p.url, error: p.lastError })),
       /** Pages we know of, by what they turned out to be. */
       pageCounts: {
-        listing: imported.length,
+        onOffer: imported.filter((p) => p.status !== "under_offer").length,
+        underOffer: imported.filter((p) => p.status === "under_offer").length,
         offMarket: all.length - imported.length,
         pending: pages.filter((p) => p.kind === "pending").length,
         gone: pages.filter((p) => p.kind === "gone").length,

@@ -196,6 +196,51 @@ describe("reading a listing page", () => {
     expect(isListingPage(listing, html, true)).toBe(true);
   });
 
+  it("reads an option label under the price and the agent named in a contact block (Caenen)", () => {
+    const html = `<html><head><title>Garage te huur Middelkerke - Symfonie, ref. 4483476 | Caenen</title></head><body><main>
+      <p>Te huur</p><h1>Garage</h1><p>Middelkerke</p><p>Ref. 4483476</p><p>Duinenweg 395, 8430 Middelkerke</p><p>€ 156</p>
+      <div class="badge">Optie</div><h2>Over deze eigendom</h2><p>Automatische hoofdpoort. Onmiddellijk beschikbaar.</p>
+      <p>Interesse? Contacteer ons.</p><p>Liselotte helpt je graag verder!</p><p>Liselotte Deschacht</p><p>059 30 50 50</p><p>Mail Liselotte</p><p>Kantoor Middelkerke</p>
+    </main></body></html>`;
+    const { listing } = extractListing(html, "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm");
+    expect(listing).toMatchObject({ status: "under_offer", transaction: "rent", price: 156, agentName: "Liselotte Deschacht", agentPhone: "+3259305050" });
+  });
+
+  it("doesn't take an office or a project name next to a phone number for the agent", () => {
+    const html = (name: string) => `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>${name}</p><p>050 42 66 09</p></main></body></html>`;
+    expect(extractListing(html("Immokantoor Blankenberge"), "https://www.site.be/nl/te-koop/appartement-4478354.htm").listing.agentName).toBeNull();
+    expect(extractListing(html("Residentie Nordee"), "https://www.site.be/nl/te-koop/project-4396585.htm").listing.agentName).toBeNull();
+  });
+
+  it("doesn't take a status word in a sentence or a sold block further down for the listing's status", () => {
+    const html = `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>Het gebouw is voor 80% verkocht.</p></main></body></html>`;
+    expect(extractListing(html, "https://www.site.be/nl/te-koop/appartement-4498685.htm").listing.status).toBe("active");
+  });
+
+  it("doesn't take the status legend above a project's units for the project's status (Vlaemynck)", () => {
+    const html = `<html><body><main><p>Terug naar overzicht</p><p>Avelgem</p><h1>De Kloostertuin</h1><p>Vanaf €260.000</p><p>Kloosterhof 2, 8580 Avelgem</p>
+      <p>6 entiteiten</p><ul><li>Te koop</li><li>Optie koop</li><li>Verkocht</li></ul><p>Appartement</p><p>2 Slaapkamers</p><p>€315.000</p><p>Te koop</p></main></body></html>`;
+    expect(extractListing(html, "https://www.vlaemynck.be/nieuwbouw/avelgem/11079497/de-kloostertuin").listing.status ?? "active").toBe("active");
+    const unit = (status: string) => `<p>Appartement</p><p>3 Slaapkamers</p><p>130.90 m²</p>${status === "Te koop" ? "<p>€539.000</p>" : ""}<p>${status}</p>`;
+    const sold = `<html><body><main><h1>Residentie Lucy</h1><p>Vanaf €349.000</p><p>8670 Koksijde</p>${unit("Te koop")}${unit("Verkocht")}${unit("Verkocht")}</main></body></html>`;
+    expect(extractListing(sold, "https://www.vlaemynck.be/nieuwbouw/koksijde/11179303/residentie-lucy").listing.status ?? "active").toBe("active");
+  });
+
+  it("reads a decorated sold label next to the listing's heading further down the page (Tadam)", () => {
+    const facts = Array.from({ length: 50 }, (_, i) => `<p>Kenmerk ${i}</p>`).join("");
+    const html = `<html><head><title>TOERNICH | Maison 4 chambres à vendre | TADAM immobilière</title></head><body><main><p>Découvrez cette confortable maison 4 façades.</p>${facts}
+      <p>* Vendu *</p><p>MAISON 4 CHAMBRES - TOERNICH</p><p>8, rue du Bois</p><p>6700 TOERNICH</p></main></body></html>`;
+    expect(extractListing(html, "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois").listing.status).toBe("sold");
+    const other = html.replace("<p>* Vendu *</p><p>MAISON 4 CHAMBRES - TOERNICH</p>", "<p>Net gemist</p><p>Vendu</p><p>Appartement Arlon</p>");
+    expect(extractListing(other, "https://www.tadam.immo/toernich-maison-a-vendre-8ruedubois").listing.status ?? "active").toBe("active");
+  });
+
+  it("doesn't take the cadastral income above an unlabelled price for the price (Tadam)", () => {
+    const html = `<html><head><title>WALTZING | Maison 3 chambres à vendre | TADAM immobilière</title></head><body><main><p>Nombre de chambres :</p><p>3</p>
+      <p>Revenu cadastral net :</p><p>986€</p><p>Les superficies mentionnées sont à titre indicatif</p><p>389.000€</p><p>WALTZING - MAISON 3 CHAMBRES</p><p>15, rue de Steinchen</p><p>6700 WALTZING</p></main></body></html>`;
+    expect(extractListing(html, "https://www.tadam.immo/waltzing-15-rue-de-steinchen").listing.price).toBe(389000);
+  });
+
   it("drops the numbers of the visit that found a listing from its address", () => {
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/70089374/1/2/0/0")).toBe("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/");
     expect(withoutVisitNumbers("https://www.leximmo.be/nl/woning/te-koop/niel/4493114/0/0/0/0/0/0/")).toBeNull();

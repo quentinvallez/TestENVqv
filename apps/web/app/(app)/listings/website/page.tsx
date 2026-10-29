@@ -20,12 +20,13 @@ function ReadBy({ by }: { by: string | null }) {
 }
 
 /** What the pages we found on the site turned out to be, as one thin bar with a legend. */
-function PageBreakdown({ counts }: { counts: { listing: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
+function PageBreakdown({ counts }: { counts: { onOffer: number; underOffer: number; offMarket: number; pending: number; gone: number; other: number; error: number } }) {
   const parts = [
-    { label: "listings", value: counts.listing, className: "bg-fg" },
-    { label: "sold, rented or under option (not listed)", value: counts.offMarket, className: "bg-muted" },
-    { label: "to read", value: counts.pending, className: "bg-line-strong" },
-    { label: "taken offline", value: counts.gone, className: "bg-faint" },
+    { label: "on offer", value: counts.onOffer, className: "bg-fg" },
+    { label: "under option", value: counts.underOffer, className: "bg-muted" },
+    { label: "sold or rented (not listed)", value: counts.offMarket, className: "bg-faint" },
+    { label: "to read", value: counts.pending, className: "bg-info" },
+    { label: "taken offline", value: counts.gone, className: "bg-line-strong" },
     { label: "not a listing", value: counts.other, className: "bg-line" },
     { label: "could not be read", value: counts.error, className: "bg-danger" },
   ].filter((p) => p.value > 0);
@@ -33,6 +34,10 @@ function PageBreakdown({ counts }: { counts: { listing: number; offMarket: numbe
   if (!total) return null;
   return (
     <div className="mt-3">
+      <div className="mb-1.5 text-[13px]">
+        <span className="font-medium tabular-nums">{counts.onOffer + counts.underOffer}</span> listings on your site:{" "}
+        <span className="tabular-nums">{counts.onOffer}</span> on offer, <span className="tabular-nums">{counts.underOffer}</span> under option
+      </div>
       <div className="flex h-1.5 overflow-hidden rounded-full bg-hover" aria-hidden>
         {parts.map((p) => (
           <div key={p.label} className={p.className} style={{ width: `${(p.value / total) * 100}%` }} />
@@ -166,7 +171,8 @@ export default async function WebsiteImportPage() {
                   <h2 className="font-medium">What your website shows</h2>
                   <p className="mt-0.5 max-w-2xl text-[12px] text-muted">
                     Each overview on your site, with the number it shows next to what we found on it. That number often counts sold listings too. Listings on
-                    offer and under option go to your listings; under option ones take no bookings and show no booking button on your site.
+                    offer and under option go to your listings; under option ones take no bookings and show no booking button on your site. A listing
+                    can show on more than one overview, so the totals for your whole site are the ones above.
                   </p>
                   <Panel className="mt-2">
                     <ul className="divide-y divide-line">
@@ -232,12 +238,15 @@ export default async function WebsiteImportPage() {
 
           {status.listings.length > 0 && (
             <section className="mt-6">
-              <h2 className="mb-2 font-medium">Imported listings</h2>
+              <h2 className="mb-2 font-medium">
+                Imported listings <span className="font-normal text-muted tabular-nums">{status.listings.length}</span>
+              </h2>
               <Panel className="overflow-hidden">
                 <ul className="divide-y divide-line md:hidden">
-                  {status.listings.map((l) => (
+                  {status.listings.map((l, i) => (
                     <li key={l.url}>
                       <Link href={`/listings/${l.listingId}`} className="flex gap-3 px-4 py-3 active:bg-hover">
+                        <span className="w-6 shrink-0 pt-0.5 text-right text-[12px] text-faint tabular-nums">{i + 1}</span>
                         <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-16 w-20 shrink-0 rounded-md border border-line" />
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium">{address(l.street, l.houseNumber, l.city) || l.title}</div>
@@ -257,7 +266,8 @@ export default async function WebsiteImportPage() {
                 <table className="hidden w-full text-left md:table">
                   <thead className="bg-panel text-[12px] text-muted">
                     <tr className="border-b border-line">
-                      <th className="py-2 pr-3 pl-4 font-normal">Property</th>
+                      <th className="py-2 pr-1 pl-4 text-right font-normal">#</th>
+                      <th className="py-2 pr-3 pl-3 font-normal">Property</th>
                       <th className="px-3 font-normal">Status</th>
                       <th className="px-3 font-normal">Price</th>
                       <th className="px-3 font-normal">Agent</th>
@@ -268,9 +278,10 @@ export default async function WebsiteImportPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {status.listings.map((l) => (
+                    {status.listings.map((l, i) => (
                       <tr key={l.url} className="group hover:bg-hover/60">
-                        <td className="py-2 pr-3 pl-4">
+                        <td className="w-10 py-2 pr-1 pl-4 text-right text-[12px] text-faint tabular-nums">{i + 1}</td>
+                        <td className="py-2 pr-3 pl-3">
                           <Link href={`/listings/${l.listingId}`} className="flex items-center gap-3">
                             <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-10 w-14 shrink-0 rounded-md border border-line" />
                             <div className="min-w-0">

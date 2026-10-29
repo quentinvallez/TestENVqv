@@ -490,10 +490,15 @@ export function boilerplateLines(homeHtml: string): Set<string> {
 
 /** "€ 300 000" or "€ 1 350/mnd" near the top of a page that shows its price without a label. */
 function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | null {
-  const match = textBlock.match(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|(?<=^|\n)\d{3,}(?=\s?€[ \t]*(?:\n|$|\/)))\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/i);
-  if (!match) return null;
-  const price = parseAmount(match[1] ?? match[2] ?? "");
-  return price && price >= 100 ? { price, rent: Boolean(match[3]) } : null;
+  const amounts = textBlock.matchAll(/(?:€\s?(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|\d{3,})|(\d{1,3}(?:[ .\u00a0\u202f]\d{3})+|(?<=^|\n)\d{3,}(?=\s?€[ \t]*(?:\n|$|\/)))\s?€)(?:[,.]\d{2})?\s*(\/\s*(?:mnd|maand|mois|month)|per maand|par mois)?/gi);
+  // Amounts that a label calls something else (cadastral income, charges, taxes) aren't the price.
+  const other = /(cadastr|kadastr|\b(?:KI|RC)\b|charges|kosten|provisie|provision|syndic|frais|voorheffing|pr[ée]compte|taxe|belasting|huurwaarde|garantie)[^\n]*\n?[^\n]*$/i;
+  for (const match of amounts) {
+    if (other.test(textBlock.slice(Math.max(0, (match.index ?? 0) - 80), match.index))) continue;
+    const price = parseAmount(match[1] ?? match[2] ?? "");
+    if (price && price >= 100) return { price, rent: Boolean(match[3]) };
+  }
+  return null;
 }
 
 function headline(html: string): string | null {
@@ -509,7 +514,7 @@ function titleTag(html: string): string | null {
 
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
-const notAPerson = /\b(immo|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse)\b/i;
+const notAPerson = /\b(immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -556,6 +561,21 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     for (const match of textBlock.matchAll(new RegExp(`(?:^|\\n)[ \\t]*(${personName.source})[ \\t]*[,|–-]?[ \\t]*(?:\\n[ \\t]*)?(?:BIV|IPI|B\\.I\\.V\\.)(?![a-z])`, "g"))) {
       if (!notAPerson.test(match[1]!)) {
         listing.agentName = match[1]!;
+        break;
+      }
+    }
+  }
+  // A name on a line of its own next to the same first name or a phone number: "Liselotte helpt je graag verder!",
+  // "Liselotte Deschacht", "059 30 50 50", "Mail Liselotte".
+  if (!listing.agentName) {
+    const lines = textBlock.split("\n").map((line) => line.trim());
+    const phone = /^(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}$/;
+    for (const [i, line] of lines.entries()) {
+      if (!new RegExp(`^${personName.source}$`).test(line) || notAPerson.test(line)) continue;
+      const first = new RegExp(`\\b${line.split(/\s+/)[0]}\\b`);
+      const near = [lines[i - 1], lines[i + 1], lines[i + 2]].filter((l): l is string => l != null);
+      if (near.some((l) => first.test(l) || phone.test(l))) {
+        listing.agentName = line;
         break;
       }
     }
@@ -608,6 +628,8 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   // also when the title still says "te huur".
   const fromPath = statusFrom(path.replace(/[-/_]/g, " "));
   listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
+  // A label of its own near the top ("Optie" under the price) says more than "te huur" in the title.
+  if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html, title)) ?? listing.status;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
@@ -645,6 +667,33 @@ export function isRemovedListingPage(listing: ExtractedListing, html: string): b
  * A page the site's own overview shows as a card needs one fact (a garage or a
  * shop to rent has a price but no rooms).
  */
+/** A status shown as a label of its own in the top of the listing ("Optie", "Verkocht"), not a word in a sentence. */
+function badgeLine(html: string, title?: string | null): string | null {
+  // The label alone on its line, maybe decorated ("* Vendu *", "- Optie -").
+  const badge = /^[^\p{L}\d]{0,3}(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|verkocht|vendu|sold|verhuurd|lou[ée]|rented)[^\p{L}\d]{0,3}$/iu;
+  // A status word next to another one is a legend or a filter ("Te koop / Optie koop / Verkocht" above a project's units).
+  const statusWord = /^(te koop|te huur|beschikbaar|vrij|optie( koop| huur)?|onder optie|in optie|verkocht|verhuurd|à vendre|à louer|disponible|option|sous option|vendu|lou[ée]|for sale|for rent|available|under offer|sold|rented)\s*!?$/i;
+  // A status right after a unit's area or followed by a link to open it, or repeated, belongs to cards of units or other
+  // listings, not to this listing.
+  const cardLink = /^(bekijk|bekijken|meer info|details?|voir|découvrir|view|more)\b/i;
+  const area = /^\d+(?:[.,]\d+)?\s*m²$/i;
+  const all = mainPart(pageText(html)).split("\n").map((line) => line.trim());
+  const lines = all.slice(0, 40);
+  const found = lines.filter(
+    (line, i) =>
+      badge.test(line) && !statusWord.test(lines[i - 1] ?? "") && !statusWord.test(lines[i + 1] ?? "") && !area.test(lines[i - 1] ?? "") && !cardLink.test(lines[i + 1] ?? ""),
+  );
+  const [first] = found;
+  if (first) {
+    if (found.some((line) => line.toLowerCase() !== first.toLowerCase())) return null;
+    return all.filter((line) => line.toLowerCase() === first.toLowerCase()).length <= 3 ? first : null;
+  }
+  // Further down, only a label right next to the listing's own heading (its words are in the page title).
+  const titleWords = new Set((title ?? "").toLowerCase().match(/\p{L}{4,}/gu) ?? []);
+  const nearTitle = (line: string | undefined) => (line?.toLowerCase().match(/\p{L}{4,}/gu) ?? []).filter((w) => titleWords.has(w)).length >= 2;
+  return all.find((line, i) => badge.test(line) && (nearTitle(all[i - 1]) || nearTitle(all[i + 1]))) ?? null;
+}
+
 export function isListingPage(listing: ExtractedListing, html: string, shownOnOverview = false): boolean {
   // Prices in the blocks of other listings below it ("Net gemist") don't make a listing page an overview.
   const text = mainPart(pageText(html));
