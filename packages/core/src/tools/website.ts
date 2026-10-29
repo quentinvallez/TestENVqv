@@ -602,7 +602,10 @@ export const websiteImportStatus = defineTool({
     // A listing can have several pages (a project, or the same house in two languages): show it once.
     const seen = new Set<string>();
     const all = pages.filter((p) => p.kind === "listing" && p.listingId && !seen.has(p.listingId) && Boolean(seen.add(p.listingId)));
-    const imported = all.filter((p) => p.status && (LISTED as string[]).includes(p.status));
+    // On offer first, then under option, so the numbered list can be counted against the website.
+    const imported = all
+      .filter((p) => p.status && (LISTED as string[]).includes(p.status))
+      .sort((a, b) => Number(a.status === "under_offer") - Number(b.status === "under_offer"));
     const unknownNames = [...new Set(imported.filter((p) => !p.listingAgentId && p.agentName).map((p) => p.agentName!))];
     return {
       websiteUrl: settings?.websiteUrl ?? null,

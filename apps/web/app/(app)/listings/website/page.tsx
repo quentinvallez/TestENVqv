@@ -238,12 +238,15 @@ export default async function WebsiteImportPage() {
 
           {status.listings.length > 0 && (
             <section className="mt-6">
-              <h2 className="mb-2 font-medium">Imported listings</h2>
+              <h2 className="mb-2 font-medium">
+                Imported listings <span className="font-normal text-muted tabular-nums">{status.listings.length}</span>
+              </h2>
               <Panel className="overflow-hidden">
                 <ul className="divide-y divide-line md:hidden">
-                  {status.listings.map((l) => (
+                  {status.listings.map((l, i) => (
                     <li key={l.url}>
                       <Link href={`/listings/${l.listingId}`} className="flex gap-3 px-4 py-3 active:bg-hover">
+                        <span className="w-6 shrink-0 pt-0.5 text-right text-[12px] text-faint tabular-nums">{i + 1}</span>
                         <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-16 w-20 shrink-0 rounded-md border border-line" />
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-medium">{address(l.street, l.houseNumber, l.city) || l.title}</div>
@@ -263,7 +266,8 @@ export default async function WebsiteImportPage() {
                 <table className="hidden w-full text-left md:table">
                   <thead className="bg-panel text-[12px] text-muted">
                     <tr className="border-b border-line">
-                      <th className="py-2 pr-3 pl-4 font-normal">Property</th>
+                      <th className="py-2 pr-1 pl-4 text-right font-normal">#</th>
+                      <th className="py-2 pr-3 pl-3 font-normal">Property</th>
                       <th className="px-3 font-normal">Status</th>
                       <th className="px-3 font-normal">Price</th>
                       <th className="px-3 font-normal">Agent</th>
@@ -274,9 +278,10 @@ export default async function WebsiteImportPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {status.listings.map((l) => (
+                    {status.listings.map((l, i) => (
                       <tr key={l.url} className="group hover:bg-hover/60">
-                        <td className="py-2 pr-3 pl-4">
+                        <td className="w-10 py-2 pr-1 pl-4 text-right text-[12px] text-faint tabular-nums">{i + 1}</td>
+                        <td className="py-2 pr-3 pl-3">
                           <Link href={`/listings/${l.listingId}`} className="flex items-center gap-3">
                             <ListingPhoto src={l.photo} alt={l.title ?? l.reference ?? ""} className="h-10 w-14 shrink-0 rounded-md border border-line" />
                             <div className="min-w-0">
