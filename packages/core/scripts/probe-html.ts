@@ -21,13 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Leximmo's listing addresses carry a search id: does the page read with a fresh one, and name a lasting address?
-  { url: "https://www.leximmo.be/nl/te-huur-te-koop", follow: "/woning/", show: ["text"] },
-  // Jurimex pages of rented and sold listings read as not a listing.
-  { url: "https://jurimex.be/nl/aanbod/4346385/huis-verhuurd-in-3600-genk", show: ["text"] },
-  // Jurimex cards of listings on offer get a rented or sold badge.
-  { url: "https://jurimex.be/nl/te-huur/woningen", needle: "4493977", show: ["markup"] },
-  { url: "https://jurimex.be/nl/aanbod/3807305/penthouse-verkocht-in-3600-genk", show: ["markup"] },
+  // Caenen: rentals under option read as on offer, and the agent named on each listing isn't found.
+  { url: "https://www.caenen.be/nl/te-huur/garage-middelkerke-symfonie-4483476.htm", show: ["text"] },
+  { url: "https://www.caenen.be/nl/te-huur/handelspand-blankenberge-1912740.htm", show: ["text", "markup"] },
+  { url: "https://www.caenen.be/nl/te-huur", needle: "1912740", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
