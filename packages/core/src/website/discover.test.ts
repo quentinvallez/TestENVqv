@@ -172,6 +172,20 @@ describe("searching a site for its listing pages", () => {
     expect(read.filter((url) => url.startsWith(`${site}/huren?`))).toEqual([`${site}/huren?pagina=2`, `${site}/huren?pagina=3`]);
   });
 
+  it("takes a page linked like an overview as a listing when its address follows the template of the cards", async () => {
+    const { reader, hooks, found } = fakeSite({
+      "/": `<a href="/te-koop">Te koop</a><a href="/te-koop/ghoy/grond/landbouwgrond/230">Landbouwgrond</a>`,
+      "/te-koop": cards(1, 8, "/te-koop/gent/huis/woning"),
+      "/te-koop/ghoy/grond/landbouwgrond/230": `<h1>Landbouwgrond</h1><a href="/te-koop/ogy/grond/weiland/229">Ook te koop</a>`,
+      "/te-koop/ogy/grond/weiland/229": `<h1>Weiland</h1>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(found.has(`${site}/te-koop/ghoy/grond/landbouwgrond/230`)).toBe(true);
+    expect(found.size).toBe(9);
+    expect(state.overviews.map((o) => o.url)).toEqual([`${site}/te-koop`]);
+  });
+
   it("reads each new-build project for its units, or takes the project as one listing when it has none", async () => {
     const { reader, hooks, found } = fakeSite({
       "/": `<a href="/nieuwbouw">Nieuwbouw</a>`,
