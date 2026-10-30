@@ -3,7 +3,7 @@ name: Listing count
 on:
   push:
     branches: ["claude/**"]
-    paths: ["scripts/caenen_markup.py", "scripts/caenen_count.py", ".github/workflows/listing-count.yml"]
+    paths: ["scripts/site_explore.py", "scripts/caenen_count.py", ".github/workflows/listing-count.yml"]
 permissions:
   contents: read
 jobs:
@@ -13,4 +13,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Count
-        run: python3 scripts/caenen_count.py
+        run: python3 scripts/site_explore.py
