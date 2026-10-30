@@ -29,4 +29,14 @@ describe("pages filled in by scripts (Gatsby)", () => {
     expect(merged).toMatchObject({ title: "Ruim en licht appartement", price: 254000, city: "Deurne", photos: ["https://cdn.omnicasapictures.com/5626AL.jpg"] });
     expect(listingFromPageData("not json", page)).toBeNull();
   });
+
+  it("takes sale or rent and the site's label from the data file over the page's menu words", () => {
+    const rentalPage = "https://www.immodyck.be/nl/huren/merksem/appartement/5623/";
+    const property = (sub: string) => JSON.stringify({ result: { pageContext: { data: { property: { ID: 5623, Goal: 1, Street: "Eendstraat", Zip: "2170", City: "MERKSEM", Price: 850, SubStatusName: sub } } } } });
+    const optie = listingFromPageData(property("Optie"), rentalPage)!;
+    expect(optie).toMatchObject({ transaction: "rent", status: "under_offer", price: 850 });
+    expect(listingFromPageData(property("Nieuw"), rentalPage)!.status).toBeNull();
+    const pageReading = { ...emptyListing(), transaction: "sale" as const, status: "active" as const, price: 850 };
+    expect(withPageData(pageReading, optie)).toMatchObject({ transaction: "rent", status: "under_offer" });
+  });
 });

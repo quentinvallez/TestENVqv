@@ -1,4 +1,4 @@
-import type { ExtractedListing } from "./extract";
+import { statusFrom, type ExtractedListing } from "./extract";
 
 /*
  * Sites built with Gatsby (Omnicasa's "trung" sites among them) send a page without its content and fill it in with
@@ -52,6 +52,8 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   return {
     reference: p.ID != null ? String(p.ID) : null,
     transaction: p.Goal === 0 ? "sale" : p.Goal === 1 ? "rent" : null,
+    // The label the site shows on the listing's card and page ("Optie", "Verkocht"; "Nieuw" says nothing about it).
+    status: statusFrom(text(p.SubStatusName)),
     street: text(p.Street),
     houseNumber: text(p.HouseNumber),
     postcode: text(p.Zip),
@@ -69,13 +71,19 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   };
 }
 
-/** What the page shows filled in with what its data file gives, the page's own reading first. */
+/** Fields of the data file that say more than any word on the page: the site's own sale or rent and its label. */
+const SITE_FIELDS: (keyof ExtractedListing)[] = ["transaction", "status"];
+
+/**
+ * What the page shows filled in with what its data file gives, the page's own reading first, except for sale or rent
+ * and the status: the page of a script-built site holds only its menu ("Kopen", "Huren"), not the listing's label.
+ */
 export function withPageData(listing: ExtractedListing, data: Partial<ExtractedListing>): ExtractedListing {
   const merged = { ...listing };
   for (const [key, value] of Object.entries(data) as [keyof ExtractedListing, ExtractedListing[keyof ExtractedListing]][]) {
     const current = merged[key];
     if (value == null || (Array.isArray(value) && !value.length)) continue;
-    if (current == null || (Array.isArray(current) && !current.length)) (merged as Record<string, unknown>)[key] = value;
+    if (current == null || (Array.isArray(current) && !current.length) || SITE_FIELDS.includes(key)) (merged as Record<string, unknown>)[key] = value;
   }
   return merged;
 }
