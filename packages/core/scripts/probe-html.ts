@@ -21,8 +21,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immofrance: how its overviews and listing links are built (Quentin counts 2 listings missing).
-  { url: "https://www.immofrance.be/nl/te-koop", show: ["links"] },
+  // "trung" sites (Omnicasa): a listing's facts are in the page's data file (page-data.json), not in its HTML.
+  { url: "https://www.immodyck.be/page-data/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/page-data.json", needle: "\"ManagerName\":\"", show: ["markup"] },
+  { url: "https://www.immodyck.be/page-data/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/page-data.json", needle: "\"SubStatus\":", show: ["markup"] },
+  { url: "https://www.century21-horizon.be/page-data/fr/a-vendre/tertre/maison/7712/page-data.json", needle: "\"ManagerName\":\"", show: ["markup"] },
+  { url: "https://www.immodyck.be/sitemap/sitemap-0.xml", needle: "5626", show: ["markup"] },
 ];
 
 const clean = (html: string) =>

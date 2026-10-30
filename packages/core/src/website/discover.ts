@@ -164,7 +164,20 @@ export async function continueDiscovery(
       // Listing sitemaps first: their names usually say so.
       const listingFirst = (url: string) => Number(/propert|listing|pand|bien|estate|detail|aanbod/i.test(url));
       discovery.queue.unshift(...entries.sitemaps.sort((a, b) => listingFirst(b) - listingFirst(a)).map((url) => ({ url, root: null, sitemap: true })));
-      await hooks.found(entries.pages.map((entry) => normalizeUrl(entry)).filter((url): url is string => Boolean(url && looksLikeListingUrl(url, site) && inLanguage(url))), null);
+      const pages = entries.pages.map((entry) => normalizeUrl(entry)).filter((url): url is string => Boolean(url && inLanguage(url)));
+      // An overview that showed no listing in its page (it shows them through scripts) has the ones the sitemap lists
+      // below its own address ("/nl/kopen/deurne/appartement/5626" under "/nl/kopen"), also with a short number. Other
+      // overviews keep only what they show: sitemaps keep old pages.
+      const placed = new Set<string>();
+      for (const o of overviews.filter((x) => x.found === 0 || x.via === "sitemap")) {
+        const below = pages.filter((url) => listingBelow(url, o.url));
+        if (!below.length) continue;
+        o.via = "sitemap";
+        below.forEach((url) => placed.add(url));
+        const fresh = await hooks.found(below, o.url);
+        o.found += fresh.newToOverview;
+      }
+      await hooks.found(pages.filter((url) => !placed.has(url) && looksLikeListingUrl(url, site)), null);
     }
     if (page.status !== 200 || item.sitemap) {
       if (item.root) settle(state, item.root);
@@ -214,6 +227,15 @@ export async function continueDiscovery(
     }
   }
   return {};
+}
+
+/** An address two or more levels below an overview's that ends in a number: one listing of that overview. */
+export function listingBelow(url: string, overview: string): boolean {
+  const path = pathOf(url).replace(/\/+$/, "");
+  const base = pathOf(overview).replace(/\/+$/, "");
+  if (!base || !path.startsWith(`${base}/`)) return false;
+  const rest = path.slice(base.length + 1).split("/");
+  return rest.length >= 2 && /^\d{3,9}$/.test(rest.at(-1)!);
 }
 
 const MAX_SHAPES = 20;

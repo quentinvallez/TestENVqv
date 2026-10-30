@@ -81,8 +81,8 @@ export type WebsiteOverview = {
   found: number;
   /** Pages of the overview we went through. */
   pages: number;
-  /** How we got past page 1: page links, the site's own search form, a guessed page address, or a browser. */
-  via: "single" | "links" | "form" | "guess" | "browser";
+  /** How we got past page 1: page links, the site's own search form, a guessed page address, a browser, or its listings from the sitemap. */
+  via: "single" | "links" | "form" | "guess" | "browser" | "sitemap";
   /** Every page of it was read; false while a search is still going. */
   complete: boolean;
 };

@@ -23,6 +23,7 @@ import {
   withoutVisitNumbers,
   type ExtractedListing,
 } from "../website/extract";
+import { listingFromPageData, pageDataUrl, withPageData } from "../website/page-data";
 import { SiteReader } from "../website/reader";
 
 /*
@@ -51,7 +52,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v7";
+const EXTRACTION_VERSION = "v8";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -101,7 +102,11 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   const landed = normalizeUrl(fetched.url) ?? page.url;
   if (landed !== page.url && (isHomePage(landed) || (page.kind === "listing" && !looksLikeListingUrl(landed, site)))) return removePage(ctx, page, now);
 
-  const text = pageText(fetched.html);
+  // A page filled in by scripts (Gatsby): its facts are in the data file next to it.
+  const dataUrl = pageDataUrl(fetched.html, fetched.url);
+  const dataRead = dataUrl ? await reader.read(dataUrl) : null;
+  const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, fetched.url) : null;
+  const text = pageText(fetched.html) + (pageData ? `\n${JSON.stringify(pageData)}` : "");
   // A new version of the rules reads every page again, even when it didn't change.
   const hash = `${EXTRACTION_VERSION}:${textFingerprint(text)}`;
   if (page.kind === "listing" && page.listingId && page.contentHash === hash) {
@@ -110,8 +115,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   }
 
   const read = extractListing(fetched.html, page.url, await reader.siteBoilerplate());
-  let listing: ExtractedListing = read.listing;
-  let extractedBy: "structured" | "rules" | "ai" = read.structured ? "structured" : "rules";
+  let listing: ExtractedListing = pageData ? withPageData(read.listing, pageData) : read.listing;
+  let extractedBy: "structured" | "rules" | "ai" = read.structured || pageData ? "structured" : "rules";
   // Some sites keep a removed listing's page up with a notice instead of a 404.
   if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
   let isListing = isListingPage(listing, fetched.html, shownOnOverview);

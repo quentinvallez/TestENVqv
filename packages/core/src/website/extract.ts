@@ -572,10 +572,26 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     const phone = /^(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}$/;
     for (const [i, line] of lines.entries()) {
       if (!new RegExp(`^${personName.source}$`).test(line) || notAPerson.test(line)) continue;
-      const first = new RegExp(`\\b${line.split(/\s+/)[0]}\\b`);
+      // A menu ("Te Koop", "Te Huur") isn't a person: a first name has three letters or more.
+      const firstName = line.split(/\s+/)[0]!;
+      if (firstName.length < 3) continue;
+      const first = new RegExp(`\\b${firstName}\\b`);
       const near = [lines[i - 1], lines[i + 1], lines[i + 2]].filter((l): l is string => l != null);
       if (near.some((l) => first.test(l) || phone.test(l))) {
         listing.agentName = line;
+        break;
+      }
+    }
+  }
+  // A name with a phone number on the same line, after "Tel." or with an email of theirs below it:
+  // "Bezoeken na afspraak: Tel. Ilona Bewaert, 0496/22.02.66; ilona@immotalenco.com".
+  if (!listing.agentName) {
+    const withPhone = new RegExp(`(tel\\.?|bel|gsm|contact\\w*|afspraak)?[ \\t:]*(${personName.source})[ \\t]*[,;:–-]?[ \\t]*(?:\\+32|0)[ \\t]?[1-9](?:[ \\t./-]?\\d){7,9}`, "gi");
+    for (const match of textBlock.matchAll(withPhone)) {
+      const name = match[2]!;
+      if (notAPerson.test(name)) continue;
+      if (match[1] || contactNear(textBlock, name).agentEmail) {
+        listing.agentName = name;
         break;
       }
     }

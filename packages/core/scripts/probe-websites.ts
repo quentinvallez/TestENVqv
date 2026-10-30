@@ -10,9 +10,10 @@ import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
 import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
+import { listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance since 2026-10-29).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -26,6 +27,9 @@ const sites = [
   "https://www.caenen.be/nl",
   "https://www.vlaemynck.be",
   "https://www.immofrance.be",
+  "https://www.immotalenco.com/nl/",
+  "https://www.immodyck.be/nl/",
+  "https://www.century21-horizon.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
@@ -164,7 +168,11 @@ async function probe(site: string) {
       if ("html" in again && !home(again.url)) page = again;
     }
     if (!("html" in page)) return outcome.set(url, { status: "unreadable", why: page.error });
-    const { listing } = extractListing(page.html, page.url, boilerplate);
+    const dataUrl = pageDataUrl(page.html, page.url);
+    const dataRead = dataUrl ? await reader.read(dataUrl) : null;
+    const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, page.url) : null;
+    const read = extractListing(page.html, page.url, boilerplate).listing;
+    const listing = pageData ? withPageData(read, pageData) : read;
     const text = pageText(page.html);
     const title = short(page.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "", 80);
     if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });

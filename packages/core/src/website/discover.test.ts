@@ -186,6 +186,23 @@ describe("searching a site for its listing pages", () => {
     expect(state.overviews.map((o) => o.url)).toEqual([`${site}/te-koop`]);
   });
 
+  it("takes the listings a sitemap shows below an overview's address when the overview shows them only through scripts", async () => {
+    const { reader, hooks, found } = fakeSite({
+      "/": `<a href="/nl/kopen">Kopen</a><a href="/nl/huren">Huren</a>`,
+      "/nl/kopen": `<div id="___gatsby"></div>`,
+      "/nl/huren": `<div id="___gatsby"></div>`,
+      "/sitemap.xml": `<urlset><url><loc>${site}/nl/kopen/deurne/ruim-appartement/5626/</loc></url><url><loc>${site}/nl/kopen/deurne/</loc></url>
+        <url><loc>${site}/nl/huren/merksem/appartement/5623/</loc></url><url><loc>${site}/nl/contact</loc></url></urlset>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect([...found.keys()].sort()).toEqual([`${site}/nl/huren/merksem/appartement/5623`, `${site}/nl/kopen/deurne/ruim-appartement/5626`]);
+    expect(state.overviews.map((o) => [o.url.replace(site, ""), o.found])).toEqual([
+      ["/nl/kopen", 1],
+      ["/nl/huren", 1],
+    ]);
+  });
+
   it("reads each new-build project for its units, or takes the project as one listing when it has none", async () => {
     const { reader, hooks, found } = fakeSite({
       "/": `<a href="/nieuwbouw">Nieuwbouw</a>`,

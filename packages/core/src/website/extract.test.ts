@@ -208,6 +208,19 @@ describe("reading a listing page", () => {
     expect(listing).toMatchObject({ status: "under_offer", transaction: "rent", price: 156, agentName: "Liselotte Deschacht", agentPhone: "+3259305050" });
   });
 
+  it("reads the agent from a phone line in the description, not from the menu (Immotalenco)", () => {
+    const html = `<html><head><title>Bungalow te koop te SINT-AMANDS (2890) | Immo Talenco</title></head><body>
+      <div class="menu"><ul><li>Home</li><li>Te Koop</li><li>Te Huur</li><li>Gronden</li></ul></div><main><h1>Bungalow te SINT-AMANDS (2890)</h1><p>€ 439.000</p>
+      <p>Adres : Kapellelaan 20, 2890 SINT-AMANDS</p><p>Bezoeken na afspraak:</p><p>Tel. Ilona Bewaert, 0496/22.02.66;</p><p>ilona@immotalenco.com</p></main></body></html>`;
+    const { listing } = extractListing(html, "https://www.immotalenco.com/nl/te-koop?view=detail&id=5976");
+    expect(listing).toMatchObject({ agentName: "Ilona Bewaert", agentPhone: "+32496220266", agentEmail: "ilona@immotalenco.com" });
+    // A city next to the office's phone is no agent, nor is the menu ("Te Koop" next to "Te Huur").
+    const office = html
+      .replace("<p>Tel. Ilona Bewaert, 0496/22.02.66;</p><p>ilona@immotalenco.com</p>", "<p>Sint Amands 052/57.50.01</p>")
+      .replace(/<\/?main>/g, "");
+    expect(extractListing(office, "https://www.immotalenco.com/nl/te-koop?view=detail&id=5976").listing.agentName).toBeNull();
+  });
+
   it("doesn't take an office or a project name next to a phone number for the agent", () => {
     const html = (name: string) => `<html><body><main><h1>Appartement te koop</h1><p>Zeedijk 10, 8430 Middelkerke</p><p>€ 325.000</p><p>${name}</p><p>050 42 66 09</p></main></body></html>`;
     expect(extractListing(html("Immokantoor Blankenberge"), "https://www.site.be/nl/te-koop/appartement-4478354.htm").listing.agentName).toBeNull();

@@ -82,7 +82,11 @@ export function ImportForm({
       {busy && !started && (
         <ImportProgress done={0} total={0} title="Finding your listing pages…" detail="This takes up to a minute. Keep this page open." />
       )}
-      {started && progress && state && (
+      {started && progress && state && !busy && !state.searching && !state.remaining && !state.read ? (
+        <p className="mt-1 text-danger" role="status">
+          No listings found on this address. Check that it's your agency's website as visitors type it (a missing hyphen leads to another site).
+        </p>
+      ) : started && progress && state && (
         <ImportProgress
           done={progress.checked}
           total={progress.checked + (state.remaining ?? 0)}

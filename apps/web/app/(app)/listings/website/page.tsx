@@ -74,6 +74,7 @@ const viaLabel: Record<Overview["via"], string> = {
   form: "through its search form",
   guess: "page by page",
   browser: "read with a browser, scrolling",
+  sitemap: "its listings from the site's sitemap",
 };
 
 /** One overview of the site (for sale, for rent, new builds): what it says it has, what we found, and what those turned out to be. */
