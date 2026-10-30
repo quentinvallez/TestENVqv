@@ -40,8 +40,17 @@ def overview(name, url):
     stated = first(r"<strong>\s*([\d.]+) resultaten", page)
     found = cards(page)
     pages = 1
-    for nxt in sorted(set(re.findall(r'href="([^"]*d_page=\d+[^"]*)"', page))):
-        _, _, p = get(H.unescape(nxt)); pages += 1; found += cards(p)
+    links = sorted(set(re.findall(r'href="([^"]*d_page=\d+[^"]*)"', page)))
+    total = int(stated.replace(".", "")) if stated else 0
+    if links and found:
+        template = H.unescape(links[0])
+        print(f"paging {template}", flush=True)
+        n = 2
+        while len(found) < total and n < 60:
+            _, _, p = get(re.sub(r"d_page=\d+", f"d_page={n}", template))
+            more = cards(p); pages += 1; n += 1
+            if not more: break
+            found += more
     print("OVERVIEW " + json.dumps({"name": name, "url": url, "stated": stated, "pages": pages, "cards": len(found)}), flush=True)
     for c in found: print("CARD " + json.dumps({"overview": name, **c}, ensure_ascii=False), flush=True)
     return found
@@ -51,14 +60,6 @@ def main():
     for name, url in [("te-koop", f"{BASE}/te-koop"), ("te-huur", f"{BASE}/te-huur"), ("nieuwbouw", f"{BASE}/nieuwbouw"), ("recent-verkocht", f"{BASE}/recent-verkocht")]:
         for c in overview(name, url):
             if name != "recent-verkocht" and c["url"]: shown.setdefault(c["url"], set()).add(name)
-    for url, names in shown.items():
-        status, final, page = get(url)
-        head = page.split("properties-overview")[0]  # the listing itself, before any similar-listing cards
-        row = {"url": url, "overviews": sorted(names), "http": status, "final": final,
-               "banner": first(BANNER.pattern, head),
-               "og_title": first(r'property="og:title"\s+content="([^"]+)"', page),
-               "units_sold_note": first(r">\s*(Reeds \d+% verkocht)\s*<", head)}
-        print("PAGE " + json.dumps(row, ensure_ascii=False), flush=True)
     print("done")
 
 main()
