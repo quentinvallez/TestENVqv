@@ -13,4 +13,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Count
-        run: python3 scripts/caenen_markup.py
+        run: python3 scripts/caenen_count.py
