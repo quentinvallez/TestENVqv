@@ -1,46 +1,33 @@
-"""One-off hand count of immodyck.be for Quentin: overviews' data files, the sitemap, and every listing's data file."""
+"""One-off hand count of immodyck.be for Quentin: every property in the overviews' data files, and the sitemap."""
 import json, re, time, urllib.request
 UA = "Mozilla/5.0 (compatible; listing-count; one-off for Quentin)"
 B = "https://www.immodyck.be"
 def get(u):
     time.sleep(1)
-    try:
-        r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA}), timeout=30)
-        return r.status, r.read().decode("utf-8", "replace")
-    except Exception as e:
-        return getattr(e, "code", 0), ""
-def pd(path):
-    st, body = get(B + "/page-data" + path.rstrip("/") + "/page-data.json")
-    try: return json.loads(body)
-    except Exception: return None
-def walk(o, path=""):
+    r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA}), timeout=30)
+    return r.read().decode("utf-8", "replace")
+def lists(o, path=""):
     if isinstance(o, dict):
-        for k, v in o.items(): yield from walk(v, f"{path}.{k}")
+        for k, v in o.items():
+            if isinstance(v, list) and v and isinstance(v[0], dict) and "SubStatusName" in v[0]: yield f"{path}.{k}", v
+            else: yield from lists(v, f"{path}.{k}")
     elif isinstance(o, list):
-        for i, v in enumerate(o[:3]): yield from walk(v, f"{path}[{i}]")
-    else: yield path, o
+        for i, v in enumerate(o): yield from lists(v, f"{path}[{i}]")
+def counts(o, path=""):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if re.search(r"(?i)total|count", k) and isinstance(v, (int, str)) and not isinstance(v, bool): yield f"{path}.{k}", v
+            elif k != "propertiesList": yield from counts(v, f"{path}.{k}")
+    elif isinstance(o, list):
+        for i, v in enumerate(o[:50]): yield from counts(v, f"{path}[{i}]")
+keep = ["ID", "Ident", "Goal", "TypeDescription", "MainTypeName", "Street", "HouseNumber", "Zip", "City", "Price", "PriceUnitText", "SubStatusName", "Marquee", "Status", "StatusName", "SubStatus", "IsSold", "IsRented", "ProjectID", "IsProject"]
 for ov in ["/nl/kopen/", "/nl/huren/"]:
-    d = pd(ov)
-    print("OVPD", ov, "none" if d is None else json.dumps(d)[:200])
-    if d:
-        for p, v in walk(d.get("result", {})):
-            if re.search(r"(?i)total|count|status|sold|option|propert|goal|purpose", p) and not isinstance(v, str) or (isinstance(v, str) and len(v) < 80 and re.search(r"(?i)total|count|status|propert", p)):
-                print("  ", p, repr(v)[:100])
-st, sm = get(B + "/sitemap/sitemap-0.xml")
-urls = re.findall(r"<loc>([^<]+)</loc>", sm)
-print("SITEMAP", st, len(urls))
-from collections import Counter
-print(Counter("/".join(u.replace(B, "").split("/")[:3]) for u in urls))
-nl = [u for u in urls if re.search(r"/nl/[^/]+/.+", u.replace(B, ""))]
-print("nl deep", len(nl), nl[:10])
-first = True
-for u in nl:
-    path = u.replace(B, "")
-    d = pd(path)
-    if not d: print("LPD", json.dumps({"url": u, "error": True})); continue
-    ctx = d.get("result", {}).get("pageContext", {})
-    if first:
-        print("FIRST", json.dumps(ctx)[:6000]); first = False
-    flat = {p: v for p, v in walk(ctx) if re.search(r"(?i)status|sold|option|price|city|ident|reference|goal|purpose|type|marquee|label|zip|street", p.split(".")[-1]) and not isinstance(v, (dict, list))}
-    print("LPD " + json.dumps({"url": u, "fields": dict(list(flat.items())[:60])}, ensure_ascii=False), flush=True)
+    d = json.loads(get(B + "/page-data" + ov + "page-data.json"))
+    print("COUNTS", ov, json.dumps(list(counts(d.get("result", {})))[:40], ensure_ascii=False))
+    for path, items in lists(d.get("result", {})):
+        print("LIST", ov, path, len(items), "keys:", sorted(items[0].keys()))
+        for p in items: print("PROP " + json.dumps({"overview": ov, **{k: p.get(k) for k in keep if k in p}}, ensure_ascii=False), flush=True)
+sm = get(B + "/sitemap/sitemap-0.xml")
+for u in re.findall(r"<loc>([^<]+)</loc>", sm):
+    if re.search(r"/nl/(kopen|huren|project|property)", u): print("SM", u)
 print("done")
