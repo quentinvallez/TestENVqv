@@ -1,31 +1,16 @@
 name: Listing count
-# Development aid: finds and reads every listing on one test site and prints one JSON line per listing. Stores nothing.
+# One-off: reads caenen.be's overviews and listing pages with plain HTTP and prints one JSON line per listing.
 on:
   push:
     branches: ["claude/**"]
-    paths: ["packages/core/scripts/count-listings.ts", ".github/workflows/listing-count.yml"]
+    paths: ["scripts/caenen_count.py", ".github/workflows/listing-count.yml"]
 permissions:
   contents: read
 jobs:
   count:
-    strategy:
-      matrix:
-        # Only sites Quentin chose for counting.
-        site: ["https://www.caenen.be/nl"]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
       - name: Count
-        run: |
-          pnpm install --frozen-lockfile --filter @viewing/core...
-          npx -y tsx@4.20.6 packages/core/scripts/count-listings.ts ${{ matrix.site }} | tee count.log
-      - uses: actions/upload-artifact@v4
-        with:
-          name: listing-count
-          path: count.log
+        run: python3 scripts/caenen_count.py
