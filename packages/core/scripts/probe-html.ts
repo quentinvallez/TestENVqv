@@ -22,14 +22,12 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius: every field of the listing data, OPTIE (3400), VERKOCHT (3544), on offer (3588, 3618).
-  { url: "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning-met-3-slks-tuin/3400", show: ["data"] },
-  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", show: ["data"] },
-  { url: "https://www.canius.be/nl/kopen/leopoldsburg/appartement/hedendaags-app-met-3-slks-terras-autostaanplaats/3588", show: ["data"] },
-  { url: "https://www.canius.be/nl/kopen/sint-truiden/commercieel/gelijkvloerse-casco-kantoorruimte-van-314-m-met-tal-van-mogelijkheden/3618", show: ["data"] },
-  // Habicom: where its "in optie" / "verkocht" card labels live.
-  { url: "https://www.habicom.be/", show: ["links"] },
-  { url: "https://www.habicom.be/", needle: "optie", pages: 4, show: ["markup"] },
+  // Habicom: a "verkocht" card on the overview (link or not?), and how the overview pages.
+  { url: "https://www.habicom.be/nl/kopen", needle: "VERKOCHT", pages: 6, show: ["markup"] },
+  { url: "https://www.habicom.be/nl/kopen?page=2", show: ["links"] },
+  // Canius: the card of 3400 (OPTIE) and 3544 (VERKOCHT) on the overview.
+  { url: "https://www.canius.be/nl/kopen", needle: "/3400", pages: 6, show: ["markup"] },
+  { url: "https://www.canius.be/nl/kopen", needle: "/3544", pages: 6, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
