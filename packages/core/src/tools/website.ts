@@ -41,6 +41,8 @@ const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
 const RECHECK_LISTING = 20 * HOUR;
 /** Listings the agency still offers; the import page leaves out the rest (sold, rented, under option). */
+const whole = (n: number | null | undefined) => (n == null ? n : Math.round(n));
+
 /** Listings shown in the list: on offer, or under option (shown with that status, no bookings on the site). */
 const LISTED: ("draft" | "active" | "under_offer")[] = ["draft", "active", "under_offer"];
 /** Pages that weren't listings, or failed, are tried again after this. */
@@ -221,12 +223,13 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
     houseNumber: facts.houseNumber,
     postcode: facts.postcode,
     city: facts.city,
-    price: facts.price,
-    bedrooms: facts.bedrooms,
-    bathrooms: facts.bathrooms,
-    livingArea: facts.livingArea,
-    plotArea: facts.plotArea,
-    epcScore: facts.epcScore,
+    // Whole numbers in the database; sites give "34,5 m²".
+    price: whole(facts.price),
+    bedrooms: whole(facts.bedrooms),
+    bathrooms: whole(facts.bathrooms),
+    livingArea: whole(facts.livingArea),
+    plotArea: whole(facts.plotArea),
+    epcScore: whole(facts.epcScore),
     epcLabel: facts.epcLabel,
     websiteUrl: page.url,
   };
