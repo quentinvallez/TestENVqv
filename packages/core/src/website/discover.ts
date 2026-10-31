@@ -207,7 +207,11 @@ export async function continueDiscovery(
     }
     if (item.root) {
       // Cards too few to tell by their markup (an overview's last page), known by the template of the cards seen before.
-      for (const url of linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [])) if (!cards.includes(url) && inLanguage(url)) cards.push(url);
+      for (const url of linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [])) {
+        if (cards.includes(url) || !inLanguage(url)) continue;
+        cards.push(url);
+        if (process.env.WEBSITE_DEBUG) console.log(`${process.env.GITHUB_ACTIONS ? "::notice title=by template::" : "  [template] "}${url} on ${page.url}`);
+      }
       rememberShapes(discovery, cards);
     }
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
