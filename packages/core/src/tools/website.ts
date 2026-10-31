@@ -23,7 +23,7 @@ import {
   withoutVisitNumbers,
   type ExtractedListing,
 } from "../website/extract";
-import { listingFromPageData, pageDataUrl, withPageData } from "../website/page-data";
+import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../website/page-data";
 import { SiteReader } from "../website/reader";
 
 /*
@@ -41,6 +41,8 @@ const HOUR = 3600 * 1000;
 /** Listing pages are read again at most this often (prices and status change). */
 const RECHECK_LISTING = 20 * HOUR;
 /** Listings the agency still offers; the import page leaves out the rest (sold, rented, under option). */
+const whole = (n: number | null | undefined) => (n == null ? n : Math.round(n));
+
 /** Listings shown in the list: on offer, or under option (shown with that status, no bookings on the site). */
 const LISTED: ("draft" | "active" | "under_offer")[] = ["draft", "active", "under_offer"];
 /** Pages that weren't listings, or failed, are tried again after this. */
@@ -105,7 +107,7 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   // A page filled in by scripts (Gatsby): its facts are in the data file next to it.
   const dataUrl = pageDataUrl(fetched.html, fetched.url);
   const dataRead = dataUrl ? await reader.read(dataUrl) : null;
-  const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, fetched.url) : null;
+  const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, fetched.url) : listingFromFlightData(fetched.html, fetched.url);
   const text = pageText(fetched.html) + (pageData ? `\n${JSON.stringify(pageData)}` : "");
   // A new version of the rules reads every page again, even when it didn't change.
   const hash = `${EXTRACTION_VERSION}:${textFingerprint(text)}`;
@@ -221,12 +223,13 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
     houseNumber: facts.houseNumber,
     postcode: facts.postcode,
     city: facts.city,
-    price: facts.price,
-    bedrooms: facts.bedrooms,
-    bathrooms: facts.bathrooms,
-    livingArea: facts.livingArea,
-    plotArea: facts.plotArea,
-    epcScore: facts.epcScore,
+    // Whole numbers in the database; sites give "34,5 m²".
+    price: whole(facts.price),
+    bedrooms: whole(facts.bedrooms),
+    bathrooms: whole(facts.bathrooms),
+    livingArea: whole(facts.livingArea),
+    plotArea: whole(facts.plotArea),
+    epcScore: whole(facts.epcScore),
     epcLabel: facts.epcLabel,
     websiteUrl: page.url,
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyListing } from "./extract";
-import { listingFromPageData, pageDataUrl, withPageData } from "./page-data";
+import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "./page-data";
 
 const page = "https://www.immodyck.be/nl/kopen/deurne/ruim-en-licht-appartement-met-2-grote-slaapkamers-en-terras/5626/";
 
@@ -38,5 +38,33 @@ describe("pages filled in by scripts (Gatsby)", () => {
     expect(listingFromPageData(property("Nieuw"), rentalPage)!.status).toBeNull();
     const pageReading = { ...emptyListing(), transaction: "sale" as const, status: "active" as const, price: 850 };
     expect(withPageData(pageReading, optie)).toMatchObject({ transaction: "rent", status: "under_offer" });
+  });
+
+  it("reads the listing from the data a Next.js page sends along in its scripts (Omnicasa)", () => {
+    const url = "https://www.canius.be/nl/huren/nieuwerkerken/industrieel/kwalitatief-nieuwbouwbedrijfspand/3592/";
+    const property = { ID: 3592, Goal: 1, Street: "Ambachtstraat", HouseNumber: "1119", Zip: "3850", City: "NIEUWERKERKEN", PublishPrice: false, Price: 0, SubStatusName: "Actief", ManagerName: "Christophe Ivens", ManagerDirectPhone: "011 36 24 24", ManagerEmail: "christophe.ivens@canius.be", DescriptionA: "$66" };
+    const other = { ID: 3400, Street: "Elders", Zip: "3740", City: "MUNSTERBILZEN", Price: 1, ManagerName: "An Kempenaers" };
+    // The data comes in pieces, each a JSON string, and a piece may end in the middle of an object.
+    const flight = `5:["$","div",null,{"similar":[${JSON.stringify(other)}],"property":${JSON.stringify(property)}}]`;
+    const push = (part: string) => `<script>self.__next_f.push([1,${JSON.stringify(part)}])</script>`;
+    const html = `<html><body><h1>Pand</h1>${push(flight.slice(0, 120))}${push(flight.slice(120))}</body></html>`;
+    expect(listingFromFlightData(html, url)).toMatchObject({
+      reference: "3592", transaction: "rent", status: null, street: "Ambachtstraat", city: "Nieuwerkerken", price: null,
+      agentName: "Christophe Ivens", agentEmail: "christophe.ivens@canius.be", agentPhone: "+3211362424",
+    });
+    expect(listingFromFlightData("<html><body>Geen data</body></html>", url)).toBeNull();
+    // The data's agent wins over a line the page's rules took for a name.
+    const read = { ...emptyListing(), agentName: "Canius voor meer info" };
+    expect(withPageData(read, listingFromFlightData(html, url)!).agentName).toBe("Christophe Ivens");
+  });
+
+  it("reads the status from the label (Omnicasa)", () => {
+    const url = "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning/3400/";
+    const facts = (fields: Record<string, unknown>) =>
+      listingFromPageData(JSON.stringify({ property: { ID: 3400, Street: "Straat", Zip: "3740", City: "BILZEN", Price: 1, ...fields } }), url)!.status;
+    expect(facts({ Status: 1, SubStatus: 1, Marquee: 1, MarqueeName: "Nieuw", SubStatusName: "Nieuw" })).toBeNull();
+    expect(facts({ Status: 1, SubStatus: 3, Marquee: 2, MarqueeName: "Optie", SubStatusName: "Optie" })).toBe("under_offer");
+    expect(facts({ SubStatus: 1, MarqueeName: "Verkocht" })).toBe("sold");
+    expect(facts({ Status: 1, SubStatus: 2, Marquee: 0, MarqueeName: "", SubStatusName: "Actief" })).toBeNull();
   });
 });

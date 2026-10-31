@@ -47,13 +47,23 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   const id = new URL(pageUrl).pathname.match(/\/(\d{2,9})\/?$/)?.[1] ?? null;
   const p = findProperty(context, id) ?? (id ? null : findProperty(context, null));
   if (!p) return null;
+  return propertyFacts(p);
+}
+
+/** The label the site shows ("Optie", "Verkocht"; "Nieuw" or "Actief" say nothing about the status). */
+function omnicasaStatus(p: Property): ExtractedListing["status"] {
+  const label = statusFrom(text(p.SubStatusName), text(p.MarqueeName));
+  return label && label !== "active" ? label : null;
+}
+
+/** An Omnicasa property object as listing facts. */
+function propertyFacts(p: Property): Partial<ExtractedListing> {
   const photos = [p.LargePictures, p.XLargePictures, p.SmallPictures].find((v): v is string[] => Array.isArray(v) && v.length > 0) ?? [];
   const phone = text(p.ManagerMobilePhone) ?? text(p.ManagerDirectPhone);
   return {
     reference: p.ID != null ? String(p.ID) : null,
     transaction: p.Goal === 0 ? "sale" : p.Goal === 1 ? "rent" : null,
-    // The label the site shows on the listing's card and page ("Optie", "Verkocht"; "Nieuw" says nothing about it).
-    status: statusFrom(text(p.SubStatusName)),
+    status: omnicasaStatus(p),
     street: text(p.Street),
     houseNumber: text(p.HouseNumber),
     postcode: text(p.Zip),
@@ -71,12 +81,64 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   };
 }
 
-/** Fields of the data file that say more than any word on the page: the site's own sale or rent and its label. */
-const SITE_FIELDS: (keyof ExtractedListing)[] = ["transaction", "status"];
+/*
+ * Next.js sites (Omnicasa's newer ones among them) send the page's data along in script calls,
+ * self.__next_f.push([1,"…"]): the listing's own object, with the same fields, is in there.
+ */
+export function listingFromFlightData(html: string, pageUrl: string): Partial<ExtractedListing> | null {
+  const p = flightProperty(html, pageUrl);
+  return p ? propertyFacts(p) : null;
+}
+
+/** The listing's own object in a Next.js page's script data. */
+export function flightProperty(html: string, pageUrl: string): Property | null {
+  const chunks = [...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)];
+  if (!chunks.length) return null;
+  let data = "";
+  for (const chunk of chunks) {
+    try {
+      data += JSON.parse(chunk[1]!) as string;
+    } catch {
+      // A chunk JSON can't read: leave it out.
+    }
+  }
+  const id = new URL(pageUrl).pathname.match(/\/(\d{2,9})\/?$/)?.[1] ?? null;
+  if (!id || !data.includes('"ManagerName"')) return null;
+  // The smallest object holding the listing's fields: walk the data once, keeping where each open object started.
+  const starts: number[] = [];
+  let inString = false;
+  for (let i = 0; i < data.length; i++) {
+    const c = data[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") starts.push(i);
+    else if (c === "}") {
+      const start = starts.pop();
+      if (start == null || i - start > 100_000) continue;
+      const slice = data.slice(start, i + 1);
+      if (!slice.includes('"ManagerName"') || !slice.includes(`"ID":${id}`)) continue;
+      try {
+        const p = findProperty(JSON.parse(slice), id);
+        if (p) return p;
+      } catch {
+        // Not a whole object on its own.
+      }
+    }
+  }
+  return null;
+}
 
 /**
- * What the page shows filled in with what its data file gives, the page's own reading first, except for sale or rent
- * and the status: the page of a script-built site holds only its menu ("Kopen", "Huren"), not the listing's label.
+ * Fields of the data file that say more than any word on the page: the site's own sale or rent, its label and the
+ * listing's agent (the page's rules may take a line such as "Canius voor meer info" for a name).
+ */
+const SITE_FIELDS: (keyof ExtractedListing)[] = ["transaction", "status", "agentName", "agentEmail", "agentPhone"];
+
+/**
+ * What the page shows filled in with what its data file gives, the page's own reading first, except for the site
+ * fields above: the page of a script-built site holds only its menu ("Kopen", "Huren"), not the listing's label.
  */
 export function withPageData(listing: ExtractedListing, data: Partial<ExtractedListing>): ExtractedListing {
   const merged = { ...listing };

@@ -67,13 +67,15 @@ describe.skipIf(!process.env.DATABASE_URL)("listings from the agency's website",
   });
 
   it("updates a changed price and archives a listing whose page is gone", async () => {
-    site.set(houseUrl, { status: 200, html: listingPage({ title: "Ruime woning te koop in Berchem", price: "€ 475.000", ref: "7900001", address: "Statiestraat 10, 2600 Berchem", agent: "Sofie Peeters" }) });
+    // An area with a decimal ("34,5 m²") is stored as a whole number.
+    site.set(houseUrl, { status: 200, html: listingPage({ title: "Ruime woning te koop in Berchem", price: "€ 475.000", ref: "7900001", address: "Statiestraat 10, 2600 Berchem", agent: "Sofie Peeters" }).replace("160 m²", "160,6 m²") });
     site.delete(flatUrl);
     await db.update(schema.websitePages).set({ lastCheckedAt: new Date(Date.now() - 2 * 86400000) }).where(eq(schema.websitePages.agencyId, agencyId));
     const summary = await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
     expect(summary).toMatchObject({ created: 0, updated: 1, removed: 1 });
     const rows = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900001")));
     expect(rows[0]!.price).toBe(475000);
+    expect(rows[0]!.livingArea).toBe(161);
     const [flat] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "7900002")));
     expect(flat!.status).toBe("archived");
   });
