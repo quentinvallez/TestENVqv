@@ -21,12 +21,9 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // canius.be: OPTIE / VERKOCHT badges; the words aren't in the page. Compare the status fields of an on-offer (3618),
-  // an "OPTIE" (3400, Munsterbilzen) and a "VERKOCHT" (3544, Bilzen-Hoeselt) listing.
-  { url: "https://www.canius.be/nl/kopen/sint-truiden/commercieel/gelijkvloerse-casco-kantoorruimte-van-314-m-met-tal-van-mogelijkheden/3618", needle: "SubstatusDate", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", needle: "SubstatusDate", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", needle: "SubStatusName", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen", needle: "referenties/munsterbilzen", show: ["markup"] },
+  // canius.be: an "OPTIE" (3400) and a "VERKOCHT" (3544) listing have the same status fields on their own page;
+  // see what the overview's card data says about each (pages: how many places to show).
+  { url: "https://www.canius.be/nl/kopen", needle: "3544", pages: 8, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
@@ -87,9 +84,9 @@ async function main() {
       if (look.show.includes("markup")) {
         const body = clean(html);
         const i = look.needle ? body.indexOf(look.needle) : Math.max(0, body.search(/<main\b/i));
-        if (look.needle && i < 0) {
+        if (look.needle && (i < 0 || look.pages)) {
           // Only inside a script (data for the page's scripts): show each place in the raw page.
-          for (let at = html.indexOf(look.needle), n = 0; at >= 0 && n < 3; at = html.indexOf(look.needle, at + 1), n++) console.log(`in a script: ${html.slice(Math.max(0, at - 1200), at + 400)}`);
+          for (let at = html.indexOf(look.needle), n = 0; at >= 0 && n < (look.pages ?? 3); at = html.indexOf(look.needle, at + 1), n++) console.log(`in a script: ${html.slice(Math.max(0, at - 1200), at + 400)}`);
         } else console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
       }
       if (look.show.includes("text")) {
