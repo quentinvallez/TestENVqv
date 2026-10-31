@@ -22,7 +22,7 @@ type Look = {
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
   // canius.be: OPTIE / VERKOCHT badges on the cards.
-  { url: "https://www.canius.be/nl/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning-met-3-slks-tuin/3400", needle: "ptie", show: ["markup"] },
   { url: "https://www.canius.be/nl/", needle: "ptie", show: ["markup"] },
   { url: "https://www.canius.be/nl/", needle: "erkocht", show: ["markup"] },
 ];
@@ -85,7 +85,10 @@ async function main() {
       if (look.show.includes("markup")) {
         const body = clean(html);
         const i = look.needle ? body.indexOf(look.needle) : Math.max(0, body.search(/<main\b/i));
-        console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
+        if (look.needle && i < 0) {
+          // Only inside a script (data for the page's scripts): show each place in the raw page.
+          for (let at = html.indexOf(look.needle), n = 0; at >= 0 && n < 3; at = html.indexOf(look.needle, at + 1), n++) console.log(`in a script: ${html.slice(Math.max(0, at - 1200), at + 400)}`);
+        } else console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
       }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);
