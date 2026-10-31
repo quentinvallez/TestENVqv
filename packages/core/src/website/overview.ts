@@ -299,7 +299,7 @@ export function cardStatuses(html: string, pageUrl: string, cards: string[]): Ma
 }
 
 /** Path parts of a site's section for past sales ("referenties", "verkocht"), with what they say about a listing in it. */
-const REFERENCE_SECTION = /\/(referenties|references|r[ée]f[ée]rences|realisaties|r[ée]alisations|verkocht|vendus?|sold|verhuurd|lou[ée]s)\/(?:[^"'\s<>]*\/)?(\d{2,9})\/?(?=["'\\\s<>?#])/gi;
+export const REFERENCE_SECTION = /\/(referenties|references|r[ée]f[ée]rences|realisaties|r[ée]alisations|verkocht|vendus?|sold|verhuurd|lou[ée]s)\/(?:[^"'\s<>]*\/)?(\d{2,9})\/?(?=["'\\\s<>?#])/gi;
 
 /**
  * Cards whose listing the page also places in the site's past-sales section: the card links the listing under "kopen",

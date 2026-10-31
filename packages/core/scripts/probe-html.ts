@@ -4,6 +4,7 @@
  * Run: npx tsx packages/core/scripts/probe-html.ts [words of the site addresses]
  */
 import { flightProperty } from "../src/website/page-data";
+import { REFERENCE_SECTION } from "../src/website/overview";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
@@ -17,17 +18,14 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data")[];
+  show: ("markup" | "text" | "links" | "data" | "refs")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Habicom: a "verkocht" card on the overview (link or not?), and how the overview pages.
-  { url: "https://www.habicom.be/nl/kopen", needle: "VERKOCHT", pages: 6, show: ["markup"] },
-  { url: "https://www.habicom.be/nl/kopen?page=2", show: ["links"] },
-  // Canius: the card of 3400 (OPTIE) and 3544 (VERKOCHT) on the overview.
-  { url: "https://www.canius.be/nl/kopen", needle: "/3400", pages: 6, show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen", needle: "/3544", pages: 6, show: ["markup"] },
+  // Canius: every address in the overview under its references section.
+  { url: "https://www.canius.be/nl/kopen", show: ["refs"] },
+  { url: "https://www.canius.be/nl/huren", show: ["refs"] },
 ];
 
 const clean = (html: string) =>
@@ -92,6 +90,9 @@ async function main() {
           // Only inside a script (data for the page's scripts): show each place in the raw page.
           for (let at = html.indexOf(look.needle), n = 0; at >= 0 && n < (look.pages ?? 3); at = html.indexOf(look.needle, at + 1), n++) console.log(`in a script: ${html.slice(Math.max(0, at - 1200), at + 400)}`);
         } else console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
+      }
+      if (look.show.includes("refs")) {
+        for (const m of html.matchAll(REFERENCE_SECTION)) console.log(`ref ${m[1]} ${m[2]}: ${m[0].slice(0, 300)}`);
       }
       if (look.show.includes("data")) {
         const p = flightProperty(html, read.url);
