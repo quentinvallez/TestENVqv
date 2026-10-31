@@ -53,5 +53,8 @@ describe("pages filled in by scripts (Gatsby)", () => {
       agentName: "Christophe Ivens", agentEmail: "christophe.ivens@canius.be", agentPhone: "+3211362424",
     });
     expect(listingFromFlightData("<html><body>Geen data</body></html>", url)).toBeNull();
+    // The data's agent wins over a line the page's rules took for a name.
+    const read = { ...emptyListing(), agentName: "Canius voor meer info" };
+    expect(withPageData(read, listingFromFlightData(html, url)!).agentName).toBe("Christophe Ivens");
   });
 });

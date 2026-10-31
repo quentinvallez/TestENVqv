@@ -119,12 +119,15 @@ export function listingFromFlightData(html: string, pageUrl: string): Partial<Ex
   return null;
 }
 
-/** Fields of the data file that say more than any word on the page: the site's own sale or rent and its label. */
-const SITE_FIELDS: (keyof ExtractedListing)[] = ["transaction", "status"];
+/**
+ * Fields of the data file that say more than any word on the page: the site's own sale or rent, its label and the
+ * listing's agent (the page's rules may take a line such as "Canius voor meer info" for a name).
+ */
+const SITE_FIELDS: (keyof ExtractedListing)[] = ["transaction", "status", "agentName", "agentEmail", "agentPhone"];
 
 /**
- * What the page shows filled in with what its data file gives, the page's own reading first, except for sale or rent
- * and the status: the page of a script-built site holds only its menu ("Kopen", "Huren"), not the listing's label.
+ * What the page shows filled in with what its data file gives, the page's own reading first, except for the site
+ * fields above: the page of a script-built site holds only its menu ("Kopen", "Huren"), not the listing's label.
  */
 export function withPageData(listing: ExtractedListing, data: Partial<ExtractedListing>): ExtractedListing {
   const merged = { ...listing };

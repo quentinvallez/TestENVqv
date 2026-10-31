@@ -21,9 +21,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // canius.be: an "OPTIE" (3400) and a "VERKOCHT" (3544) listing have the same status fields on their own page;
-  // see what the overview's card data says about each (pages: how many places to show).
-  { url: "https://www.canius.be/nl/kopen", needle: "3544", pages: 8, show: ["markup"] },
+  // Omnicasa's SubStatus number on other sites: on offer, "Nieuw" and "Optie" listings (immodyck huren: 5486 Nieuw,
+  // 5623 and 4936 Optie; immofrance 829 Optie, 826 on offer).
+  { url: "https://www.immodyck.be/page-data/nl/huren/page-data.json", needle: "\"SubStatus\":", pages: 3, show: ["markup"] },
+  { url: "https://www.immofrance.be/nl/te-koop/flobecq/huis/woning-met-loodsen-op-3-hectare/829", needle: "SubstatusDate", pages: 1, show: ["markup"] },
+  { url: "https://www.immofrance.be/nl/te-koop/ellezelles/huis/elegante-villa-uitstekend-comfort-op-5326m2/826", needle: "SubstatusDate", pages: 1, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
