@@ -22,10 +22,9 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius: picture names of OPTIE (3400), VERKOCHT (3544) and on-offer (3588) listings.
-  { url: "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning-met-3-slks-tuin/3400", show: ["data"] },
-  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", show: ["data"] },
-  { url: "https://www.canius.be/nl/kopen/leopoldsburg/appartement/hedendaags-app-met-3-slks-terras-autostaanplaats/3588", show: ["data"] },
+  // Canius 3583: only in the sitemap, read as "not a listing". Why?
+  { url: "https://www.canius.be/nl/kopen/borgloon/huis/nieuwbouwwoning-4-slpks-carport-en-kelder/3583", show: ["text", "data"] },
+  { url: "https://www.canius.be/nl/kopen", needle: "3583", pages: 6, show: ["markup"] },
 ];
 
 const clean = (html: string) =>
