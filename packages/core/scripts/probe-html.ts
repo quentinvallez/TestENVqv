@@ -21,11 +21,12 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // canius.be: OPTIE / VERKOCHT badges on the cards; the words aren't in the page, so look for the fields behind them.
-  { url: "https://www.canius.be/nl/kopen", needle: "OPTIE", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen", needle: "Optie", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen", needle: "\\\"SubStatus\\\":", show: ["markup"] },
-  { url: "https://www.canius.be/nl/kopen/sint-truiden/commercieel/gelijkvloerse-casco-kantoorruimte-van-314-m-met-tal-van-mogelijkheden/3618", needle: "SubStatusName", show: ["markup"] },
+  // canius.be: OPTIE / VERKOCHT badges; the words aren't in the page. Compare the status fields of an on-offer (3618),
+  // an "OPTIE" (3400, Munsterbilzen) and a "VERKOCHT" (3544, Bilzen-Hoeselt) listing.
+  { url: "https://www.canius.be/nl/kopen/sint-truiden/commercieel/gelijkvloerse-casco-kantoorruimte-van-314-m-met-tal-van-mogelijkheden/3618", needle: "SubstatusDate", show: ["markup"] },
+  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", needle: "SubstatusDate", show: ["markup"] },
+  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", needle: "SubStatusName", show: ["markup"] },
+  { url: "https://www.canius.be/nl/kopen", needle: "referenties/munsterbilzen", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
