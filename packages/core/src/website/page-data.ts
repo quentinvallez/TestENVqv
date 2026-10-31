@@ -50,16 +50,10 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   return propertyFacts(p);
 }
 
-/**
- * The status the site shows: its label ("Optie", "Verkocht"; "Nieuw" or "Actief" say nothing about it), else the
- * status number. 1 is on offer; offices number the others differently (Immofrance's "Optie" is 3, Canius gives 2 to
- * both its "OPTIE" and "VERKOCHT" listings without a label in the data), so any other number counts as under option:
- * kept in the list, no bookings.
- */
+/** The label the site shows ("Optie", "Verkocht"; "Nieuw" or "Actief" say nothing about the status). */
 function omnicasaStatus(p: Property): ExtractedListing["status"] {
   const label = statusFrom(text(p.SubStatusName), text(p.MarqueeName));
-  if (label && label !== "active") return label;
-  return typeof p.SubStatus === "number" && p.SubStatus > 1 ? "under_offer" : null;
+  return label && label !== "active" ? label : null;
 }
 
 /** An Omnicasa property object as listing facts. */
@@ -92,6 +86,12 @@ function propertyFacts(p: Property): Partial<ExtractedListing> {
  * self.__next_f.push([1,"…"]): the listing's own object, with the same fields, is in there.
  */
 export function listingFromFlightData(html: string, pageUrl: string): Partial<ExtractedListing> | null {
+  const p = flightProperty(html, pageUrl);
+  return p ? propertyFacts(p) : null;
+}
+
+/** The listing's own object in a Next.js page's script data. */
+export function flightProperty(html: string, pageUrl: string): Property | null {
   const chunks = [...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)];
   if (!chunks.length) return null;
   let data = "";
@@ -121,7 +121,7 @@ export function listingFromFlightData(html: string, pageUrl: string): Partial<Ex
       if (!slice.includes('"ManagerName"') || !slice.includes(`"ID":${id}`)) continue;
       try {
         const p = findProperty(JSON.parse(slice), id);
-        if (p) return propertyFacts(p);
+        if (p) return p;
       } catch {
         // Not a whole object on its own.
       }

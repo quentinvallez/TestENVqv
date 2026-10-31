@@ -3,6 +3,7 @@
  * cards, badges and prices are built before writing rules for them. Stores nothing.
  * Run: npx tsx packages/core/scripts/probe-html.ts [words of the site addresses]
  */
+import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
@@ -16,11 +17,16 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links")[];
+  show: ("markup" | "text" | "links" | "data")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
+  // Canius: every field of the listing data, OPTIE (3400), VERKOCHT (3544), on offer (3588, 3618).
+  { url: "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning-met-3-slks-tuin/3400", show: ["data"] },
+  { url: "https://www.canius.be/nl/kopen/bilzen-hoeselt/huis/landelijke-hob-met-3-slks-tuin/3544", show: ["data"] },
+  { url: "https://www.canius.be/nl/kopen/leopoldsburg/appartement/hedendaags-app-met-3-slks-terras-autostaanplaats/3588", show: ["data"] },
+  { url: "https://www.canius.be/nl/kopen/sint-truiden/commercieel/gelijkvloerse-casco-kantoorruimte-van-314-m-met-tal-van-mogelijkheden/3618", show: ["data"] },
   // Habicom: where its "in optie" / "verkocht" card labels live.
   { url: "https://www.habicom.be/", show: ["links"] },
   { url: "https://www.habicom.be/", needle: "optie", pages: 4, show: ["markup"] },
@@ -88,6 +94,11 @@ async function main() {
           // Only inside a script (data for the page's scripts): show each place in the raw page.
           for (let at = html.indexOf(look.needle), n = 0; at >= 0 && n < (look.pages ?? 3); at = html.indexOf(look.needle, at + 1), n++) console.log(`in a script: ${html.slice(Math.max(0, at - 1200), at + 400)}`);
         } else console.log(`markup: ${body.slice(Math.max(0, i - 1500), i + 1500)}`);
+      }
+      if (look.show.includes("data")) {
+        const p = flightProperty(html, read.url);
+        const flat = p && Object.fromEntries(Object.entries(p).filter(([, v]) => v == null || typeof v !== "object").map(([k, v]) => [k, typeof v === "string" && v.length > 80 ? `${v.slice(0, 80)}…` : v]));
+        console.log(`data: ${JSON.stringify(flat)}`);
       }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);

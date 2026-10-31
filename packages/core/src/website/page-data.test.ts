@@ -58,14 +58,13 @@ describe("pages filled in by scripts (Gatsby)", () => {
     expect(withPageData(read, listingFromFlightData(html, url)!).agentName).toBe("Christophe Ivens");
   });
 
-  it("reads the status from the label, else from the status number (Omnicasa)", () => {
+  it("reads the status from the label (Omnicasa)", () => {
     const url = "https://www.canius.be/nl/kopen/munsterbilzen/huis/moderne-woning/3400/";
     const facts = (fields: Record<string, unknown>) =>
       listingFromPageData(JSON.stringify({ property: { ID: 3400, Street: "Straat", Zip: "3740", City: "BILZEN", Price: 1, ...fields } }), url)!.status;
     expect(facts({ Status: 1, SubStatus: 1, Marquee: 1, MarqueeName: "Nieuw", SubStatusName: "Nieuw" })).toBeNull();
     expect(facts({ Status: 1, SubStatus: 3, Marquee: 2, MarqueeName: "Optie", SubStatusName: "Optie" })).toBe("under_offer");
     expect(facts({ SubStatus: 1, MarqueeName: "Verkocht" })).toBe("sold");
-    // Canius: no label in the data, only a status number other than "on offer".
-    expect(facts({ Status: 1, SubStatus: 2, Marquee: 0, MarqueeName: "", SubStatusName: "Actief" })).toBe("under_offer");
+    expect(facts({ Status: 1, SubStatus: 2, Marquee: 0, MarqueeName: "", SubStatusName: "Actief" })).toBeNull();
   });
 });
