@@ -22,9 +22,9 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius 3583: only in the sitemap, read as "not a listing". Why?
-  { url: "https://www.canius.be/nl/kopen/borgloon/huis/nieuwbouwwoning-4-slpks-carport-en-kelder/3583", show: ["text", "data"] },
-  { url: "https://www.canius.be/nl/kopen", needle: "3583", pages: 6, show: ["markup"] },
+  // Canius: where the overview shows 3583 (Langesteeg 12), page by page.
+  { url: "https://www.canius.be/nl/kopen", needle: "/3583", pages: 10, show: ["links", "markup"] },
+  { url: "https://www.canius.be/nl/kopen", show: ["links"] },
 ];
 
 const clean = (html: string) =>
