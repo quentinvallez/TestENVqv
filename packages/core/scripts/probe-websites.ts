@@ -180,7 +180,7 @@ async function probe(site: string) {
     if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });
     if (page.url !== url && home(page.url)) return outcome.set(url, { status: "offline", why: `sent to ${page.url}` });
     if (isRemovedListingPage(listing, page.html)) return outcome.set(url, { status: "offline", why: short(text.split("\n").find((l) => /niet (meer|langer)|plus disponible|no longer|verkocht|verhuurd/i.test(l)) ?? "", 100) });
-    if (!isListingPage(listing, page.html, shownOnOverview)) return outcome.set(url, { status: "not a listing", why: title });
+    if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
     return outcome.set(url, { status, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
