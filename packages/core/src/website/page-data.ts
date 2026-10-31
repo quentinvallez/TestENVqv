@@ -50,6 +50,18 @@ export function listingFromPageData(json: string, pageUrl: string): Partial<Extr
   return propertyFacts(p);
 }
 
+/**
+ * The status the site shows: its label ("Optie", "Verkocht"; "Nieuw" or "Actief" say nothing about it), else the
+ * status number. 1 is on offer; offices number the others differently (Immofrance's "Optie" is 3, Canius gives 2 to
+ * both its "OPTIE" and "VERKOCHT" listings without a label in the data), so any other number counts as under option:
+ * kept in the list, no bookings.
+ */
+function omnicasaStatus(p: Property): ExtractedListing["status"] {
+  const label = statusFrom(text(p.SubStatusName), text(p.MarqueeName));
+  if (label && label !== "active") return label;
+  return typeof p.SubStatus === "number" && p.SubStatus > 1 ? "under_offer" : null;
+}
+
 /** An Omnicasa property object as listing facts. */
 function propertyFacts(p: Property): Partial<ExtractedListing> {
   const photos = [p.LargePictures, p.XLargePictures, p.SmallPictures].find((v): v is string[] => Array.isArray(v) && v.length > 0) ?? [];
@@ -57,8 +69,7 @@ function propertyFacts(p: Property): Partial<ExtractedListing> {
   return {
     reference: p.ID != null ? String(p.ID) : null,
     transaction: p.Goal === 0 ? "sale" : p.Goal === 1 ? "rent" : null,
-    // The label the site shows on the listing's card and page ("Optie", "Verkocht"; "Nieuw" says nothing about it).
-    status: statusFrom(text(p.SubStatusName)),
+    status: omnicasaStatus(p),
     street: text(p.Street),
     houseNumber: text(p.HouseNumber),
     postcode: text(p.Zip),
