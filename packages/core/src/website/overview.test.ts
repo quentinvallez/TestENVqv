@@ -157,4 +157,20 @@ describe("the status a card shows", () => {
     const html = `<body><nav><a href="/verkocht">Verkocht</a></nav><main><div><a href="/te-koop/gent/woning/97001">Woning</a></div></main></body>`;
     expect(cardStatuses(html, `${site}/kopen`, [`${site}/te-koop/gent/woning/97001`]).size).toBe(0);
   });
+
+  it("counts a card as under option when the page lists its listing in the site's references", () => {
+    const site = "https://www.canius.be";
+    const card = (id: number, slug: string) =>
+      `<div class="card"><a href="/nl/kopen/bilzen/huis/${slug}/${id}/"><img alt="${slug}"><span>€ 316.115</span><span>3 slaapkamers</span></a></div>`;
+    const ld = {
+      "@type": "ItemList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, url: `${site}/nl/kopen/sint-truiden/huis/woning/3618/` },
+        { "@type": "ListItem", position: 2, url: `${site}/nl/referenties/munsterbilzen/huis/moderne-woning/3400/` },
+      ],
+    };
+    const html = `<script type="application/ld+json">${JSON.stringify(ld)}</script><main>${card(3618, "woning")}${card(3400, "moderne-woning")}${card(3588, "app")}</main>`;
+    const cards = [3618, 3400, 3588].map((id, i) => `${site}/nl/kopen/bilzen/huis/${["woning", "moderne-woning", "app"][i]}/${id}`);
+    expect(Object.fromEntries(cardStatuses(html, `${site}/nl/kopen`, cards))).toEqual({ [cards[1]!]: "under_offer" });
+  });
 });
