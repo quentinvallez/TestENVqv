@@ -23,7 +23,7 @@ import {
   withoutVisitNumbers,
   type ExtractedListing,
 } from "../website/extract";
-import { listingFromPageData, pageDataUrl, withPageData } from "../website/page-data";
+import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../website/page-data";
 import { SiteReader } from "../website/reader";
 
 /*
@@ -107,7 +107,7 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   // A page filled in by scripts (Gatsby): its facts are in the data file next to it.
   const dataUrl = pageDataUrl(fetched.html, fetched.url);
   const dataRead = dataUrl ? await reader.read(dataUrl) : null;
-  const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, fetched.url) : null;
+  const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, fetched.url) : listingFromFlightData(fetched.html, fetched.url);
   const text = pageText(fetched.html) + (pageData ? `\n${JSON.stringify(pageData)}` : "");
   // A new version of the rules reads every page again, even when it didn't change.
   const hash = `${EXTRACTION_VERSION}:${textFingerprint(text)}`;

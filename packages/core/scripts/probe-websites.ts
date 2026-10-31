@@ -10,7 +10,7 @@ import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
 import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
-import { listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
+import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
 // Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius since 2026-10-31).
@@ -171,7 +171,7 @@ async function probe(site: string) {
     if (!("html" in page)) return outcome.set(url, { status: "unreadable", why: page.error });
     const dataUrl = pageDataUrl(page.html, page.url);
     const dataRead = dataUrl ? await reader.read(dataUrl) : null;
-    const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, page.url) : null;
+    const pageData = dataRead && "html" in dataRead && dataRead.status === 200 ? listingFromPageData(dataRead.html, page.url) : listingFromFlightData(page.html, page.url);
     const read = extractListing(page.html, page.url, boilerplate).listing;
     const listing = pageData ? withPageData(read, pageData) : read;
     const text = pageText(page.html);
