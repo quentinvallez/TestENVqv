@@ -21,11 +21,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // "trung" sites (Omnicasa): statuses and sale/rent in the overview's and listings' data files.
-  { url: "https://www.immodyck.be/page-data/nl/huren/page-data.json", needle: "5623", show: ["markup"] },
-  { url: "https://www.immodyck.be/page-data/nl/huren/page-data.json", needle: "5486", show: ["markup"] },
-  { url: "https://www.immodyck.be/sitemap/sitemap-0.xml", needle: "huren/", show: ["markup"] },
-  { url: "https://www.immodyck.be/nl/huren/", show: ["links"] },
+  // canius.be: OPTIE / VERKOCHT badges on the cards.
+  { url: "https://www.canius.be/nl/", show: ["links"] },
+  { url: "https://www.canius.be/nl/", needle: "ptie", show: ["markup"] },
+  { url: "https://www.canius.be/nl/", needle: "erkocht", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
