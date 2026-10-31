@@ -54,6 +54,22 @@ describe("searching a site for its listing pages", () => {
     expect(state.discovery.doneAt).toBeTruthy();
   });
 
+  it("keeps a lone card on an overview's last page, known by the template of the cards before it", async () => {
+    // Short ids don't make an address look like a listing; three or more cards are told by their markup, one is not.
+    const card = (id: number) => `<div class="card"><a class="card-link" href="/nl/kopen/borgloon/huis/woning-${id}/${id}"><h3>Woning</h3><p>€ 315.000 · 3 slaapkamers · 120 m²</p></a></div>`;
+    const list = (ids: number[]) => `<main><section class="grid">${ids.map(card).join("")}</section></main>`;
+    const { reader, hooks, found } = fakeSite({
+      "/": `<nav><a href="/nl/kopen">Kopen</a></nav>`,
+      "/nl/kopen": `${list([3601, 3602, 3603, 3604])}<a href="/nl/kopen/page-2">2</a><a href="/nl/kopen/page-3">3</a>`,
+      "/nl/kopen/page-2": `${list([3583])}<a href="/nl/kopen/page-3">3</a>`,
+      "/nl/kopen/page-3": `<main><p>Geen resultaten</p></main>`,
+    });
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect([...found.keys()]).toContain(`${site}/nl/kopen/borgloon/huis/woning-3583/3583`);
+    expect(state.overviews[0]).toMatchObject({ url: `${site}/nl/kopen`, found: 5 });
+  });
+
   it("tries the usual page addresses when an overview shows fewer listings than it says and no way to the next page", async () => {
     const { reader, hooks, found, read } = fakeSite({
       "/": `<a href="/huren">Te huur</a>`,

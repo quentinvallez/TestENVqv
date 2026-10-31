@@ -301,6 +301,22 @@ export function cardStatuses(html: string, pageUrl: string, cards: string[]): Ma
 const LISTING_FACTS = /€\s?\d|\d\s?€|\d\s?(?:m²|m2\b)|\b(?:slaapkamers?|slpk|chambres?|bedrooms?|prijs|prix|loyer|huurprijs|vraagprijs|op aanvraag|sur demande)\b/i;
 
 /**
+ * Links in a page's content (not its menu, header or footer) that follow a template the site's listing cards were
+ * already seen with. An overview's last page can show one or two cards: too few to tell them by their markup, and an
+ * older listing's short id ("/kopen/borgloon/huis/nieuwbouwwoning/3583") doesn't make an address look like a listing.
+ */
+export function linksWithShapes(html: string, pageUrl: string, site: string, shapes: readonly string[]): string[] {
+  if (!shapes.length) return [];
+  const known = new Set(shapes);
+  const found = new Set<string>();
+  for (const a of anchorsOf(html, pageUrl).anchors) {
+    if (!sameSite(a.url, site) || a.around.some((e) => ["nav", "header", "footer", "aside"].includes(e.name)) || pageNumber(a.url)) continue;
+    if (a.url !== normalizeUrl(pageUrl) && known.has(urlShape(a.url))) found.add(a.url);
+  }
+  return [...found];
+}
+
+/**
  * Listing cards recognised by how the page is built, whatever their addresses look like ("/arlon-app-004-rue-du-camp"):
  * at least three links to different pages of the site, placed in elements of the same kind, whose cards show a price,
  * an area or rooms. Menus, headers and footers don't count.

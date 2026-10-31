@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -205,11 +205,20 @@ export async function continueDiscovery(
       await hooks.found([item.url, ...cards], null);
       continue;
     }
-    if (item.root) rememberShapes(discovery, cards);
+    if (item.root) {
+      // Cards too few to tell by their markup (an overview's last page), known by the template of the cards seen before.
+      for (const url of linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [])) {
+        if (cards.includes(url) || !inLanguage(url)) continue;
+        cards.push(url);
+        if (process.env.WEBSITE_DEBUG) console.log(`${process.env.GITHUB_ACTIONS ? "::notice title=by template::" : "  [template] "}${url} on ${page.url}`);
+      }
+      rememberShapes(discovery, cards);
+    }
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
     // On a new-build overview, cards without a listing id below it are projects, read for their units.
     if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
     const fresh = await hooks.found(cards, item.root, item.root ? cardStatuses(page.html, page.url, cards) : undefined);
+    if (process.env.WEBSITE_DEBUG) console.log(`  [walk] ${page.url} root=${item.root ?? "-"} cards=${cards.length} new=${fresh.newToOverview}/${fresh.newToSite}`);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
     const projects = projectsRoot ? queueProjects(state, projectsRoot, page.html, page.url, cards, visited, reader, inLanguage) : [];
 

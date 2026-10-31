@@ -54,7 +54,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v9";
+const EXTRACTION_VERSION = "v10";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -121,7 +121,9 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   let extractedBy: "structured" | "rules" | "ai" = read.structured || pageData ? "structured" : "rules";
   // Some sites keep a removed listing's page up with a notice instead of a 404.
   if (isRemovedListingPage(listing, fetched.html)) return removePage(ctx, page, now);
-  let isListing = isListingPage(listing, fetched.html, shownOnOverview);
+  // The listing's own data object in the page (matched by its id) says it is one listing, even when it is on no overview.
+  const ownData = pageData != null && /\/\d{2,9}\/?$/.test(new URL(fetched.url).pathname);
+  let isListing = isListingPage(listing, fetched.html, shownOnOverview || ownData);
   const knownAgent = matchAgent(team, listing.agentName, text);
   const missing = missingKeyFacts(listing).filter((field) => !(field === "agentName" && knownAgent));
   if (useAi && aiAvailable() && (isListing || looksLikeListingUrl(page.url, site)) && missing.length > 1) {

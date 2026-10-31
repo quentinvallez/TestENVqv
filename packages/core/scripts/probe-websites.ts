@@ -47,6 +47,8 @@ const minutes = (name: string, fallback: number) => Number(process.env[name] ?? 
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
 const tally = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([k, v]) => `${k} ${v}`).join(", ");
 
+process.env.WEBSITE_DEBUG ??= "1";
+
 async function main() {
   const only = process.argv.slice(2);
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
@@ -124,6 +126,7 @@ async function probe(site: string) {
     `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, language ${discovery.language ?? "(none)"}, paging ${discovery.pagingKey ?? "-"}, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
   );
   console.log(`listing pages found: ${shownOn.size}, of which ${sitemapOnly.length} only in a sitemap`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages, ${sitemapOnly.length} only in a sitemap`);
   // What the importer keeps from the cards: their badge counts when the listing's own page says nothing else.
   const cardBadge = new Map<string, string>();
   for (const o of overviews) {
@@ -180,7 +183,7 @@ async function probe(site: string) {
     if (page.status >= 400) return outcome.set(url, { status: "offline", why: `HTTP ${page.status}` });
     if (page.url !== url && home(page.url)) return outcome.set(url, { status: "offline", why: `sent to ${page.url}` });
     if (isRemovedListingPage(listing, page.html)) return outcome.set(url, { status: "offline", why: short(text.split("\n").find((l) => /niet (meer|langer)|plus disponible|no longer|verkocht|verhuurd/i.test(l)) ?? "", 100) });
-    if (!isListingPage(listing, page.html, shownOnOverview)) return outcome.set(url, { status: "not a listing", why: title });
+    if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
     return outcome.set(url, { status, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
