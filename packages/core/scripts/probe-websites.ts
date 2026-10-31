@@ -47,6 +47,8 @@ const minutes = (name: string, fallback: number) => Number(process.env[name] ?? 
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
 const tally = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([k, v]) => `${k} ${v}`).join(", ");
 
+process.env.WEBSITE_DEBUG ??= "1";
+
 async function main() {
   const only = process.argv.slice(2);
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
