@@ -22,9 +22,13 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius: where the overview shows 3583 (Langesteeg 12), page by page.
-  { url: "https://www.canius.be/nl/kopen", needle: "/3583", pages: 10, show: ["links", "markup"] },
-  { url: "https://www.canius.be/nl/kopen", show: ["links"] },
+  // Canius: the listing links on each page of the for-sale overview.
+  { url: "https://www.canius.be/nl/kopen/page-2/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/page-3/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/page-4/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/page-5/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/page-6/", show: ["links"] },
+  { url: "https://www.canius.be/nl/kopen/page-7/", show: ["links"] },
 ];
 
 const clean = (html: string) =>
