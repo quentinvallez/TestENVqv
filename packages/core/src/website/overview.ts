@@ -294,35 +294,7 @@ export function cardStatuses(html: string, pageUrl: string, cards: string[]): Ma
     const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)));
     if (badge) statuses.set(url, badge[1]);
   }
-  for (const [url, badge] of referenceStatuses(html, cards)) if (!statuses.has(url)) statuses.set(url, badge);
   return statuses;
-}
-
-/** Path parts of a site's section for past sales ("referenties", "verkocht"), with what they say about a listing in it. */
-export const REFERENCE_SECTION = /\/(referenties|references|r[ée]f[ée]rences|realisaties|r[ée]alisations|verkocht|vendus?|sold|verhuurd|lou[ée]s)\/(?:[^"'\s<>]*\/)?(\d{2,9})\/?(?=["'\\\s<>?#])/gi;
-
-/**
- * Cards whose listing the page also places in the site's past-sales section: the card links the listing under "kopen",
- * while the page's own list of its items (structured data, script data) gives its address under "referenties"
- * (Canius: its OPTIE and VERKOCHT cards, whose labels are only drawn on the photo). "Verkocht" in that address says sold;
- * "referenties" doesn't say whether it is sold or under option, so it counts as under option: listed, no bookings.
- */
-function referenceStatuses(html: string, cards: string[]): Map<string, CardBadge> {
-  const byId = new Map<string, CardBadge>();
-  for (const m of html.matchAll(REFERENCE_SECTION)) {
-    const word = m[1]!.toLowerCase();
-    const badge: CardBadge = /^(verkocht|vendu|vendus|sold)$/.test(word) ? "sold" : /^(verhuurd|lou)/.test(word) ? "rented" : "under_offer";
-    if (!byId.has(m[2]!) || badge !== "under_offer") byId.set(m[2]!, badge);
-  }
-  const out = new Map<string, CardBadge>();
-  if (!byId.size) return out;
-  for (const url of cards) {
-    const path = new URL(url).pathname;
-    const id = path.match(/\/(\d{2,9})\/?$/)?.[1];
-    // A card that itself links into that section is a past sale the site shows on purpose; its own page says what it is.
-    if (id && byId.has(id) && !new RegExp(REFERENCE_SECTION.source, "i").test(`${path}"`)) out.set(url, byId.get(id)!);
-  }
-  return out;
 }
 
 /** What a listing card shows: a price, an area, rooms. */
