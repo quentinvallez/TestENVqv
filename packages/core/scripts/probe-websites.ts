@@ -13,7 +13,7 @@ import { cardStatuses, statedCount } from "../src/website/overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons and bytheway since 2026-11-01).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -33,9 +33,16 @@ const sites = [
   "https://www.canius.be/nl/",
   "https://www.habicom.be/",
   "https://www.urbainvastgoed.be/nl/",
+  "https://www.domestic.be/nl",
+  "https://www.palton.be/",
+  "https://www.valorvastgoed.be/",
+  "https://www.git.be/",
+  "https://www.lacledesmaisons.be/fr/",
+  "https://bytheway.immo/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
+  valorvastgoed: ["https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832975"],
   urbainvastgoed: ["https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/"],
   ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
   jurimex: [

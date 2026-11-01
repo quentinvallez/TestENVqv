@@ -22,10 +22,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Urbain Vastgoed: how the lone rental card 988 sits among the rented cards without a link.
-  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
-  // Habicom: rental 22342 ("in optie"), alone among the linked cards of rentals page 4.
-  { url: "https://www.habicom.be/nl/huren?page=4", show: ["cards"] },
+  // Whise sites Quentin tested on 2026-11-01: home menus, and the plot whose price per m² was read as its price.
+  { url: "https://www.domestic.be/nl", show: ["links"] },
+  { url: "https://www.lacledesmaisons.be/fr/", show: ["links"] },
+  { url: "https://bytheway.immo/", show: ["links"] },
+  { url: "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", needle: "€", show: ["markup", "text"] },
 ];
 
 const clean = (html: string) =>
