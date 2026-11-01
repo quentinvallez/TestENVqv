@@ -133,6 +133,23 @@ export function nextPageLinks(html: string, pageUrl: string): string[] {
     const n = pageNumber(url);
     if (n && n.number > current && firstPage(url) === base) out.set(url, n.number);
   }
+  // The link an infinite-scroll or "load more" script reads its next page from (Whise/Webulous: <div class="infinite-scroll">
+  // <a href="/fr/List/InfiniteScroll?json=…">, and "next page" at the end of each page it loads).
+  const here = new URL(pageUrl);
+  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]{0,200}?)<\/a>/gi)) {
+    const attrs = m[1]!;
+    const before = html.slice(Math.max(0, m.index! - 200), m.index);
+    const loader =
+      /^\s*(next page|page suivante|volgende pagina|meer laden|load more|plus de biens|meer panden)\s*$/i.test(pageText(m[2]!)) ||
+      /\bclass\s*=\s*["'][^"']*\b(infinite-scroll|jscroll-next|load-more|loadmore)\b/i.test(attrs) ||
+      /class\s*=\s*["'][^"']*\binfinite-scroll\b[^"']*["'][^>]*>\s*$/i.test(before);
+    if (!loader) continue;
+    const href = attrs.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const raw = href && decodeEntities(href[1] ?? href[2] ?? "");
+    if (!raw || raw.startsWith("#") || /^javascript:/i.test(raw)) continue;
+    const url = normalizeUrl(raw, pageUrl);
+    if (url && new URL(url).origin === here.origin && url !== normalizeUrl(pageUrl) && !out.has(url)) out.set(url, current + 1);
+  }
   return [...out].sort((a, b) => a[1] - b[1]).map(([url]) => url);
 }
 

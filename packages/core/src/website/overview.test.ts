@@ -181,4 +181,13 @@ describe("the status a card shows", () => {
     expect(statedPages(`<div data-page="1" data-pages="1">`)).toBe(null);
     expect(statedPages(`<div class="cards">`)).toBe(null);
   });
+
+  it("follows the link an infinite-scroll list loads its next page from", () => {
+    const site = "https://www.example.be";
+    const first = `<div class="estate-list"><div class="infinite-scroll"> <a href='/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D'></a></div></div>`;
+    expect(nextPageLinks(first, `${site}/fr/2/chercher-bien/a-vendre`)).toEqual([`${site}/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D`]);
+    const loaded = `<a href="/fr/bien/a-vendre/maison/5360-hamois/7914908" class="estate-card">x</a> <a href='/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3Afalse%7D'>next page</a>`;
+    expect(nextPageLinks(loaded, `${site}/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D`)).toEqual([`${site}/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3Afalse%7D`]);
+    expect(nextPageLinks(`<a class="next" href="#">next page</a><a href="/contact">Contact</a>`, `${site}/kopen`)).toEqual([]);
+  });
 });

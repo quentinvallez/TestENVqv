@@ -519,7 +519,8 @@ function titleTag(html: string): string | null {
 
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
-const notAPerson = /\b(immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
+// Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics").
+const notAPerson = /\b(facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -544,8 +545,8 @@ export function listingText(html: string, boilerplate?: Set<string>): string {
 }
 
 /**
- * An agent the listing's own text doesn't name isn't the listing's agent: a name from the site's data, its structured
- * data or Claude that the visitor never sees (or that only the footer shows) is left out, with that person's contact.
+ * An agent the page's text doesn't name isn't the listing's agent: a name Claude gives that the page doesn't show is
+ * left out, with that person's contact.
  */
 export function withShownAgent(listing: ExtractedListing, ownText: string): ExtractedListing {
   if (!listing.agentName) return listing;

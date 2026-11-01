@@ -10,6 +10,7 @@ import { openBrowser } from "../website/browser";
 import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
   extractListing,
+  withShownAgent,
   isListingPage,
   isRemovedListingPage,
   looksLikeListingUrl,
@@ -130,7 +131,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     try {
       const ai = await extractWithAi(page.url, text);
       isListing = ai.isListing || (shownOnOverview && isListing);
-      listing = mergeExtraction(listing, ai.listing);
+      // Claude only names an agent the page shows.
+      listing = withShownAgent(mergeExtraction(listing, ai.listing), text);
       extractedBy = "ai";
     } catch (error) {
       console.error(`Claude could not read ${page.url}`, error);

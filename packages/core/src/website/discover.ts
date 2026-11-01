@@ -293,6 +293,9 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   // A list that says it has more pages than it shows by address (a "load more" button) is short whatever we do next.
   const pages = statedPages(html);
   if (isFirst && pages != null && cardCount > 0) o.more = true;
+  // A further page (by its links, not a guess) showing only cards we have: the site gave the same page again, so we
+  // can't tell how many more it has.
+  if (!isFirst && !item.guess && o.via !== "guess" && fresh === 0 && cardCount >= 3) o.more = true;
 
   const queued = new Set(discovery.queue.map((q) => q.url));
   const unseen = (url: string | null): url is string => Boolean(url && !visited.has(url) && !queued.has(url) && url !== pageUrl);
