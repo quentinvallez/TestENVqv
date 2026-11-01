@@ -22,10 +22,9 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immo Sciara (Quentin's test site, 2026-11-01): pages whose price was read wrong or not at all.
-  { url: "https://www.immosciara.be/bien/a-vendre/immeuble-mixte/4031-liege-angleur/7792428", needle: "199", show: ["markup", "text"] },
-  { url: "https://www.immosciara.be/bien/a-vendre/appartement/4020-liege/7854244", needle: "175", show: ["markup"] },
-  { url: "https://www.immosciara.be/bien/a-vendre/appartement/4030-liege/7894945", needle: "119", show: ["markup", "text"] },
+  // Immotop rentals page 2 (Quentin's test site): two linked cards among unlinked "Loué" cards.
+  { url: "https://www.immotop.be/a-louer?page=2", show: ["cards"] },
+  { url: "https://www.immotop.be/a-louer?page=2", needle: "1392", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
