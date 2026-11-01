@@ -461,7 +461,7 @@ export const importWebsiteListings = defineTool({
     const people = await team(ctx);
     // Overviews read in full that hold what they state: a page only a sitemap lists is then an old one.
     const overviewsNow = state?.overviews ?? previous.overviews ?? [];
-    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && (o.stated == null || o.found >= o.stated));
+    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && !o.more && (o.stated == null || o.found >= o.stated));
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
     let checked = 0;
     for (const page of due) {

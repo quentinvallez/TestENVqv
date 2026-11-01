@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { cardStatuses, type CardBadge, firstPage, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -290,6 +290,9 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   // A page showing more cards than it says it has isn't saying how many it has.
   const said = statedTotal(html);
   if (o.stated == null && said != null && said >= cardCount) o.stated = said;
+  // A list that says it has more pages than it shows by address (a "load more" button) is short whatever we do next.
+  const pages = statedPages(html);
+  if (isFirst && pages != null && cardCount > 0) o.more = true;
 
   const queued = new Set(discovery.queue.map((q) => q.url));
   const unseen = (url: string | null): url is string => Boolean(url && !visited.has(url) && !queued.has(url) && url !== pageUrl);
@@ -323,6 +326,8 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
     }
   }
   discovery.queue.unshift(...next);
+  // Its pages were opened after all: it isn't short.
+  if (o.more && pages != null && o.pages >= pages) o.more = false;
   settle(state, root);
 }
 

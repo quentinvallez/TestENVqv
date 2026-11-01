@@ -144,7 +144,7 @@ async function probe(site: string) {
   const cardBadge = new Map<string, string>();
   const fewCards: string[] = [];
   for (const o of overviews) {
-    const verdict = o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`;
+    const verdict = (o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`) + (o.more ? ", says it has more pages (load more)" : "");
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);

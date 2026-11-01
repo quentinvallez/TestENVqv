@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
+import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -174,5 +174,11 @@ describe("the status a card shows", () => {
   it("doesn't take the page's menu for the card when a page shows one card", () => {
     const html = `<body><nav><a href="/verkocht">Verkocht</a></nav><main><div><a href="/te-koop/gent/woning/97001">Woning</a></div></main></body>`;
     expect(cardStatuses(html, `${site}/kopen`, [`${site}/te-koop/gent/woning/97001`]).size).toBe(0);
+  });
+
+  it("reads how many pages a load-more list says it has", () => {
+    expect(statedPages(`<div class="jet-listing-grid__items" data-nav="{}" data-page="1" data-pages="43" data-listing-source="query">`)).toBe(43);
+    expect(statedPages(`<div data-page="1" data-pages="1">`)).toBe(null);
+    expect(statedPages(`<div class="cards">`)).toBe(null);
   });
 });

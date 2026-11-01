@@ -85,6 +85,8 @@ export type WebsiteOverview = {
   via: "single" | "links" | "form" | "guess" | "browser" | "sitemap";
   /** Every page of it was read; false while a search is still going. */
   complete: boolean;
+  /** It says it has more pages than we could open ("load more" lists): it doesn't hold every listing on offer. */
+  more?: boolean;
 };
 
 export type WebsiteDiscovery = {

@@ -17,6 +17,19 @@ export function statedTotal(html: string): number | null {
   return statedCount(html)?.total ?? null;
 }
 
+/**
+ * How many pages a list built by scripts says it has, in the attributes its "load more" button reads (JetEngine's
+ * data-pages="43", data-max-pages, data-total-pages): pages we can't open by address. Null when it doesn't say.
+ */
+export function statedPages(html: string): number | null {
+  let most: number | null = null;
+  for (const m of html.matchAll(/\bdata-(?:max-|total-|num-)?pages\s*=\s*["']?(\d{1,4})\b/gi)) {
+    const n = Number(m[1]);
+    if (n > 1 && (most == null || n > most)) most = n;
+  }
+  return most;
+}
+
 /** The stated count with the line it was read from. */
 export function statedCount(html: string): { total: number; line: string } | null {
   const text = pageText(html);
