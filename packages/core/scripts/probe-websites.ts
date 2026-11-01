@@ -158,6 +158,8 @@ async function probe(site: string) {
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=card statuses::${new URL(site).hostname} ${tally([...cardBadge.values()]) || "none"} (of ${shownOn.size})`);
+
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);
 
 

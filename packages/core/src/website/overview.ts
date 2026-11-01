@@ -289,6 +289,12 @@ export function cardParts(html: string, pageUrl: string, cards: string[]): Map<s
   return new Map([...cardMarkup(doc, anchors, new Set(cards))].map(([url, part]) => [url, { length: part.length, badge: badgeText(part) }]));
 }
 
+/** Each card's own markup and the short lines its badge is read from, to see why a card got its status. */
+export function cardParts(html: string, pageUrl: string, cards: string[]): Map<string, { length: number; badge: string }> {
+  const { doc, anchors } = anchorsOf(html, pageUrl);
+  return new Map([...cardMarkup(doc, anchors, new Set(cards))].map(([url, part]) => [url, { length: part.length, badge: badgeText(part) }]));
+}
+
 /**
  * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element.
  * Some sites show it only there, not on the listing's page. Cards without such a badge are left out.
