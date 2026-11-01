@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  statusFrom,
+  transactionFrom,
   boilerplateLines,
   contactNear,
   extractListing,
@@ -327,5 +329,19 @@ describe("reading a listing page", () => {
   it("takes an email next to the agent only when it carries their name", () => {
     expect(contactNear("Sofie Peeters\nsofie.peeters@trevi.be\n+32 3 123 45 67", "Sofie Peeters")).toEqual({ agentEmail: "sofie.peeters@trevi.be", agentPhone: "+3231234567" });
     expect(contactNear("Sofie Peeters\ninfo@trevi.be", "Sofie Peeters").agentEmail).toBeNull();
+  });
+
+  it("reads French status words with accents", () => {
+    expect(statusFrom("Appartement - loué")).toBe("rented");
+    expect(statusFrom("Maison vendue")).toBe("sold");
+    expect(transactionFrom("Appartement à louer")).toBe("rent");
+    expect(statusFrom("Loueur")).toBe(null);
+  });
+
+  it("takes no street, menu item or cookie service for the agent", () => {
+    for (const line of ["Notre Philosophie", "Facebook Pixel", "Rue des Vétérinaires", "Augustin Delportestraat"]) {
+      const html = `<html><body><h1>Appartement à louer</h1><p>Prix: 950 €</p><p>2 chambres</p><p>${line}</p><p>0478 12 34 56</p><p>Contact: ${line}</p></body></html>`;
+      expect(extractListing(html, "https://www.example.be/fr/bien/a-louer/appartement/1050-ixelles/7891219").listing.agentName).toBe(null);
+    }
   });
 });
