@@ -77,6 +77,15 @@ const viaLabel: Record<Overview["via"], string> = {
   sitemap: "its listings from the site's sitemap",
 };
 
+/** The overview's address as people read it; escapes that aren't valid UTF-8 stay as written. */
+function shownAddress(url: URL) {
+  try {
+    return decodeURIComponent(url.pathname + url.search);
+  } catch {
+    return url.pathname + url.search;
+  }
+}
+
 /** One overview of the site (for sale, for rent, new builds): what it says it has, what we found, and what those turned out to be. */
 function OverviewRow({ overview: o }: { overview: Overview }) {
   const url = new URL(o.url);
@@ -87,7 +96,7 @@ function OverviewRow({ overview: o }: { overview: Overview }) {
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <a href={o.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium hover:underline">
-          {decodeURIComponent(url.pathname + url.search)}
+          {shownAddress(url)}
         </a>
         <span className="flex items-center gap-1.5 tabular-nums">
           {o.stated != null ? (

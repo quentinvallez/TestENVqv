@@ -117,6 +117,25 @@ const listingWords = /(te-koop|te-huur|kopen|huren|aanbod|pand|panden|detail|won
  * id agency CRMs put in listing URLs (/detail/7917339/…, /bien/7892200/…,
  * …-d8500-26222-264763). The page itself still has to look like a listing.
  */
+/**
+ * Percent-decoding that never throws. Sites link addresses that are not valid UTF-8 escapes ("?q=100%",
+ * Latin-1 "%E9"); decodeURIComponent throws "URI malformed" on them, which would stop the whole import.
+ * Each escape that can't be decoded stays as written.
+ */
+export function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    });
+  }
+}
+
 export function looksLikeListingUrl(url: string, site: string): boolean {
   let parsed: URL;
   try {
@@ -125,7 +144,7 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
     return false;
   }
   if (!sameSite(parsed, site)) return false;
-  const path = decodeURIComponent(parsed.pathname);
+  const path = safeDecode(parsed.pathname);
   if (notPages.test(path) || notListings.test(path) || cmsPages.test(path) || uuid.test(path)) return false;
   // The words can be in the query too: "index.php?p=listerDetailsBiens&bien=7915591".
   if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search) || /detail/i.test(parsed.search))) return true;
@@ -180,7 +199,7 @@ export function looksLikeOverviewUrl(url: string, site: string): boolean {
     return false;
   }
   if (!sameSite(parsed, site)) return false;
-  const path = decodeURIComponent(parsed.pathname + parsed.search).toLowerCase();
+  const path = safeDecode(parsed.pathname + parsed.search).toLowerCase();
   if (notPages.test(parsed.pathname) || notListings.test(parsed.pathname)) return false;
   // One listing shown through the site's single script ("?p=listerDetailsBiens&bien=7915591") is no overview.
   if (queryId(parsed) && looksLikeListingUrl(url, site)) return false;
@@ -658,7 +677,7 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     listing.city = line.city;
     listing.postcode = line.postcode ?? (located && located.city.toLowerCase() === line.city.toLowerCase() ? located.postcode : null);
   }
-  const path = decodeURIComponent(new URL(pageUrl).pathname);
+  const path = safeDecode(new URL(pageUrl).pathname);
   // The city is often in the URL (/te-koop/kortrijk/…).
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;

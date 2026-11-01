@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  safeDecode,
   statusFrom,
   transactionFrom,
   boilerplateLines,
@@ -87,6 +88,17 @@ const jsonLd = `<html><head><script type="application/ld+json">${JSON.stringify(
 })}</script></head><body><h1>Appartement te koop in Berchem</h1></body></html>`;
 
 describe("listing URLs", () => {
+  it("never stops on an address with an escape that isn't valid UTF-8", () => {
+    expect(safeDecode("/fr/biens/%C3%A0-vendre?q=100%")).toBe("/fr/biens/à-vendre?q=100%");
+    expect(safeDecode("/te-koop/caf%E9-%C3%A9t%C3%A9/1234567")).toBe("/te-koop/caf%E9-été/1234567");
+    const site = "https://www.example.be";
+    for (const url of [`${site}/a-vendre/caf%E9/1234567`, `${site}/biens?search=100%`, `${site}/%ZZ/te-koop`]) {
+      expect(() => looksLikeListingUrl(url, site)).not.toThrow();
+      expect(() => looksLikeOverviewUrl(url, site)).not.toThrow();
+    }
+    expect(looksLikeOverviewUrl(`${site}/biens?search=100%`, site)).toBe(true);
+  });
+
   it("recognises listing pages of real agency sites and skips overviews", () => {
     expect(looksLikeListingUrl("https://www.immodavinci.be/residentieel/detail/7917339/te-koop-woning-huis-te-koop", "https://www.immodavinci.be")).toBe(true);
     expect(looksLikeListingUrl("https://www.trevi.be/fr/bien/7892200/41/villa/Waterloo", "https://trevi.be/")).toBe(true);

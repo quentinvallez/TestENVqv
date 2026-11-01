@@ -74,7 +74,7 @@ export function parseRobots(text: string, agent = ROBOTS_AGENT): RobotsPolicy {
       let path: string;
       try {
         const parsed = new URL(url);
-        path = decodeURIComponent(parsed.pathname) + parsed.search;
+        path = safeDecode(parsed.pathname) + parsed.search;
       } catch {
         return false;
       }
