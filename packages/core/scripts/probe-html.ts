@@ -5,7 +5,7 @@
  */
 import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
-import { cardParts, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
+import { cardParts, cardTree, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
 type Look = {
@@ -22,9 +22,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Urbain Vastgoed: why the lone rental card 988 reads as rented; the for-sale cards for comparison.
+  // Urbain Vastgoed: how the lone rental card 988 sits among the rented cards without a link.
   { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
-  { url: "https://www.urbainvastgoed.be/nl/kopen/", show: ["cards"] },
 ];
 
 const clean = (html: string) =>
@@ -84,7 +83,8 @@ async function main() {
       }
       if (look.show.includes("cards")) {
         const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
-        for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 1500))}`);
+        for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 300))}`);
+        if (cards.length < 3) for (const url of cards) console.log(`tree of ${url.replace(origin, "")}:\n  ${cardTree(read.html, read.url, url).join("\n  ")}`);
       }
       if (look.show.includes("markup")) {
         const body = clean(html);

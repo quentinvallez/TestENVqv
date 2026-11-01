@@ -304,6 +304,19 @@ const badgeText = (part: string) =>
     // "81% verkocht" on a new-build project: some units are sold, the project isn't.
     .replace(/\b\d{1,2}\s?%\s*(verkocht|vendus?|sold)\b/gi, "");
 
+/** Debug: the elements around a card's link, outermost last, each with the kinds of its parent's children. */
+export function cardTree(html: string, pageUrl: string, card: string): string[] {
+  const { anchors, elements } = anchorsOf(html, pageUrl);
+  const around = anchors.find((a) => a.url === card)?.around ?? [];
+  return around.map((e, i) => {
+    const parent = around[i - 1];
+    const kids = parent ? elements.filter((x) => x.depth === e.depth && x.start >= parent.start && x.end <= parent.end) : [];
+    const kinds = new Map<string, number>();
+    for (const k of kids) kinds.set(k.shape, (kinds.get(k.shape) ?? 0) + 1);
+    return `${e.shape} [${e.end - e.start}] siblings: ${[...kinds].map(([k, n]) => `${k}×${n}`).join(" ")}`;
+  });
+}
+
 /** Each card's own markup and the short lines its badge is read from, to see why a card got its status. */
 export function cardParts(html: string, pageUrl: string, cards: string[]): Map<string, { length: number; badge: string }> {
   const { doc, anchors, elements } = anchorsOf(html, pageUrl);
