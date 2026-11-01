@@ -19,11 +19,14 @@ export function statedTotal(html: string): number | null {
 
 /**
  * How many pages a list built by scripts says it has, in the attributes its "load more" button reads (JetEngine's
- * data-pages="43", data-max-pages, data-total-pages): pages we can't open by address. Null when it doesn't say.
+ * data-pages="43", data-max-pages, data-total-pages) or its empty page placeholders: pages we can't open by address.
+ * Null when it doesn't say.
  */
 export function statedPages(html: string): number | null {
   let most: number | null = null;
-  for (const m of html.matchAll(/\bdata-(?:max-|total-|num-)?pages\s*=\s*["']?(\d{1,4})\b/gi)) {
+  // Also empty placeholders the script fills in, one per page (Domestic: <div class="page load" id="page-9" data-items="6">).
+  const placeholders = [...html.matchAll(/<div\b[^>]*\bid\s*=\s*["']page-(\d{1,4})["'][^>]*\bdata-items\s*=/gi)];
+  for (const m of [...html.matchAll(/\bdata-(?:max-|total-|num-)?pages\s*=\s*["']?(\d{1,4})\b/gi), ...placeholders]) {
     const n = Number(m[1]);
     if (n > 1 && (most == null || n > most)) most = n;
   }

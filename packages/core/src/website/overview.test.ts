@@ -180,6 +180,7 @@ describe("the status a card shows", () => {
     expect(statedPages(`<div class="jet-listing-grid__items" data-nav="{}" data-page="1" data-pages="43" data-listing-source="query">`)).toBe(43);
     expect(statedPages(`<div data-page="1" data-pages="1">`)).toBe(null);
     expect(statedPages(`<div class="cards">`)).toBe(null);
+    expect(statedPages(`<li>card</li> <div class="page load" id="page-2" data-items="24"></div> <div class="page load" id="page-9" data-items="6"></div>`)).toBe(9);
   });
 
   it("follows the link an infinite-scroll list loads its next page from", () => {
