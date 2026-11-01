@@ -17,18 +17,18 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data" | "cards")[];
+  show: ("markup" | "text" | "links" | "data" | "cards" | "tail")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
   // Whise sites Quentin tested on 2026-11-01: home menus, and the plot whose price per m² was read as its price.
-  { url: "https://www.domestic.be/nl", show: ["links"] },
-  { url: "https://www.lacledesmaisons.be/fr/", show: ["links"] },
-  { url: "https://bytheway.immo/", show: ["links"] },
-  { url: "https://www.way-home.be/", show: ["links"] },
+  // Overviews: what follows the last card (pager, load-more button, data endpoints).
+  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
+  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", show: ["tail"] },
+  { url: "https://bytheway.immo/biens-a-vendre", show: ["tail"] },
   { url: "https://www.bdgimmo.be/", show: ["links"] },
-  { url: "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", needle: "€", show: ["markup", "text"] },
+  { url: "https://www.immosciara.be/", show: ["links"] },
 ];
 
 const clean = (html: string) =>
@@ -90,6 +90,15 @@ async function main() {
         const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
         for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 300))}`);
         if (cards.length < 3) for (const url of cards) console.log(`tree of ${url.replace(origin, "")}:\n  ${cardTree(read.html, read.url, url).join("\n  ")}`);
+      }
+      if (look.show.includes("tail")) {
+        const body = clean(html);
+        const hrefs = [...body.matchAll(/href=["']([^"']+)["']/gi)].filter((m) => /\d{5,}/.test(m[1]));
+        const last = hrefs.at(-1)?.index ?? body.search(/<main\b/i);
+        console.log(`listing-like hrefs: ${hrefs.length}; first ${hrefs[0]?.[1]}`);
+        console.log(`after the last: ${body.slice(Math.max(0, last), last + 4000)}`);
+        console.log(`scripts: ${[...html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+        for (const m of html.matchAll(/(ajax|\/api\/|fetch\(|load-?more|jsf|paged|data-page|infinite)/gi)) console.log(`hint ${m[0]}: ${clean(html.slice(Math.max(0, m.index! - 200), m.index! + 300))}`);
       }
       if (look.show.includes("markup")) {
         const body = clean(html);
