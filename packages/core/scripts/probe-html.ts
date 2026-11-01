@@ -22,13 +22,11 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius: the listing links on each page of the for-sale overview.
-  { url: "https://www.canius.be/nl/kopen/page-2/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-3/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-4/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-5/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-6/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-7/", show: ["links"] },
+  // Urbain Vastgoed: the menu, the rental overview and rental 988 Quentin found missing.
+  { url: "https://www.urbainvastgoed.be/nl/", show: ["links"] },
+  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["links"] },
+  { url: "https://www.urbainvastgoed.be/nl/huren/", needle: "988", show: ["markup"] },
+  { url: "https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/", show: ["text", "links"] },
 ];
 
 const clean = (html: string) =>

@@ -13,7 +13,7 @@ import { cardStatuses, statedCount } from "../src/website/overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -32,9 +32,11 @@ const sites = [
   "https://www.century21-horizon.be/",
   "https://www.canius.be/nl/",
   "https://www.habicom.be/",
+  "https://www.urbainvastgoed.be/nl/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
+  urbainvastgoed: ["https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/"],
   ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
   jurimex: [
     "https://jurimex.be/nl/aanbod/4295691/grond-te-koop-in-3600-genk",
