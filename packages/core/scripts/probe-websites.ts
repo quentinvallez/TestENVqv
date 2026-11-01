@@ -136,6 +136,7 @@ async function probe(site: string) {
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
+      if (process.env.GITHUB_ACTIONS && urls.length < 3) for (const url of urls) console.log(`::notice title=few cards::${url} ${statuses.get(url) ?? "on offer"} on ${page}`);
       return urls.map((url) => statuses.get(url) ?? "on offer");
     });
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
