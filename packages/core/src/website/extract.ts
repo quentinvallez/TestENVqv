@@ -248,8 +248,19 @@ export function decodeEntities(text: string): string {
  * scripts, styles, navigation and footer (where menus repeat words such as
  * "verkocht" that would mislead the rules).
  */
+/** An address hidden by Cloudflare's email protection ("data-cfemail" or "/cdn-cgi/l/email-protection#…"), shown again. */
+function cloudflareEmail(hex: string): string {
+  const key = parseInt(hex.slice(0, 2), 16);
+  let email = "";
+  for (let i = 2; i + 1 < hex.length; i += 2) email += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+  return /^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(email) ? email : "";
+}
+
 export function pageText(html: string): string {
   let body = html.replace(/<!--[\s\S]*?-->/g, " ");
+  // Sites behind Cloudflare show "[email protected]" where the agent's address is; the address is in the markup.
+  body = body.replace(/<(a|span)\b[^>]*\bdata-cfemail\s*=\s*["']([0-9a-f]{6,})["'][^>]*>[\s\S]*?<\/\1>/gi, (all, _tag, hex: string) => ` ${cloudflareEmail(hex)} `);
+  body = body.replace(/<a\b[^>]*\bhref\s*=\s*["'][^"']*\/cdn-cgi\/l\/email-protection#([0-9a-f]{6,})["'][^>]*>[\s\S]*?<\/a>/gi, (all, hex: string) => ` ${cloudflareEmail(hex)} `);
   body = body.replace(/<(script|style|noscript|svg|template|iframe|head)\b[\s\S]*?<\/\1>/gi, " ");
   body = body.replace(/<(nav|footer)\b[\s\S]*?<\/\1>/gi, " ");
   body = body.replace(/<br\s*\/?>/gi, "\n");
@@ -553,6 +564,8 @@ function titleTag(html: string): string | null {
   return t ? decodeEntities(t).replace(/\s+/g, " ").trim() || null : null;
 }
 
+// A person's name of one to four words, the first a capitalised first name of three letters or more.
+const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
 // Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
@@ -568,11 +581,23 @@ const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/
 export function contactNear(textBlock: string, name: string): { agentEmail: string | null; agentPhone: string | null } {
   const at = textBlock.indexOf(name);
   if (at < 0) return { agentEmail: null, agentPhone: null };
-  const window = textBlock.slice(at + name.length, at + name.length + 250);
   const parts = fold(name).split(/\s+/).filter((p) => p.length > 2);
-  const email = [...window.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].map((m) => m[0].toLowerCase()).find((e) => parts.some((p) => fold(e.split("@")[0]!).includes(p)));
-  const phone = window.match(/(?<![\d.])(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}(?!\d)/)?.[0];
-  return { agentEmail: email ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
+  const phoneAt = /(?<![\d.])(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}(?!\d)/;
+  const named = (text: string) => [...text.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].find((m) => parts.some((p) => fold(m[0].split("@")[0]!).includes(p)));
+  const after = textBlock.slice(at + name.length, at + name.length + 250);
+  let email = named(after)?.[0];
+  let phone = after.match(phoneAt)?.[0];
+  // A card can show the contact above the name ("antonin@bytheway.be", "+32 497 10 27 28", "Visitez avec Antonin"):
+  // their own address above counts, with the phone right after it.
+  if (!email) {
+    const before = textBlock.slice(Math.max(0, at - 250), at);
+    const above = named(before);
+    if (above) {
+      email = above[0];
+      phone ??= before.slice(above.index! + above[0].length).match(phoneAt)?.[0];
+    }
+  }
+  return { agentEmail: email?.toLowerCase() ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
 }
 
 /** The listing's own part of the page: its main content, without the lines every page of the site repeats. */
@@ -617,6 +642,18 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
         listing.agentName = match[1]!;
         break;
       }
+    }
+  }
+  // The name on the button or heading that books a visit with them: "Visitez avec Antonin", "Bezoek dit pand met Liselotte".
+  // Often a first name only; it is still the name the page shows.
+  if (!listing.agentName) {
+    const visit = /(?:^|\n)[ \t]*(?:visite[rz]?(?: ce bien| cette propri[ée]t[ée]| ce logement)?[ \t]+avec|(?:prenez|prendre) rendez-vous avec|(?:bezoek(?:en)?|bezichtig(?:en)?)(?: dit pand| deze woning| dit eigendom)?[ \t]+met|(?:maak een )?afspraak(?: maken)? met|visit(?: this property| this home)?[ \t]+with|book a viewing with)[ \t]+([^\n]{3,60})(?=\n|$)/gi;
+    const nameOnly = new RegExp(`^(${agentFirstName.source})[ \\t]*[!.]?$`);
+    for (const match of textBlock.matchAll(visit)) {
+      const name = match[1]!.trim().match(nameOnly)?.[1];
+      if (!name || notAPerson.test(name) || /^(nous|ons|us|moi|mij|een|une?)$/i.test(name)) continue;
+      listing.agentName = name;
+      break;
     }
   }
   // A name on a line of its own next to the same first name or a phone number: "Liselotte helpt je graag verder!",

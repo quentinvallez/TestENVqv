@@ -350,6 +350,22 @@ describe("reading a listing page", () => {
     expect(statusFrom("Loueur")).toBe(null);
   });
 
+  it("reads the agent from the button that books a visit with them, with a Cloudflare-hidden email above (By the Way)", () => {
+    // "antonin@bytheway.be" hidden by Cloudflare: first byte is the key, the rest XOR it.
+    const key = 0x5a;
+    const hex = [key, ..."antonin@bytheway.be".split("").map((c) => c.charCodeAt(0) ^ key)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const page = `<html><body><main><h1>Appartement</h1><p>1050 Ixelles</p><p>Loyer 1.250 €</p>
+      <div class="agent"><img src="a.jpg"><a href="/cdn-cgi/l/email-protection#${hex}"><span class="__cf_email__" data-cfemail="${hex}">[email&#160;protected]</span></a>
+      <a href="tel:+32497102728">+32 497 10 27 28</a><button>Visitez avec Antonin</button></div>
+      <h2>Visitez ce bien avec Antonin</h2><p>Une belle description du bien avec beaucoup de lumière.</p></main></body></html>`;
+    const { listing } = extractListing(page, "https://bytheway.immo/bien/7881006-francois-gay-139/");
+    expect(listing).toMatchObject({ agentName: "Antonin", agentEmail: "antonin@bytheway.be", agentPhone: "+32497102728" });
+    // An invitation without a person's name gives no agent.
+    const ours = page.replace(/Antonin/g, "nous").replace(/antonin@/, "info@");
+    expect(extractListing(ours, "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
+    expect(extractListing(page.replace(/Visitez[^<]*Antonin/g, "Visitez avec un de nos agents dès demain"), "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
+  });
+
   it("takes no street, menu item or cookie service for the agent", () => {
     for (const line of ["Notre Philosophie", "Facebook Pixel", "Rue des Vétérinaires", "Augustin Delportestraat"]) {
       const html = `<html><body><h1>Appartement à louer</h1><p>Prix: 950 €</p><p>2 chambres</p><p>${line}</p><p>0478 12 34 56</p><p>Contact: ${line}</p></body></html>`;
