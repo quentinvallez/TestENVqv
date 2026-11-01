@@ -1,4 +1,4 @@
-import { decodeEntities, looksLikeListingUrl, normalizeUrl, pageLinks, pageText, sameSite, type WebsiteListingStatus } from "./extract";
+import { decodeEntities, looksLikeListingUrl, normalizeUrl, pageLinks, safeDecode, pageText, sameSite, type WebsiteListingStatus } from "./extract";
 
 /*
  * Overview pages ("Te koop", "À louer", "Nieuwbouw"): the count the site says
@@ -59,7 +59,7 @@ export function statedCount(html: string): { total: number; line: string } | nul
 // The template a URL follows: "/te-koop/aalst/charmante-woning/97188" becomes "te-koop/*/*/#". Listing cards share one.
 export function urlShape(url: string): string {
   const u = new URL(url);
-  const segments = decodeURIComponent(u.pathname).split("/").filter(Boolean);
+  const segments = safeDecode(u.pathname).split("/").filter(Boolean);
   const path = segments.map((s, i) => (/\d{3,}/.test(s) ? "#" : i === 0 ? s.toLowerCase() : "*")).join("/");
   return u.search ? `${path}?${[...u.searchParams.keys()].sort().join("&")}` : path;
 }
@@ -93,7 +93,7 @@ export function listingLinks(html: string, pageUrl: string, site: string): strin
 
 /** An address that is plainly an overview, not one property: "/te-koop", "/fr/biens", "/nl/aanbod/huizen". */
 function looksLikeOverviewOnly(url: string): boolean {
-  const segments = decodeURIComponent(new URL(url).pathname).toLowerCase().split("/").filter(Boolean);
+  const segments = safeDecode(new URL(url).pathname).toLowerCase().split("/").filter(Boolean);
   const last = segments.at(-1) ?? "";
   return segments.length === 0 || /^(nl|fr|en|de|te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|a-vendre|a-louer|acheter|louer|biens|vente|location|for-sale|for-rent|buy|rent|properties|panden|woningen|huizen|appartementen|neuf)$/.test(last);
 }
@@ -224,7 +224,7 @@ export function languageOf(url: string): string | null {
 
 /** Overviews of what was sold or rented ("Referenties", "Recent verkocht"): no listing on offer there. */
 export function isArchiveUrl(url: string): boolean {
-  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|(?<![\p{L}\d])lou[ée]e?s?(?![\p{L}\d])|\bsold\b|\brented\b/iu.test(decodeURIComponent(new URL(url).pathname));
+  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|(?<![\p{L}\d])lou[ée]e?s?(?![\p{L}\d])|\bsold\b|\brented\b/iu.test(safeDecode(new URL(url).pathname));
 }
 
 /** Which way a page address numbers its pages: the query key ("page", "start"), or "path" for "/page/2". */

@@ -117,6 +117,25 @@ const listingWords = /(te-koop|te-huur|kopen|huren|aanbod|pand|panden|detail|won
  * id agency CRMs put in listing URLs (/detail/7917339/…, /bien/7892200/…,
  * …-d8500-26222-264763). The page itself still has to look like a listing.
  */
+/**
+ * Percent-decoding that never throws. Sites link addresses that are not valid UTF-8 escapes ("?q=100%",
+ * Latin-1 "%E9"); decodeURIComponent throws "URI malformed" on them, which would stop the whole import.
+ * Each escape that can't be decoded stays as written.
+ */
+export function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    });
+  }
+}
+
 export function looksLikeListingUrl(url: string, site: string): boolean {
   let parsed: URL;
   try {
@@ -125,7 +144,7 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
     return false;
   }
   if (!sameSite(parsed, site)) return false;
-  const path = decodeURIComponent(parsed.pathname);
+  const path = safeDecode(parsed.pathname);
   if (notPages.test(path) || notListings.test(path) || cmsPages.test(path) || uuid.test(path)) return false;
   // The words can be in the query too: "index.php?p=listerDetailsBiens&bien=7915591".
   if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search) || /detail/i.test(parsed.search))) return true;
@@ -180,7 +199,7 @@ export function looksLikeOverviewUrl(url: string, site: string): boolean {
     return false;
   }
   if (!sameSite(parsed, site)) return false;
-  const path = decodeURIComponent(parsed.pathname + parsed.search).toLowerCase();
+  const path = safeDecode(parsed.pathname + parsed.search).toLowerCase();
   if (notPages.test(parsed.pathname) || notListings.test(parsed.pathname)) return false;
   // One listing shown through the site's single script ("?p=listerDetailsBiens&bien=7915591") is no overview.
   if (queryId(parsed) && looksLikeListingUrl(url, site)) return false;
@@ -229,8 +248,19 @@ export function decodeEntities(text: string): string {
  * scripts, styles, navigation and footer (where menus repeat words such as
  * "verkocht" that would mislead the rules).
  */
+/** An address hidden by Cloudflare's email protection ("data-cfemail" or "/cdn-cgi/l/email-protection#…"), shown again. */
+function cloudflareEmail(hex: string): string {
+  const key = parseInt(hex.slice(0, 2), 16);
+  let email = "";
+  for (let i = 2; i + 1 < hex.length; i += 2) email += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16) ^ key);
+  return /^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(email) ? email : "";
+}
+
 export function pageText(html: string): string {
   let body = html.replace(/<!--[\s\S]*?-->/g, " ");
+  // Sites behind Cloudflare show "[email protected]" where the agent's address is; the address is in the markup.
+  body = body.replace(/<(a|span)\b[^>]*\bdata-cfemail\s*=\s*["']([0-9a-f]{6,})["'][^>]*>[\s\S]*?<\/\1>/gi, (all, _tag, hex: string) => ` ${cloudflareEmail(hex)} `);
+  body = body.replace(/<a\b[^>]*\bhref\s*=\s*["'][^"']*\/cdn-cgi\/l\/email-protection#([0-9a-f]{6,})["'][^>]*>[\s\S]*?<\/a>/gi, (all, hex: string) => ` ${cloudflareEmail(hex)} `);
   body = body.replace(/<(script|style|noscript|svg|template|iframe|head)\b[\s\S]*?<\/\1>/gi, " ");
   body = body.replace(/<(nav|footer)\b[\s\S]*?<\/\1>/gi, " ");
   body = body.replace(/<br\s*\/?>/gi, "\n");
@@ -534,6 +564,8 @@ function titleTag(html: string): string | null {
   return t ? decodeEntities(t).replace(/\s+/g, " ").trim() || null : null;
 }
 
+// A person's name of one to four words, the first a capitalised first name of three letters or more.
+const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
 // Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
@@ -549,11 +581,23 @@ const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/
 export function contactNear(textBlock: string, name: string): { agentEmail: string | null; agentPhone: string | null } {
   const at = textBlock.indexOf(name);
   if (at < 0) return { agentEmail: null, agentPhone: null };
-  const window = textBlock.slice(at + name.length, at + name.length + 250);
   const parts = fold(name).split(/\s+/).filter((p) => p.length > 2);
-  const email = [...window.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].map((m) => m[0].toLowerCase()).find((e) => parts.some((p) => fold(e.split("@")[0]!).includes(p)));
-  const phone = window.match(/(?<![\d.])(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}(?!\d)/)?.[0];
-  return { agentEmail: email ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
+  const phoneAt = /(?<![\d.])(?:\+32|0)[ \t]?[1-9](?:[ \t./-]?\d){7,9}(?!\d)/;
+  const named = (text: string) => [...text.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi)].find((m) => parts.some((p) => fold(m[0].split("@")[0]!).includes(p)));
+  const after = textBlock.slice(at + name.length, at + name.length + 250);
+  let email = named(after)?.[0];
+  let phone = after.match(phoneAt)?.[0];
+  // A card can show the contact above the name ("antonin@bytheway.be", "+32 497 10 27 28", "Visitez avec Antonin"):
+  // their own address above counts, with the phone right after it.
+  if (!email) {
+    const before = textBlock.slice(Math.max(0, at - 250), at);
+    const above = named(before);
+    if (above) {
+      email = above[0];
+      phone ??= before.slice(above.index! + above[0].length).match(phoneAt)?.[0];
+    }
+  }
+  return { agentEmail: email?.toLowerCase() ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
 }
 
 /** The listing's own part of the page: its main content, without the lines every page of the site repeats. */
@@ -598,6 +642,18 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
         listing.agentName = match[1]!;
         break;
       }
+    }
+  }
+  // The name on the button or heading that books a visit with them: "Visitez avec Antonin", "Bezoek dit pand met Liselotte".
+  // Often a first name only; it is still the name the page shows.
+  if (!listing.agentName) {
+    const visit = /(?:^|\n)[ \t]*(?:visite[rz]?(?: ce bien| cette propri[ée]t[ée]| ce logement)?[ \t]+avec|(?:prenez|prendre) rendez-vous avec|(?:bezoek(?:en)?|bezichtig(?:en)?)(?: dit pand| deze woning| dit eigendom)?[ \t]+met|(?:maak een )?afspraak(?: maken)? met|visit(?: this property| this home)?[ \t]+with|book a viewing with)[ \t]+([^\n]{3,60})(?=\n|$)/gi;
+    const nameOnly = new RegExp(`^(${agentFirstName.source})[ \\t]*[!.]?$`);
+    for (const match of textBlock.matchAll(visit)) {
+      const name = match[1]!.trim().match(nameOnly)?.[1];
+      if (!name || notAPerson.test(name) || /^(nous|ons|us|moi|mij|een|une?)$/i.test(name)) continue;
+      listing.agentName = name;
+      break;
     }
   }
   // A name on a line of its own next to the same first name or a phone number: "Liselotte helpt je graag verder!",
@@ -658,7 +714,7 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     listing.city = line.city;
     listing.postcode = line.postcode ?? (located && located.city.toLowerCase() === line.city.toLowerCase() ? located.postcode : null);
   }
-  const path = decodeURIComponent(new URL(pageUrl).pathname);
+  const path = safeDecode(new URL(pageUrl).pathname);
   // The city is often in the URL (/te-koop/kortrijk/…).
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;

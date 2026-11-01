@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  safeDecode,
   statusFrom,
   transactionFrom,
   boilerplateLines,
@@ -87,6 +88,17 @@ const jsonLd = `<html><head><script type="application/ld+json">${JSON.stringify(
 })}</script></head><body><h1>Appartement te koop in Berchem</h1></body></html>`;
 
 describe("listing URLs", () => {
+  it("never stops on an address with an escape that isn't valid UTF-8", () => {
+    expect(safeDecode("/fr/biens/%C3%A0-vendre?q=100%")).toBe("/fr/biens/à-vendre?q=100%");
+    expect(safeDecode("/te-koop/caf%E9-%C3%A9t%C3%A9/1234567")).toBe("/te-koop/caf%E9-été/1234567");
+    const site = "https://www.example.be";
+    for (const url of [`${site}/a-vendre/caf%E9/1234567`, `${site}/biens?search=100%`, `${site}/%ZZ/te-koop`]) {
+      expect(() => looksLikeListingUrl(url, site)).not.toThrow();
+      expect(() => looksLikeOverviewUrl(url, site)).not.toThrow();
+    }
+    expect(looksLikeOverviewUrl(`${site}/biens?search=100%`, site)).toBe(true);
+  });
+
   it("recognises listing pages of real agency sites and skips overviews", () => {
     expect(looksLikeListingUrl("https://www.immodavinci.be/residentieel/detail/7917339/te-koop-woning-huis-te-koop", "https://www.immodavinci.be")).toBe(true);
     expect(looksLikeListingUrl("https://www.trevi.be/fr/bien/7892200/41/villa/Waterloo", "https://trevi.be/")).toBe(true);
@@ -336,6 +348,22 @@ describe("reading a listing page", () => {
     expect(statusFrom("Maison vendue")).toBe("sold");
     expect(transactionFrom("Appartement à louer")).toBe("rent");
     expect(statusFrom("Loueur")).toBe(null);
+  });
+
+  it("reads the agent from the button that books a visit with them, with a Cloudflare-hidden email above (By the Way)", () => {
+    // "antonin@bytheway.be" hidden by Cloudflare: first byte is the key, the rest XOR it.
+    const key = 0x5a;
+    const hex = [key, ..."antonin@bytheway.be".split("").map((c) => c.charCodeAt(0) ^ key)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const page = `<html><body><main><h1>Appartement</h1><p>1050 Ixelles</p><p>Loyer 1.250 €</p>
+      <div class="agent"><img src="a.jpg"><a href="/cdn-cgi/l/email-protection#${hex}"><span class="__cf_email__" data-cfemail="${hex}">[email&#160;protected]</span></a>
+      <a href="tel:+32497102728">+32 497 10 27 28</a><button>Visitez avec Antonin</button></div>
+      <h2>Visitez ce bien avec Antonin</h2><p>Une belle description du bien avec beaucoup de lumière.</p></main></body></html>`;
+    const { listing } = extractListing(page, "https://bytheway.immo/bien/7881006-francois-gay-139/");
+    expect(listing).toMatchObject({ agentName: "Antonin", agentEmail: "antonin@bytheway.be", agentPhone: "+32497102728" });
+    // An invitation without a person's name gives no agent.
+    const ours = page.replace(/Antonin/g, "nous").replace(/antonin@/, "info@");
+    expect(extractListing(ours, "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
+    expect(extractListing(page.replace(/Visitez[^<]*Antonin/g, "Visitez avec un de nos agents dès demain"), "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
   });
 
   it("takes no street, menu item or cookie service for the agent", () => {
