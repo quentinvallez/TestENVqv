@@ -22,15 +22,10 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Whise sites Quentin tested on 2026-11-01: home menus, and the plot whose price per m² was read as its price.
-  // Overviews: what follows the last card (pager, load-more button, data endpoints).
-  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
-  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", needle: "InfiniteScroll", show: ["markup"] },
-  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", follow: "InfiniteScroll", show: ["links", "tail"] },
-  { url: "https://www.lacledesmaisons.be/fr/bien/a-louer/commerce/5590-ciney/7815412", needle: "Vendu", show: ["text"] },
-  { url: "https://bytheway.immo/biens-a-vendre", show: ["tail"] },
-  { url: "https://www.bdgimmo.be/", show: ["links"] },
-  { url: "https://www.immosciara.be/", show: ["links"] },
+  // Immo Sciara (Quentin's test site, 2026-11-01): pages whose price was read wrong or not at all.
+  { url: "https://www.immosciara.be/bien/a-vendre/immeuble-mixte/4031-liege-angleur/7792428", needle: "199", show: ["markup", "text"] },
+  { url: "https://www.immosciara.be/bien/a-vendre/appartement/4020-liege/7854244", needle: "175", show: ["markup"] },
+  { url: "https://www.immosciara.be/bien/a-vendre/appartement/4030-liege/7894945", needle: "119", show: ["markup", "text"] },
 ];
 
 const clean = (html: string) =>
