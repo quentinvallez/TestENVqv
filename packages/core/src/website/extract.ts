@@ -512,6 +512,11 @@ function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | 
   for (const match of amounts) {
     if (other.test(textBlock.slice(Math.max(0, (match.index ?? 0) - 80), match.index))) continue;
     if (perSquareMetre.test(textBlock.slice((match.index ?? 0) + match[0].length))) continue;
+    // An amount inside a description's sentence ("un potentiel locatif estimé à environ 1.000 €/mois", "un box garage
+    // pour 18.000€") is about something else: a price shown without a label stands on a short line of its own.
+    const lineStart = textBlock.lastIndexOf("\n", match.index ?? 0) + 1;
+    const lineEnd = textBlock.indexOf("\n", match.index ?? 0);
+    if ((lineEnd < 0 ? textBlock.length : lineEnd) - lineStart > 120) continue;
     const price = parseAmount(match[1] ?? match[2] ?? "");
     if (price && price >= 100) return { price, rent: Boolean(match[3]) };
   }
@@ -658,6 +663,12 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;
   let unlabelled = false;
+  // A price shown only in a form field next to its label (Immo Sciara's loan simulator: "Prix du bien (€)" with
+  // value="119000"), when the page says it nowhere else.
+  if (listing.price == null) {
+    const field = html.match(/<label\b[^>]*>[^<]{0,40}\b(?:prix|prijs|price|vraagprijs)\b[^<]{0,40}<\/label>\s*<input\b[^>]*\bvalue\s*=\s*["'](\d{4,9})["']/i);
+    if (field) listing.price = Number(field[1]);
+  }
   if (listing.price == null) {
     const found = unlabelledPrice(textBlock);
     if (found) {

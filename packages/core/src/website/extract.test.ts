@@ -361,4 +361,12 @@ describe("reading a listing page", () => {
     const html = `<html><head><title>Maison rénovée : BDG IMMO</title></head><body><p>Maison rénovée à 7000 Mons • Offre à partir de : 189 000 €</p><p>Surface: 120 m²</p><p>3 chambres</p></body></html>`;
     expect(extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7910178").listing.transaction).toBe("sale");
   });
+
+  it("reads a price from its form field, and not from a description's sentence", () => {
+    const description = "*OPTION* L'Immobilière Sciara vous propose ce volumineux immeuble mixte qui offre un beau potentiel locatif estimé à environ 1.000 €/mois, actuellement loué 580 €/mois.";
+    const page = (form: string) => `<html><head><title>Immeuble mixte à vendre – 4 ch – 320 m² – Liège Angleur (4031) | Sciara Immo</title></head><body><h1>Immeuble mixte à vendre</h1><p>4 chambres</p><p>320 m²</p><h2>Description du bien</h2><p>${description}</p>${form}</body></html>`;
+    const url = "https://www.immosciara.be/bien/a-vendre/immeuble-mixte/4031-liege-angleur/7792428";
+    expect(extractListing(page(`<div class="form-row"> <label>Prix du bien (€)</label> <input type="number" class="sim-pret-prix" value="199000" min="0" step="1000"> </div>`), url).listing.price).toBe(199000);
+    expect(extractListing(page(""), url).listing.price).toBe(null);
+  });
 });
