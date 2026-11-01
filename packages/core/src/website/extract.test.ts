@@ -125,6 +125,13 @@ describe("listing URLs", () => {
 });
 
 describe("reading a listing page", () => {
+  it("doesn't take a plot's price per square metre for its price", () => {
+    // Valor Vastgoed: the description says "Vraagprijs: € 590/m²" above the details table's "Prijs € 354.000,00".
+    const html = `<html><head><title>Bouwgrond te koop in de pinte</title></head><body><main><h1>Bouwgrond</h1><p>€ 354.000</p><p>Klossestraat 19 BB, 9840 De Pinte</p><h2>Omschrijving</h2><p>Lot 1: 680,62 m²</p><p>Vraagprijs: € 590/m².</p><h2>Details van het pand</h2><dl><dt>Prijs</dt><dd>€ 354.000,00</dd><dt>Grondoppervlakte</dt><dd>624,00 m²</dd></dl></main></body></html>`;
+    const { listing } = extractListing(html, "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973");
+    expect(listing.price).toBe(354000);
+  });
+
   it("reads a Dutch label/value page", () => {
     const { listing } = extractListing(davinci, "https://www.immodavinci.be/residentieel/detail/7917339/te-koop-woning-huis-te-koop");
     expect(listing).toMatchObject({

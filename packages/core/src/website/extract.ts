@@ -392,12 +392,16 @@ const rules: Rule[] = [
   { field: "agentName", labels: "uw contactpersoon|contactpersoon|uw makelaar|makelaar|votre contact|votre agent|contact person|your agent|agent", value: /^[\s:|-]{0,6}([A-ZÀ-Ý][a-zà-ÿ'’-]+(?:\s+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3})/, parse: (raw) => raw.trim() },
 ];
 
+const perSquareMetre = /^\s*(?:\/|per|par|le)\s*m(?:²|2|\b)/i;
+
 function labelled(textBlock: string, rule: Rule): unknown {
   const re = new RegExp(`(?:^|\\n|\\|)\\s*(?:${rule.labels})(?![a-zà-ÿ])\\s*(?::|\\|)?[ \\t]*\\n?`, "gi");
   for (const match of textBlock.matchAll(re)) {
     const after = textBlock.slice(match.index! + match[0].length, match.index! + match[0].length + 60);
     const value = after.match(rule.value);
     if (!value) continue;
+    // "Vraagprijs: € 590/m²" on a plot is the price of one square metre, not of the listing.
+    if (rule.field === "price" && perSquareMetre.test(after.slice(value.index! + value[0].length))) continue;
     const parsed = rule.parse(value[1]!.trim());
     if (parsed != null) return parsed;
   }
@@ -495,6 +499,7 @@ function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | 
   const other = /(cadastr|kadastr|\b(?:KI|RC)\b|charges|kosten|provisie|provision|syndic|frais|voorheffing|pr[ée]compte|taxe|belasting|huurwaarde|garantie)[^\n]*\n?[^\n]*$/i;
   for (const match of amounts) {
     if (other.test(textBlock.slice(Math.max(0, (match.index ?? 0) - 80), match.index))) continue;
+    if (perSquareMetre.test(textBlock.slice((match.index ?? 0) + match[0].length))) continue;
     const price = parseAmount(match[1] ?? match[2] ?? "");
     if (price && price >= 100) return { price, rent: Boolean(match[3]) };
   }
