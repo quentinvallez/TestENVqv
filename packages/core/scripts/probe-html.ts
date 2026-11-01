@@ -24,7 +24,6 @@ type Look = {
 const looks: Look[] = [
   // Immotop rentals page 2 (Quentin's test site): two linked cards among unlinked "Loué" cards.
   { url: "https://www.immotop.be/a-louer?page=2", show: ["cards"] },
-  { url: "https://www.immotop.be/a-louer?page=2", needle: "1392", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
@@ -83,7 +82,7 @@ async function main() {
         console.log(`links (${links.length}): ${links.map((l) => `${l.replace(origin, "")}${looksLikeListingUrl(l, origin) ? " [L]" : ""}`).join("  ")}`);
       }
       if (look.show.includes("cards")) {
-        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
+        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname) || looksLikeListingUrl(l, origin));
         for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 300))}`);
         if (cards.length < 3) for (const url of cards) console.log(`tree of ${url.replace(origin, "")}:\n  ${cardTree(read.html, read.url, url).join("\n  ")}`);
       }
