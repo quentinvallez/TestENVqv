@@ -139,7 +139,11 @@ async function probe(site: string) {
     `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, language ${discovery.language ?? "(none)"}, paging ${discovery.pagingKey ?? "-"}, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
   );
   console.log(`listing pages found: ${shownOn.size}, of which ${sitemapOnly.length} only in a sitemap`);
-  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages, ${sitemapOnly.length} only in a sitemap`);
+  // As the import decides: overviews read in full that hold what they state make a page only a sitemap lists an old one.
+  const whole = overviews.some((o) => o.found > 0) && overviews.every((o) => o.complete && !o.more && (o.stated == null || o.found >= o.stated));
+  const keeps = `the import ${whole ? "drops" : "keeps"} the ${sitemapOnly.length} only in a sitemap`;
+  console.log(keeps);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages; ${keeps}`);
   // What the importer keeps from the cards: their badge counts when the listing's own page says nothing else.
   const cardBadge = new Map<string, string>();
   const fewCards: string[] = [];
