@@ -317,22 +317,25 @@ function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>, elements
 /**
  * With only one or two linked cards, the element of a list the card is one item of: the largest element around its
  * link whose parent holds two or more elements of its kind (with a class), at its level, that show a price,
- * an area or rooms. Those are
+ * an area or rooms, and that isn't itself a row of such items. Those are
  * cards too, drawn without a link (rented or sold), and a card that took them in would show their "Verhuurd".
  */
 function listItem(doc: string, chain: Element[], around: Element[], elements: Element[]): Element | null {
+  const facts = new Map<Element, boolean>();
+  const hasFacts = (x: Element) => facts.get(x) ?? (facts.set(x, LISTING_FACTS.test(cardText(doc.slice(x.start, x.end)))), facts.get(x)!);
+  // Elements of e's kind at e's level inside `within` that show listing facts.
+  const alikeIn = (e: Element, within: Element) => elements.filter((x) => x.depth === e.depth && x.shape === e.shape && x.start >= within.start && x.end <= within.end && hasFacts(x)).length;
+  const items: Element[] = [];
   for (const e of [...chain].reverse()) {
     const parent = around[around.indexOf(e) - 1];
     if (!parent) continue;
     // A kind with a class ("div.card"), not any bare "div".
     if (e.shape.endsWith(".")) continue;
-    let alike = 0;
-    for (const x of elements) {
-      if (x === e || x.depth !== e.depth || x.shape !== e.shape || x.start < parent.start || x.end > parent.end) continue;
-      if (LISTING_FACTS.test(cardText(doc.slice(x.start, x.end))) && ++alike >= 2) return e;
-    }
+    if (alikeIn(e, parent) >= 2) items.push(e);
   }
-  return null;
+  // Largest first, but not a row of cards: an element holding two or more items of a smaller kind is a group of them
+  // (Immotop: div.row-fluid with four div.span3.property, one linked and three "Loué").
+  return items.find((e) => !items.some((q) => q !== e && q.start >= e.start && q.end <= e.end && alikeIn(q, e) >= 2)) ?? null;
 }
 
 const cardText = (part: string) => `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;

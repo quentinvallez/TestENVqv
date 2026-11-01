@@ -199,4 +199,13 @@ describe("the status a card shows", () => {
     const statuses = cardStatuses(html, "https://www.bdgimmo.be/index.php?p=listerBiens&action=L", urls);
     expect([...urls].map((u) => statuses.get(u) ?? "active")).toEqual(["rented", "rented", "under_offer", "active"]);
   });
+
+  it("takes one card, not its row, when a linked card sits among unlinked rented ones", () => {
+    const rented = (city: string) => `<div class="span3 property "><div class="pic"><img alt="Maison à ${city}"></div><div class="property-info"><div class="prop-type">Maison</div><div class="prop-price"> Loué </div><div class="icons">2 ch 105 m&sup2;</div></div></div>`;
+    const linked = (id: number, price: string) => `<div class="span3 property "><div class="pic"><div class="image"><a href="/fr/a-louer?view=detail&amp;id=${id}&amp;page=2"><img alt="KOT à MONS - Prix ${price} &euro;"></a></div></div><div class="property-info"><div class="prop-type">KOT/chambre</div><div class="prop-price pull-right">${price} &euro;</div><div class="icons">1 ch 15 m&sup2;</div></div></div>`;
+    const html = `<html><body><div class="property-list"><div class="row-fluid">${rented("Mons")}${rented("Nimy")}${linked(1392, "420")}${rented("Baudour")}</div><div class="row-fluid">${rented("Jemappes")}${rented("Cuesmes")}${rented("Mons")}${linked(1368, "2.500")}</div><div class="row-fluid">${rented("A")}${rented("B")}${rented("C")}${rented("D")}</div></div></body></html>`;
+    const urls = [1392, 1368].map((id) => `https://www.immotop.be/fr/a-louer?view=detail&id=${id}&page=2`);
+    const statuses = cardStatuses(html, "https://www.immotop.be/fr/a-louer?page=2", urls);
+    expect(urls.map((u) => statuses.get(u) ?? "active")).toEqual(["active", "active"]);
+  });
 });
