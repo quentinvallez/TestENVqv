@@ -5,7 +5,7 @@
  */
 import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
-import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
+import { cardParts, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
 type Look = {
@@ -17,16 +17,14 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data")[];
+  show: ("markup" | "text" | "links" | "data" | "cards")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Urbain Vastgoed: the menu, the rental overview and rental 988 Quentin found missing.
-  { url: "https://www.urbainvastgoed.be/nl/", show: ["links"] },
-  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["links"] },
-  { url: "https://www.urbainvastgoed.be/nl/huren/", needle: "988", show: ["markup"] },
-  { url: "https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/", show: ["text", "links"] },
+  // Urbain Vastgoed: why the lone rental card 988 reads as rented; the for-sale cards for comparison.
+  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
+  { url: "https://www.urbainvastgoed.be/nl/kopen/", show: ["cards"] },
 ];
 
 const clean = (html: string) =>
@@ -83,6 +81,10 @@ async function main() {
       if (look.show.includes("links")) {
         const links = pageLinks(html, read.url).filter((l) => sameSite(l, origin));
         console.log(`links (${links.length}): ${links.map((l) => `${l.replace(origin, "")}${looksLikeListingUrl(l, origin) ? " [L]" : ""}`).join("  ")}`);
+      }
+      if (look.show.includes("cards")) {
+        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
+        for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 1500))}`);
       }
       if (look.show.includes("markup")) {
         const body = clean(html);
