@@ -87,6 +87,17 @@ const jsonLd = `<html><head><script type="application/ld+json">${JSON.stringify(
   ],
 })}</script></head><body><h1>Appartement te koop in Berchem</h1></body></html>`;
 
+describe("a project's share sold", () => {
+  it("is no sold status (By the Way, Domestic)", () => {
+    expect(statusFrom("Pourcentage vendu: 0 %")).toBeNull();
+    expect(statusFrom("Pourcentage vendu: 80 %")).toBeNull();
+    expect(statusFrom("Reeds 40% verkocht")).toBeNull();
+    expect(statusFrom("Pourcentage vendu: 100 %")).toBe("sold");
+    expect(statusFrom("Vendu")).toBe("sold");
+    expect(statusFrom("Verkocht")).toBe("sold");
+  });
+});
+
 describe("listing URLs", () => {
   it("never stops on an address with an escape that isn't valid UTF-8", () => {
     expect(safeDecode("/fr/biens/%C3%A0-vendre?q=100%")).toBe("/fr/biens/à-vendre?q=100%");

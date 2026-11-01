@@ -209,7 +209,7 @@ export function guessedPages(pageUrl: string, page: number, perPage: number): st
     u.pathname = `${u.pathname.replace(/\/$/, "")}/${segment}`;
     return u.toString();
   };
-  return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
+  return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withPath(`pagina-${page}`), withPath(`page-${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
     .map((url) => (url ? normalizeUrl(url) : null))
     .filter((url): url is string => Boolean(url));
 }

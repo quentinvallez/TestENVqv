@@ -22,8 +22,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Immotop rentals page 2 (Quentin's test site): two linked cards among unlinked "Loué" cards.
-  { url: "https://www.immotop.be/a-louer?page=2", show: ["cards"] },
+  // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
+  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
 ];
 
 const clean = (html: string) =>

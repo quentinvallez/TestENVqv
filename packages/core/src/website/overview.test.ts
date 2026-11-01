@@ -111,6 +111,10 @@ describe("the pages of an overview", () => {
     expect(followingPage(`${site}/nl/te-koop?page=2`, 12)).toBe(`${site}/nl/te-koop?page=3`);
     expect(followingPage(`${site}/nl/te-koop?start=12`, 12)).toBe(`${site}/nl/te-koop?start=24`);
     expect(followingPage(`${site}/nl/te-koop/page/2`, 12)).toBe(`${site}/nl/te-koop/page/3`);
+    // Domestic loads its next 24 cards from "/nl/te-koop/pagina-2" (also a page of its own).
+    expect(guessedPages(`${site}/nl/te-koop`, 2, 24)).toContain(`${site}/nl/te-koop/pagina-2`);
+    expect(followingPage(`${site}/nl/te-koop/pagina-2`, 24)).toBe(`${site}/nl/te-koop/pagina-3`);
+    expect(firstPage(`${site}/nl/te-koop/pagina-3`)).toBe(`${site}/nl/te-koop`);
   });
 });
 

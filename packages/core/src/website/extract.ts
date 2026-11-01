@@ -103,7 +103,7 @@ export function normalizeUrl(input: string, base?: string): string | null {
 
 const notPages = /\.(jpe?g|png|gif|webp|avif|svg|pdf|docx?|xlsx?|zip|mp4|mov|webm|mp3|css|js|ico|xml|json|txt|woff2?|ttf|otf|eot)$/i;
 const notListings =
-  /\/(blog|nieuws|news|actualites?|actua|jobs?|vacatures?|careers?|contact|team|over-ons|about|a-propos|privacy|cookies?|disclaimer|login|account|wp-admin|wp-content|wp-json|tag|category|auteur|author|content|cms|media|uploads?|assets?|cms-assets|files?|images?|img|downloads?|documents?|api)(\/|$)/i;
+  /\/(blog|nieuws|news|actualites?|actua|jobs?|vacatures?|careers?|contact|team|over-ons|about|a-propos|privacy|cookies?|disclaimer|login|account|wp-admin|wp-content|wp-json|tag|category|auteur|author|content|cms|media|uploads?|assets?|cms-assets|files?|images?|img|downloads?|documents?|api|favorieten|favoriete|favorites?|favourites?|favoris|wishlist|verlanglijst|vergelijk(?:en)?|compare|comparer|comparateur)(\/|$)/i;
 /** CMS pages ("/fr/page/10004/protection-juridique"); "/page/2" of an overview is no listing either. */
 const cmsPages = /\/(page|pages|pagina)(\/|$)/i;
 /** A file's address in a content store ("/cms-assets/3f2a9c1e-5b7d-…"): not a page. */
@@ -474,7 +474,12 @@ export function transactionFrom(...hints: (string | null | undefined)[]): "sale"
 }
 
 export function statusFrom(...hints: (string | null | undefined)[]): WebsiteListingStatus | null {
-  const textHints = hints.filter(Boolean).join(" ").toLowerCase();
+  // How much of a project is sold says it is still on offer ("Pourcentage vendu: 50 %", "Reeds 40% verkocht"), unless all is.
+  const textHints = hints
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/(?:pourcentage|percentage|percent)\s+(?:vendu|verkocht|sold)\s*:?\s*\d{1,3}\s*%|\d{1,3}\s*%\s*(?:vendu|verkocht|sold)|(?:vendu|verkocht|sold)\s*:?\s*\d{1,3}\s*%/g, (share) => (/\b100\s*%/.test(share) ? " sold " : " "));
   if (soldWords.test(textHints)) return "sold";
   if (rentedWords.test(textHints)) return "rented";
   if (offerWords.test(textHints)) return "under_offer";
