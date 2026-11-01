@@ -17,15 +17,13 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data" | "cards")[];
+  show: ("markup" | "text" | "links" | "data" | "cards" | "tail")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Urbain Vastgoed: how the lone rental card 988 sits among the rented cards without a link.
-  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
-  // Habicom: rental 22342 ("in optie"), alone among the linked cards of rentals page 4.
-  { url: "https://www.habicom.be/nl/huren?page=4", show: ["cards"] },
+  // Immotop rentals page 2 (Quentin's test site): two linked cards among unlinked "Loué" cards.
+  { url: "https://www.immotop.be/a-louer?page=2", show: ["cards"] },
 ];
 
 const clean = (html: string) =>
@@ -84,9 +82,18 @@ async function main() {
         console.log(`links (${links.length}): ${links.map((l) => `${l.replace(origin, "")}${looksLikeListingUrl(l, origin) ? " [L]" : ""}`).join("  ")}`);
       }
       if (look.show.includes("cards")) {
-        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
+        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname) || looksLikeListingUrl(l, origin));
         for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 300))}`);
         if (cards.length < 3) for (const url of cards) console.log(`tree of ${url.replace(origin, "")}:\n  ${cardTree(read.html, read.url, url).join("\n  ")}`);
+      }
+      if (look.show.includes("tail")) {
+        const body = clean(html);
+        const hrefs = [...body.matchAll(/href=["']([^"']+)["']/gi)].filter((m) => /\d{5,}/.test(m[1]));
+        const last = hrefs.at(-1)?.index ?? body.search(/<main\b/i);
+        console.log(`listing-like hrefs: ${hrefs.length}; first ${hrefs[0]?.[1]}`);
+        console.log(`after the last: ${body.slice(Math.max(0, last), last + 4000)}`);
+        console.log(`scripts: ${[...html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+        for (const m of html.matchAll(/(ajax|\/api\/|fetch\(|load-?more|jsf|paged|data-page|infinite)/gi)) console.log(`hint ${m[0]}: ${clean(html.slice(Math.max(0, m.index! - 200), m.index! + 300))}`);
       }
       if (look.show.includes("markup")) {
         const body = clean(html);

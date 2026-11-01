@@ -127,7 +127,8 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname);
   if (notPages.test(path) || notListings.test(path) || cmsPages.test(path) || uuid.test(path)) return false;
-  if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search))) return true;
+  // The words can be in the query too: "index.php?p=listerDetailsBiens&bien=7915591".
+  if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search) || /detail/i.test(parsed.search))) return true;
   const segments = path.split("/").filter(Boolean);
   if (segments.length < 2) return false;
   const hasId = /(^|[^\d])\d{5,9}([^\d]|$)/.test(path);
@@ -181,6 +182,8 @@ export function looksLikeOverviewUrl(url: string, site: string): boolean {
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname + parsed.search).toLowerCase();
   if (notPages.test(parsed.pathname) || notListings.test(parsed.pathname)) return false;
+  // One listing shown through the site's single script ("?p=listerDetailsBiens&bien=7915591") is no overview.
+  if (queryId(parsed) && looksLikeListingUrl(url, site)) return false;
   return /(te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|projets|projects|neuf|new-build|verkocht|verhuurd|a-vendre|a-louer|acheter|louer|vendus?|for-sale|for-rent|to-rent|buy|rent|sold|properties|biens|panden|page=|pagina=)/.test(path);
 }
 
@@ -392,12 +395,16 @@ const rules: Rule[] = [
   { field: "agentName", labels: "uw contactpersoon|contactpersoon|uw makelaar|makelaar|votre contact|votre agent|contact person|your agent|agent", value: /^[\s:|-]{0,6}([A-ZÀ-Ý][a-zà-ÿ'’-]+(?:\s+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3})/, parse: (raw) => raw.trim() },
 ];
 
+const perSquareMetre = /^\s*(?:\/|per|par|le)\s*m(?:²|2|\b)/i;
+
 function labelled(textBlock: string, rule: Rule): unknown {
   const re = new RegExp(`(?:^|\\n|\\|)\\s*(?:${rule.labels})(?![a-zà-ÿ])\\s*(?::|\\|)?[ \\t]*\\n?`, "gi");
   for (const match of textBlock.matchAll(re)) {
     const after = textBlock.slice(match.index! + match[0].length, match.index! + match[0].length + 60);
     const value = after.match(rule.value);
     if (!value) continue;
+    // "Vraagprijs: € 590/m²" on a plot is the price of one square metre, not of the listing.
+    if (rule.field === "price" && perSquareMetre.test(after.slice(value.index! + value[0].length))) continue;
     const parsed = rule.parse(value[1]!.trim());
     if (parsed != null) return parsed;
   }
@@ -420,19 +427,28 @@ export function propertyTypeFrom(...hints: (string | null | undefined)[]): Prope
   return null;
 }
 
+/** Whole words, accents included: /\bloué\b/ never matches "loué " (é isn't a word character to \b). */
+const words = (alternatives: string) => new RegExp(`(?<![\\p{L}\\d])(?:${alternatives})(?![\\p{L}\\d])`, "u");
+const rentWords = words("te huur|huren|verhuurd|à louer|a louer|louer|louée?|location|for rent|to rent|rented|huurprijs|loyer");
+const saleWords = words("te koop|kopen|verkocht|à vendre|a vendre|vendre|vendue?|acheter|for sale|sold|vraagprijs");
+const soldWords = words("verkocht|vendue?|sold");
+const rentedWords = words("verhuurd|louée?|rented|let agreed");
+const offerWords = words("onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|offre acceptée");
+const activeWords = words("te koop|te huur|à vendre|à louer|for sale|for rent|beschikbaar|disponible|available");
+
 export function transactionFrom(...hints: (string | null | undefined)[]): "sale" | "rent" | null {
   const textHints = hints.filter(Boolean).join(" ").replace(/[-_/]/g, " ").toLowerCase();
-  if (/\b(te huur|huren|verhuurd|à louer|a louer|louer|loué|location|for rent|to rent|rented|huurprijs|loyer)\b/.test(textHints)) return "rent";
-  if (/\b(te koop|kopen|verkocht|à vendre|a vendre|vendre|vendu|acheter|for sale|sold|vraagprijs)\b/.test(textHints)) return "sale";
+  if (rentWords.test(textHints)) return "rent";
+  if (saleWords.test(textHints)) return "sale";
   return null;
 }
 
 export function statusFrom(...hints: (string | null | undefined)[]): WebsiteListingStatus | null {
   const textHints = hints.filter(Boolean).join(" ").toLowerCase();
-  if (/\b(verkocht|vendu|sold)\b/.test(textHints)) return "sold";
-  if (/\b(verhuurd|loué|rented|let agreed)\b/.test(textHints)) return "rented";
-  if (/\b(onder optie|in optie|optie|sous option|sous compromis|compromis|under offer|bod aanvaard|offre acceptée)\b/.test(textHints)) return "under_offer";
-  if (/\b(te koop|te huur|à vendre|à louer|for sale|for rent|beschikbaar|disponible|available)\b/.test(textHints)) return "active";
+  if (soldWords.test(textHints)) return "sold";
+  if (rentedWords.test(textHints)) return "rented";
+  if (offerWords.test(textHints)) return "under_offer";
+  if (activeWords.test(textHints)) return "active";
   return null;
 }
 
@@ -495,6 +511,12 @@ function unlabelledPrice(textBlock: string): { price: number; rent: boolean } | 
   const other = /(cadastr|kadastr|\b(?:KI|RC)\b|charges|kosten|provisie|provision|syndic|frais|voorheffing|pr[ée]compte|taxe|belasting|huurwaarde|garantie)[^\n]*\n?[^\n]*$/i;
   for (const match of amounts) {
     if (other.test(textBlock.slice(Math.max(0, (match.index ?? 0) - 80), match.index))) continue;
+    if (perSquareMetre.test(textBlock.slice((match.index ?? 0) + match[0].length))) continue;
+    // An amount inside a description's sentence ("un potentiel locatif estimé à environ 1.000 €/mois", "un box garage
+    // pour 18.000€") is about something else: a price shown without a label stands on a short line of its own.
+    const lineStart = textBlock.lastIndexOf("\n", match.index ?? 0) + 1;
+    const lineEnd = textBlock.indexOf("\n", match.index ?? 0);
+    if ((lineEnd < 0 ? textBlock.length : lineEnd) - lineStart > 120) continue;
     const price = parseAmount(match[1] ?? match[2] ?? "");
     if (price && price >= 100) return { price, rent: Boolean(match[3]) };
   }
@@ -514,7 +536,9 @@ function titleTag(html: string): string | null {
 
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
-const notAPerson = /\b(immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
+// Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
+// Vétérinaires", "Augustin Delportestraat"), menus ("Notre Philosophie") and features ("Avec Jardin") aren't people either.
+const notAPerson = /\b(rue|avenue|chauss[ée]e|boulevard|place|clos|square|dr[eè]ve|chemin|all[ée]e|impasse|quai|sentier|\w+straat|\w+laan|\w+steenweg|\w+plein|\w+dreef|notre|nos|votre|vos|avec|local|jardin|terrasse|philosophie|services?|estimation|gestion|accueil|chasseur|facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -532,20 +556,31 @@ export function contactNear(textBlock: string, name: string): { agentEmail: stri
   return { agentEmail: email ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
 }
 
+/** The listing's own part of the page: its main content, without the lines every page of the site repeats. */
+export function listingText(html: string, boilerplate?: Set<string>): string {
+  const text = pageText(html);
+  return mainPart(boilerplate?.size ? text.split("\n").filter((line) => !boilerplate.has(line)).join("\n") : text);
+}
+
+/**
+ * An agent the page's text doesn't name isn't the listing's agent: a name Claude gives that the page doesn't show is
+ * left out, with that person's contact.
+ */
+export function withShownAgent(listing: ExtractedListing, ownText: string): ExtractedListing {
+  if (!listing.agentName) return listing;
+  const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const words = new Set(fold(ownText).split(/[^a-z'’-]+/));
+  const shown = fold(listing.agentName).split(/[^a-z'’-]+/).filter((w) => w.length > 1).every((w) => words.has(w));
+  return shown ? listing : { ...listing, agentName: null, agentEmail: null, agentPhone: null };
+}
+
 /**
  * Listing facts read by rules: structured data first, then labelled values in
  * the page text, then the URL. Fields the page doesn't show stay null.
  */
 export function extractListing(html: string, pageUrl: string, boilerplate?: Set<string>): { listing: ExtractedListing; structured: boolean } {
   const structured = structuredData(html, pageUrl);
-  const textBlock = mainPart(
-    boilerplate?.size
-      ? pageText(html)
-          .split("\n")
-          .filter((line) => !boilerplate.has(line))
-          .join("\n")
-      : pageText(html),
-  );
+  const textBlock = listingText(html, boilerplate);
   const listing = emptyListing();
   const { found, ...fromStructured } = structured;
   Object.assign(listing, Object.fromEntries(Object.entries(fromStructured).filter(([, v]) => v != null && !(Array.isArray(v) && v.length === 0))));
@@ -555,7 +590,7 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     const value = labelled(textBlock, rule);
     if (value != null) (listing as Record<string, unknown>)[rule.field] = value;
   }
-  if (listing.agentName && /^(contact|makelaar|agent|bel|mail)/i.test(listing.agentName)) listing.agentName = null;
+  if (listing.agentName && (/^(contact|makelaar|agent|bel|mail)/i.test(listing.agentName) || notAPerson.test(listing.agentName))) listing.agentName = null;
   // A name right before a BIV/IPI licence number is the agent: "Wout Timmerman BIV: 519.807 0479 18 38 35".
   if (!listing.agentName) {
     for (const match of textBlock.matchAll(new RegExp(`(?:^|\\n)[ \\t]*(${personName.source})[ \\t]*[,|–-]?[ \\t]*(?:\\n[ \\t]*)?(?:BIV|IPI|B\\.I\\.V\\.)(?![a-z])`, "g"))) {
@@ -628,6 +663,12 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   listing.city ??= titleCase(path.match(/\/(?:te-koop|te-huur|a-vendre|a-louer|for-sale|for-rent)\/([a-zà-ÿ'-]{2,40})\//i)?.[1]?.replace(/-/g, " ").toUpperCase() ?? "") || null;
   let rentByPrice = false;
   let unlabelled = false;
+  // A price shown only in a form field next to its label (Immo Sciara's loan simulator: "Prix du bien (€)" with
+  // value="119000"), when the page says it nowhere else.
+  if (listing.price == null) {
+    const field = html.match(/<label\b[^>]*>[^<]{0,40}\b(?:prix|prijs|price|vraagprijs)\b[^<]{0,40}<\/label>\s*<input\b[^>]*\bvalue\s*=\s*["'](\d{4,9})["']/i);
+    if (field) listing.price = Number(field[1]);
+  }
   if (listing.price == null) {
     const found = unlabelledPrice(textBlock);
     if (found) {
@@ -646,7 +687,12 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
   // A label of its own near the top ("Optie" under the price) says more than "te huur" in the title.
   if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html, title)) ?? listing.status;
-  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
+  // The price's own label, when nothing else says it: "Loyer: 1 700 €" is a rent, "Vraagprijs: € 250.000" a sale.
+  const priceLabel = textBlock.match(/(?:^|[\n•|])[ \t]*(vraagprijs|huurprijs|prix de vente|prix demandé|loyer|asking price|rent)[ \t]*:?[ \t]*(?:€[ \t]*)?\d/im)?.[1]?.toLowerCase();
+  const byLabel = priceLabel ? (/huur|loyer|rent/.test(priceLabel) ? "rent" : "sale") : null;
+  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : byLabel);
+  // Still nothing: the amount itself. No Belgian rent is € 10 000 a month, and nothing sells for under € 5 000.
+  if (!listing.transaction && listing.price != null) listing.transaction = listing.price >= 10_000 ? "sale" : listing.price < 5_000 ? "rent" : null;
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
   listing.propertyType = propertyTypeFrom(path, title);

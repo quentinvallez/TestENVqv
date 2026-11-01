@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardStatuses, type CardBadge, firstPage, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { cardStatuses, type CardBadge, firstPage, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -290,6 +290,12 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   // A page showing more cards than it says it has isn't saying how many it has.
   const said = statedTotal(html);
   if (o.stated == null && said != null && said >= cardCount) o.stated = said;
+  // A list that says it has more pages than it shows by address (a "load more" button) is short whatever we do next.
+  const pages = statedPages(html);
+  if (isFirst && pages != null && cardCount > 0) o.more = true;
+  // A further page (by its links, not a guess) showing only cards we have: the site gave the same page again, so we
+  // can't tell how many more it has.
+  if (!isFirst && !item.guess && o.via !== "guess" && fresh === 0 && cardCount >= 3) o.more = true;
 
   const queued = new Set(discovery.queue.map((q) => q.url));
   const unseen = (url: string | null): url is string => Boolean(url && !visited.has(url) && !queued.has(url) && url !== pageUrl);
@@ -302,7 +308,10 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   }
   // Go on while pages add listings: new to the search, or new to an overview that doesn't hold what it says yet. A page
   // that adds nothing (the site shows page 1 again, or a slice of what we have) ends the overview.
-  const goOn = (isFirst || newToSite > 0 || (fresh > 0 && o.stated != null && o.found < o.stated)) && o.pages < MAX_PAGES_PER_OVERVIEW;
+  // A page reached by the site's own links (not a guessed address) that adds listings to this overview also goes on:
+  // La Clé des Maisons' list starts with the newest listings, which the home page already showed.
+  const byLinks = !item.guess && o.via !== "guess" && !isFirst;
+  const goOn = (isFirst || newToSite > 0 || (fresh > 0 && (o.stated != null ? o.found < o.stated : byLinks))) && o.pages < MAX_PAGES_PER_OVERVIEW;
   if (goOn) {
     const links = nextPageLinks(html, pageUrl).filter(unseen);
     const viaForm = formPage(html, pageUrl, (pageNumber(pageUrl)?.number ?? 1) + 1);
@@ -323,6 +332,8 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
     }
   }
   discovery.queue.unshift(...next);
+  // Its pages were opened after all: it isn't short.
+  if (o.more && pages != null && o.pages >= pages) o.more = false;
   settle(state, root);
 }
 

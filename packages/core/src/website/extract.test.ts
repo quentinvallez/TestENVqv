@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  statusFrom,
+  transactionFrom,
   boilerplateLines,
   contactNear,
   extractListing,
@@ -125,6 +127,13 @@ describe("listing URLs", () => {
 });
 
 describe("reading a listing page", () => {
+  it("doesn't take a plot's price per square metre for its price", () => {
+    // Valor Vastgoed: the description says "Vraagprijs: € 590/m²" above the details table's "Prijs € 354.000,00".
+    const html = `<html><head><title>Bouwgrond te koop in de pinte</title></head><body><main><h1>Bouwgrond</h1><p>€ 354.000</p><p>Klossestraat 19 BB, 9840 De Pinte</p><h2>Omschrijving</h2><p>Lot 1: 680,62 m²</p><p>Vraagprijs: € 590/m².</p><h2>Details van het pand</h2><dl><dt>Prijs</dt><dd>€ 354.000,00</dd><dt>Grondoppervlakte</dt><dd>624,00 m²</dd></dl></main></body></html>`;
+    const { listing } = extractListing(html, "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973");
+    expect(listing.price).toBe(354000);
+  });
+
   it("reads a Dutch label/value page", () => {
     const { listing } = extractListing(davinci, "https://www.immodavinci.be/residentieel/detail/7917339/te-koop-woning-huis-te-koop");
     expect(listing).toMatchObject({
@@ -320,5 +329,44 @@ describe("reading a listing page", () => {
   it("takes an email next to the agent only when it carries their name", () => {
     expect(contactNear("Sofie Peeters\nsofie.peeters@trevi.be\n+32 3 123 45 67", "Sofie Peeters")).toEqual({ agentEmail: "sofie.peeters@trevi.be", agentPhone: "+3231234567" });
     expect(contactNear("Sofie Peeters\ninfo@trevi.be", "Sofie Peeters").agentEmail).toBeNull();
+  });
+
+  it("reads French status words with accents", () => {
+    expect(statusFrom("Appartement - loué")).toBe("rented");
+    expect(statusFrom("Maison vendue")).toBe("sold");
+    expect(transactionFrom("Appartement à louer")).toBe("rent");
+    expect(statusFrom("Loueur")).toBe(null);
+  });
+
+  it("takes no street, menu item or cookie service for the agent", () => {
+    for (const line of ["Notre Philosophie", "Facebook Pixel", "Rue des Vétérinaires", "Augustin Delportestraat"]) {
+      const html = `<html><body><h1>Appartement à louer</h1><p>Prix: 950 €</p><p>2 chambres</p><p>${line}</p><p>0478 12 34 56</p><p>Contact: ${line}</p></body></html>`;
+      expect(extractListing(html, "https://www.example.be/fr/bien/a-louer/appartement/1050-ixelles/7891219").listing.agentName).toBe(null);
+    }
+  });
+
+  it("takes sale or rent from the price's label when nothing else says it", () => {
+    const html = `<html><head><title>Belle surface commerciale : BDG IMMO</title></head><body><p>Belle surface commerciale à 7000 Mons • Loyer: 1 700 €</p><p>Surface: 120 m²</p></body></html>`;
+    const { listing } = extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591");
+    expect(listing.transaction).toBe("rent");
+    expect(listing.price).toBe(1700);
+  });
+
+  it("sees a listing whose address says detail in its query", () => {
+    expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591", "https://www.bdgimmo.be")).toBe(true);
+    expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerBiens&action=V", "https://www.bdgimmo.be")).toBe(false);
+  });
+
+  it("takes sale or rent from the amount as a last resort", () => {
+    const html = `<html><head><title>Maison rénovée : BDG IMMO</title></head><body><p>Maison rénovée à 7000 Mons • Offre à partir de : 189 000 €</p><p>Surface: 120 m²</p><p>3 chambres</p></body></html>`;
+    expect(extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7910178").listing.transaction).toBe("sale");
+  });
+
+  it("reads a price from its form field, and not from a description's sentence", () => {
+    const description = "*OPTION* L'Immobilière Sciara vous propose ce volumineux immeuble mixte qui offre un beau potentiel locatif estimé à environ 1.000 €/mois, actuellement loué 580 €/mois.";
+    const page = (form: string) => `<html><head><title>Immeuble mixte à vendre – 4 ch – 320 m² – Liège Angleur (4031) | Sciara Immo</title></head><body><h1>Immeuble mixte à vendre</h1><p>4 chambres</p><p>320 m²</p><h2>Description du bien</h2><p>${description}</p>${form}</body></html>`;
+    const url = "https://www.immosciara.be/bien/a-vendre/immeuble-mixte/4031-liege-angleur/7792428";
+    expect(extractListing(page(`<div class="form-row"> <label>Prix du bien (€)</label> <input type="number" class="sim-pret-prix" value="199000" min="0" step="1000"> </div>`), url).listing.price).toBe(199000);
+    expect(extractListing(page(""), url).listing.price).toBe(null);
   });
 });

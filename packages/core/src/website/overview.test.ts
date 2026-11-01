@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedTotal, urlShape } from "./overview";
+import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -80,6 +80,9 @@ describe("the pages of an overview", () => {
     expect(pageNumber(`${site}/kopen?pageSize=24`)).toBeNull();
     expect(firstPage(`${site}/kopen?type=huis&page=3`)).toBe(`${site}/kopen?type=huis`);
     expect(firstPage(`${site}/kopen/page/4`)).toBe(`${site}/kopen`);
+    // "?p=" naming the overview script, not a page.
+    expect(firstPage(`${site}/index.php?p=listerBiens&action=V`)).toBe(`${site}/index.php?p=listerBiens&action=V`);
+    expect(firstPage(`${site}/index.php?p=listerBiens&action=V&page=2`)).toBe(`${site}/index.php?p=listerBiens&action=V`);
   });
 
   it("follows rel=next and numbered page links of the same overview, in order", () => {
@@ -102,6 +105,9 @@ describe("the pages of an overview", () => {
   it("tries the usual page addresses and goes on the way that worked", () => {
     expect(guessedPages(`${site}/nl/te-koop`, 2, 12)).toContain(`${site}/nl/te-koop?page=2`);
     expect(guessedPages(`${site}/nl/te-koop`, 2, 12)).toContain(`${site}/nl/te-koop?start=12`);
+    const script = guessedPages(`${site}/index.php?p=listerBiens&action=V`, 2, 6);
+    expect(script).toContain(`${site}/index.php?p=listerBiens&action=V&page=2`);
+    expect(script.some((url) => url.includes("p=2") || url.includes("/page/"))).toBe(false);
     expect(followingPage(`${site}/nl/te-koop?page=2`, 12)).toBe(`${site}/nl/te-koop?page=3`);
     expect(followingPage(`${site}/nl/te-koop?start=12`, 12)).toBe(`${site}/nl/te-koop?start=24`);
     expect(followingPage(`${site}/nl/te-koop/page/2`, 12)).toBe(`${site}/nl/te-koop/page/3`);
@@ -168,5 +174,38 @@ describe("the status a card shows", () => {
   it("doesn't take the page's menu for the card when a page shows one card", () => {
     const html = `<body><nav><a href="/verkocht">Verkocht</a></nav><main><div><a href="/te-koop/gent/woning/97001">Woning</a></div></main></body>`;
     expect(cardStatuses(html, `${site}/kopen`, [`${site}/te-koop/gent/woning/97001`]).size).toBe(0);
+  });
+
+  it("reads how many pages a load-more list says it has", () => {
+    expect(statedPages(`<div class="jet-listing-grid__items" data-nav="{}" data-page="1" data-pages="43" data-listing-source="query">`)).toBe(43);
+    expect(statedPages(`<div data-page="1" data-pages="1">`)).toBe(null);
+    expect(statedPages(`<div class="cards">`)).toBe(null);
+    expect(statedPages(`<li>card</li> <div class="page load" id="page-2" data-items="24"></div> <div class="page load" id="page-9" data-items="6"></div>`)).toBe(9);
+  });
+
+  it("follows the link an infinite-scroll list loads its next page from", () => {
+    const site = "https://www.example.be";
+    const first = `<div class="estate-list"><div class="infinite-scroll"> <a href='/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D'></a></div></div>`;
+    expect(nextPageLinks(first, `${site}/fr/2/chercher-bien/a-vendre`)).toEqual([`${site}/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D`]);
+    const loaded = `<a href="/fr/bien/a-vendre/maison/5360-hamois/7914908" class="estate-card">x</a> <a href='/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3Afalse%7D'>next page</a>`;
+    expect(nextPageLinks(loaded, `${site}/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D`)).toEqual([`${site}/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3Afalse%7D`]);
+    expect(nextPageLinks(`<a class="next" href="#">next page</a><a href="/contact">Contact</a>`, `${site}/kopen`)).toEqual([]);
+  });
+
+  it("reads a card's badge with an accent", () => {
+    const card = (id: number, badge: string) => `<div class="bien"><a href="/index.php?p=listerDetailsBiens&bien=${id}"><h3>Appartement</h3><span class="badge">${badge}</span><p>2 chambres 80 m²</p></a></div>`;
+    const html = `<div class="list">${card(7883525, "loué")}${card(7880919, "loué")}${card(7895618, "sous option")}${card(7915591, "Nouveau")}</div>`;
+    const urls = [7883525, 7880919, 7895618, 7915591].map((id) => `https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=${id}`);
+    const statuses = cardStatuses(html, "https://www.bdgimmo.be/index.php?p=listerBiens&action=L", urls);
+    expect([...urls].map((u) => statuses.get(u) ?? "active")).toEqual(["rented", "rented", "under_offer", "active"]);
+  });
+
+  it("takes one card, not its row, when a linked card sits among unlinked rented ones", () => {
+    const rented = (city: string) => `<div class="span3 property "><div class="pic"><img alt="Maison à ${city}"></div><div class="property-info"><div class="prop-type">Maison</div><div class="prop-price"> Loué </div><div class="icons">2 ch 105 m&sup2;</div></div></div>`;
+    const linked = (id: number, price: string) => `<div class="span3 property "><div class="pic"><div class="image"><a href="/fr/a-louer?view=detail&amp;id=${id}&amp;page=2"><img alt="KOT à MONS - Prix ${price} &euro;"></a></div></div><div class="property-info"><div class="prop-type">KOT/chambre</div><div class="prop-price pull-right">${price} &euro;</div><div class="icons">1 ch 15 m&sup2;</div></div></div>`;
+    const html = `<html><body><div class="property-list"><div class="row-fluid">${rented("Mons")}${rented("Nimy")}${linked(1392, "420")}${rented("Baudour")}</div><div class="row-fluid">${rented("Jemappes")}${rented("Cuesmes")}${rented("Mons")}${linked(1368, "2.500")}</div><div class="row-fluid">${rented("A")}${rented("B")}${rented("C")}${rented("D")}</div></div></body></html>`;
+    const urls = [1392, 1368].map((id) => `https://www.immotop.be/fr/a-louer?view=detail&id=${id}&page=2`);
+    const statuses = cardStatuses(html, "https://www.immotop.be/fr/a-louer?page=2", urls);
+    expect(urls.map((u) => statuses.get(u) ?? "active")).toEqual(["active", "active"]);
   });
 });

@@ -17,6 +17,22 @@ export function statedTotal(html: string): number | null {
   return statedCount(html)?.total ?? null;
 }
 
+/**
+ * How many pages a list built by scripts says it has, in the attributes its "load more" button reads (JetEngine's
+ * data-pages="43", data-max-pages, data-total-pages) or its empty page placeholders: pages we can't open by address.
+ * Null when it doesn't say.
+ */
+export function statedPages(html: string): number | null {
+  let most: number | null = null;
+  // Also empty placeholders the script fills in, one per page (Domestic: <div class="page load" id="page-9" data-items="6">).
+  const placeholders = [...html.matchAll(/<div\b[^>]*\bid\s*=\s*["']page-(\d{1,4})["'][^>]*\bdata-items\s*=/gi)];
+  for (const m of [...html.matchAll(/\bdata-(?:max-|total-|num-)?pages\s*=\s*["']?(\d{1,4})\b/gi), ...placeholders]) {
+    const n = Number(m[1]);
+    if (n > 1 && (most == null || n > most)) most = n;
+  }
+  return most;
+}
+
 /** The stated count with the line it was read from. */
 export function statedCount(html: string): { total: number; line: string } | null {
   const text = pageText(html);
@@ -100,7 +116,8 @@ export function pageNumber(url: string): { number: number; offset: boolean } | n
 /** The overview without its page number: page 1, the key the pages of one overview share. */
 export function firstPage(url: string): string {
   const u = new URL(url);
-  for (const key of [...u.searchParams.keys()]) if (isPageKey(key) || isOffsetKey(key)) u.searchParams.delete(key);
+  // Only a number is a page: "?p=listerBiens" names the site's overview script and stays.
+  for (const [key, value] of [...u.searchParams]) if ((isPageKey(key) || isOffsetKey(key)) && /^\d{1,6}$/.test(value)) u.searchParams.delete(key);
   u.pathname = u.pathname.replace(/\/(?:page|pagina|p|blz)[/-]?\d{1,4}\/?$/i, "") || "/";
   return normalizeUrl(u.toString()) ?? url;
 }
@@ -118,6 +135,23 @@ export function nextPageLinks(html: string, pageUrl: string): string[] {
   for (const url of pageLinks(html, pageUrl)) {
     const n = pageNumber(url);
     if (n && n.number > current && firstPage(url) === base) out.set(url, n.number);
+  }
+  // The link an infinite-scroll or "load more" script reads its next page from (Whise/Webulous: <div class="infinite-scroll">
+  // <a href="/fr/List/InfiniteScroll?json=…">, and "next page" at the end of each page it loads).
+  const here = new URL(pageUrl);
+  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]{0,200}?)<\/a>/gi)) {
+    const attrs = m[1]!;
+    const before = html.slice(Math.max(0, m.index! - 200), m.index);
+    const loader =
+      /^\s*(next page|page suivante|volgende pagina|meer laden|load more|plus de biens|meer panden)\s*$/i.test(pageText(m[2]!)) ||
+      /\bclass\s*=\s*["'][^"']*\b(infinite-scroll|jscroll-next|load-more|loadmore)\b/i.test(attrs) ||
+      /class\s*=\s*["'][^"']*\binfinite-scroll\b[^"']*["'][^>]*>\s*$/i.test(before);
+    if (!loader) continue;
+    const href = attrs.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const raw = href && decodeEntities(href[1] ?? href[2] ?? "");
+    if (!raw || raw.startsWith("#") || /^javascript:/i.test(raw)) continue;
+    const url = normalizeUrl(raw, pageUrl);
+    if (url && new URL(url).origin === here.origin && url !== normalizeUrl(pageUrl) && !out.has(url)) out.set(url, current + 1);
   }
   return [...out].sort((a, b) => a[1] - b[1]).map(([url]) => url);
 }
@@ -163,16 +197,20 @@ export function guessedPages(pageUrl: string, page: number, perPage: number): st
   const base = new URL(firstPage(pageUrl));
   const withParam = (key: string, value: number) => {
     const u = new URL(base);
+    // A field the address already uses for something else ("?p=listerBiens") isn't its page number.
+    if (u.searchParams.has(key)) return "";
     u.searchParams.set(key, String(value));
     return u.toString();
   };
   const withPath = (segment: string) => {
     const u = new URL(base);
+    // "/index.php/page/2" is the same script with junk after it.
+    if (/\.\w{2,5}$/.test(u.pathname)) return "";
     u.pathname = `${u.pathname.replace(/\/$/, "")}/${segment}`;
     return u.toString();
   };
   return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
-    .map((url) => normalizeUrl(url))
+    .map((url) => (url ? normalizeUrl(url) : null))
     .filter((url): url is string => Boolean(url));
 }
 
@@ -186,7 +224,7 @@ export function languageOf(url: string): string | null {
 
 /** Overviews of what was sold or rented ("Referenties", "Recent verkocht"): no listing on offer there. */
 export function isArchiveUrl(url: string): boolean {
-  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|\blou[ée]s?\b|\bsold\b|\brented\b/i.test(decodeURIComponent(new URL(url).pathname));
+  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|(?<![\p{L}\d])lou[ée]e?s?(?![\p{L}\d])|\bsold\b|\brented\b/iu.test(decodeURIComponent(new URL(url).pathname));
 }
 
 /** Which way a page address numbers its pages: the query key ("page", "start"), or "path" for "/page/2". */
@@ -201,10 +239,12 @@ const VOID_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img"
 /** What a card's badge can say: a listing on offer has none. */
 export type CardBadge = Exclude<WebsiteListingStatus, "active">;
 
+// Whole words with accents: \b doesn't see "é" as part of a word, so /\blou[ée]\b/ never matched "loué".
+const badgeWords = (alternatives: string) => new RegExp(`(?<![\\p{L}\\d])(?:${alternatives})(?![\\p{L}\\d])`, "iu");
 const BADGES: [RegExp, CardBadge][] = [
-  [/\b(verkocht|vendus?|sold)\b/i, "sold"],
-  [/\b(verhuurd|lou[ée]s?|rented|let agreed)\b/i, "rented"],
-  [/\b(optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
+  [badgeWords("verkocht|vendue?s?|sold"), "sold"],
+  [badgeWords("verhuurd|lou[ée]e?s?|rented|let agreed"), "rented"],
+  [badgeWords("optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]e?|reserved"), "under_offer"],
 ];
 
 type Element = { name: string; start: number; end: number; shape: string; depth: number };
@@ -277,22 +317,25 @@ function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>, elements
 /**
  * With only one or two linked cards, the element of a list the card is one item of: the largest element around its
  * link whose parent holds two or more elements of its kind (with a class), at its level, that show a price,
- * an area or rooms. Those are
+ * an area or rooms, and that isn't itself a row of such items. Those are
  * cards too, drawn without a link (rented or sold), and a card that took them in would show their "Verhuurd".
  */
 function listItem(doc: string, chain: Element[], around: Element[], elements: Element[]): Element | null {
+  const facts = new Map<Element, boolean>();
+  const hasFacts = (x: Element) => facts.get(x) ?? (facts.set(x, LISTING_FACTS.test(cardText(doc.slice(x.start, x.end)))), facts.get(x)!);
+  // Elements of e's kind at e's level inside `within` that show listing facts.
+  const alikeIn = (e: Element, within: Element) => elements.filter((x) => x.depth === e.depth && x.shape === e.shape && x.start >= within.start && x.end <= within.end && hasFacts(x)).length;
+  const items: Element[] = [];
   for (const e of [...chain].reverse()) {
     const parent = around[around.indexOf(e) - 1];
     if (!parent) continue;
     // A kind with a class ("div.card"), not any bare "div".
     if (e.shape.endsWith(".")) continue;
-    let alike = 0;
-    for (const x of elements) {
-      if (x === e || x.depth !== e.depth || x.shape !== e.shape || x.start < parent.start || x.end > parent.end) continue;
-      if (LISTING_FACTS.test(cardText(doc.slice(x.start, x.end))) && ++alike >= 2) return e;
-    }
+    if (alikeIn(e, parent) >= 2) items.push(e);
   }
-  return null;
+  // Largest first, but not a row of cards: an element holding two or more items of a smaller kind is a group of them
+  // (Immotop: div.row-fluid with four div.span3.property, one linked and three "Loué").
+  return items.find((e) => !items.some((q) => q !== e && q.start >= e.start && q.end <= e.end && alikeIn(q, e) >= 2)) ?? null;
 }
 
 const cardText = (part: string) => `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;

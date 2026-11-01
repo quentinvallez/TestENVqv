@@ -10,6 +10,7 @@ import { openBrowser } from "../website/browser";
 import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
   extractListing,
+  withShownAgent,
   isListingPage,
   isRemovedListingPage,
   looksLikeListingUrl,
@@ -54,7 +55,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v10";
+const EXTRACTION_VERSION = "v11";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -130,7 +131,8 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
     try {
       const ai = await extractWithAi(page.url, text);
       isListing = ai.isListing || (shownOnOverview && isListing);
-      listing = mergeExtraction(listing, ai.listing);
+      // Claude only names an agent the page shows.
+      listing = withShownAgent(mergeExtraction(listing, ai.listing), text);
       extractedBy = "ai";
     } catch (error) {
       console.error(`Claude could not read ${page.url}`, error);
@@ -461,7 +463,7 @@ export const importWebsiteListings = defineTool({
     const people = await team(ctx);
     // Overviews read in full that hold what they state: a page only a sitemap lists is then an old one.
     const overviewsNow = state?.overviews ?? previous.overviews ?? [];
-    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && (o.stated == null || o.found >= o.stated));
+    const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && !o.more && (o.stated == null || o.found >= o.stated));
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
     let checked = 0;
     for (const page of due) {

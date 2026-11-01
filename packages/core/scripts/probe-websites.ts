@@ -13,7 +13,7 @@ import { cardStatuses, statedCount } from "../src/website/overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -33,9 +33,20 @@ const sites = [
   "https://www.canius.be/nl/",
   "https://www.habicom.be/",
   "https://www.urbainvastgoed.be/nl/",
+  "https://www.domestic.be/nl",
+  "https://www.palton.be/",
+  "https://www.valorvastgoed.be/",
+  "https://www.git.be/",
+  "https://www.lacledesmaisons.be/fr/",
+  "https://bytheway.immo/",
+  "https://www.way-home.be/",
+  "https://www.bdgimmo.be/",
+  "https://www.geodeproperties.be/",
+  "https://www.immosciara.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
+  valorvastgoed: ["https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832975"],
   urbainvastgoed: ["https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/"],
   ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
   jurimex: [
@@ -128,12 +139,16 @@ async function probe(site: string) {
     `search ${discovery.doneAt ? "done" : "NOT done"} in ${Math.round((Date.now() - started) / 1000)}s: ${discovery.visited.length} pages read, ${discovery.queue.length} left, ${discovery.sitemapsRead ?? 0} sitemaps, language ${discovery.language ?? "(none)"}, paging ${discovery.pagingKey ?? "-"}, browser ${process.env.CHROMIUM_PATH ? "on" : "off"}${error ? `, error: ${error}` : ""}`,
   );
   console.log(`listing pages found: ${shownOn.size}, of which ${sitemapOnly.length} only in a sitemap`);
-  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages, ${sitemapOnly.length} only in a sitemap`);
+  // As the import decides: overviews read in full that hold what they state make a page only a sitemap lists an old one.
+  const whole = overviews.some((o) => o.found > 0) && overviews.every((o) => o.complete && !o.more && (o.stated == null || o.found >= o.stated));
+  const keeps = `the import ${whole ? "drops" : "keeps"} the ${sitemapOnly.length} only in a sitemap`;
+  console.log(keeps);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages; ${keeps}`);
   // What the importer keeps from the cards: their badge counts when the listing's own page says nothing else.
   const cardBadge = new Map<string, string>();
   const fewCards: string[] = [];
   for (const o of overviews) {
-    const verdict = o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`;
+    const verdict = (o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`) + (o.more ? ", says it has more pages (load more)" : "");
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
@@ -169,7 +184,7 @@ async function probe(site: string) {
   // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
-  const outcome = new Map<string, { status: string; why: string }>();
+  const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
     const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
     let page = await reader.read(url);
@@ -193,7 +208,7 @@ async function probe(site: string) {
     if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
-    return outcome.set(url, { status, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
+    return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
   for (const url of sitemapSample) {
@@ -242,6 +257,15 @@ async function probe(site: string) {
   await browser2?.close();
   report("(only in a sitemap)", sitemapOnly);
   for (const [root, urls] of byOverview) report(root.replace(site, "") || "/", urls);
+  // What the import would list: on offer and under option, per sale and rent, of the pages it keeps.
+  const kept = [...shownOn.keys()].filter((url) => !whole || !sitemapOnly.includes(url));
+  const keptRead = kept.filter((url) => outcome.has(url));
+  const listed = keptRead.filter((url) => ["active", "under_offer"].includes(outcome.get(url)!.status));
+  const count = (tx: string | null, status: string) => listed.filter((url) => (outcome.get(url)!.transaction ?? null) === tx && outcome.get(url)!.status === status).length;
+  const line = `listed: sale ${count("sale", "active")} on offer + ${count("sale", "under_offer")} option, rent ${count("rent", "active")} on offer + ${count("rent", "under_offer")} option${count(null, "active") + count(null, "under_offer") ? `, sale or rent unknown ${count(null, "active") + count(null, "under_offer")}` : ""}; read ${keptRead.length} of the ${kept.length} kept pages`;
+  console.log(line);
+  if (listed.length <= 150) console.log(`  prices: ${listed.map((url) => `${outcome.get(url)!.reference ?? url.replace(site, "")} ${outcome.get(url)!.transaction ?? "?"} €${outcome.get(url)!.price ?? "?"}`).join(" | ")}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=listed::${new URL(site).hostname} ${line}`);
 }
 
 main();
