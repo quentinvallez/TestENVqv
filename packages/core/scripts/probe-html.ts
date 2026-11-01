@@ -25,7 +25,9 @@ const looks: Look[] = [
   // Whise sites Quentin tested on 2026-11-01: home menus, and the plot whose price per m² was read as its price.
   // Overviews: what follows the last card (pager, load-more button, data endpoints).
   { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
-  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", show: ["tail"] },
+  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", needle: "InfiniteScroll", show: ["markup"] },
+  { url: "https://www.lacledesmaisons.be/fr/2/chercher-bien/a-vendre", follow: "InfiniteScroll", show: ["links", "tail"] },
+  { url: "https://www.lacledesmaisons.be/fr/bien/a-louer/commerce/5590-ciney/7815412", needle: "Vendu", show: ["text"] },
   { url: "https://bytheway.immo/biens-a-vendre", show: ["tail"] },
   { url: "https://www.bdgimmo.be/", show: ["links"] },
   { url: "https://www.immosciara.be/", show: ["links"] },

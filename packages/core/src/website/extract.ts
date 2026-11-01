@@ -537,20 +537,31 @@ export function contactNear(textBlock: string, name: string): { agentEmail: stri
   return { agentEmail: email ?? null, agentPhone: phone ? phone.replace(/[^\d+]/g, "").replace(/^0/, "+32") : null };
 }
 
+/** The listing's own part of the page: its main content, without the lines every page of the site repeats. */
+export function listingText(html: string, boilerplate?: Set<string>): string {
+  const text = pageText(html);
+  return mainPart(boilerplate?.size ? text.split("\n").filter((line) => !boilerplate.has(line)).join("\n") : text);
+}
+
+/**
+ * An agent the listing's own text doesn't name isn't the listing's agent: a name from the site's data, its structured
+ * data or Claude that the visitor never sees (or that only the footer shows) is left out, with that person's contact.
+ */
+export function withShownAgent(listing: ExtractedListing, ownText: string): ExtractedListing {
+  if (!listing.agentName) return listing;
+  const fold = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const words = new Set(fold(ownText).split(/[^a-z'’-]+/));
+  const shown = fold(listing.agentName).split(/[^a-z'’-]+/).filter((w) => w.length > 1).every((w) => words.has(w));
+  return shown ? listing : { ...listing, agentName: null, agentEmail: null, agentPhone: null };
+}
+
 /**
  * Listing facts read by rules: structured data first, then labelled values in
  * the page text, then the URL. Fields the page doesn't show stay null.
  */
 export function extractListing(html: string, pageUrl: string, boilerplate?: Set<string>): { listing: ExtractedListing; structured: boolean } {
   const structured = structuredData(html, pageUrl);
-  const textBlock = mainPart(
-    boilerplate?.size
-      ? pageText(html)
-          .split("\n")
-          .filter((line) => !boilerplate.has(line))
-          .join("\n")
-      : pageText(html),
-  );
+  const textBlock = listingText(html, boilerplate);
   const listing = emptyListing();
   const { found, ...fromStructured } = structured;
   Object.assign(listing, Object.fromEntries(Object.entries(fromStructured).filter(([, v]) => v != null && !(Array.isArray(v) && v.length === 0))));
