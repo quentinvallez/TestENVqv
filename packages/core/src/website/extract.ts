@@ -127,7 +127,8 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname);
   if (notPages.test(path) || notListings.test(path) || cmsPages.test(path) || uuid.test(path)) return false;
-  if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search))) return true;
+  // The words can be in the query too: "index.php?p=listerDetailsBiens&bien=7915591".
+  if (queryId(parsed) && (listingWords.test(path) || /\bview=details?\b/i.test(parsed.search) || /detail/i.test(parsed.search))) return true;
   const segments = path.split("/").filter(Boolean);
   if (segments.length < 2) return false;
   const hasId = /(^|[^\d])\d{5,9}([^\d]|$)/.test(path);
@@ -181,6 +182,8 @@ export function looksLikeOverviewUrl(url: string, site: string): boolean {
   if (!sameSite(parsed, site)) return false;
   const path = decodeURIComponent(parsed.pathname + parsed.search).toLowerCase();
   if (notPages.test(parsed.pathname) || notListings.test(parsed.pathname)) return false;
+  // One listing shown through the site's single script ("?p=listerDetailsBiens&bien=7915591") is no overview.
+  if (queryId(parsed) && looksLikeListingUrl(url, site)) return false;
   return /(te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|projets|projects|neuf|new-build|verkocht|verhuurd|a-vendre|a-louer|acheter|louer|vendus?|for-sale|for-rent|to-rent|buy|rent|sold|properties|biens|panden|page=|pagina=)/.test(path);
 }
 
@@ -673,7 +676,10 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   listing.status = (fromPath && fromPath !== "active" ? fromPath : null) ?? statusFrom(typeof statusLine === "string" ? statusLine : null) ?? statusFrom(title) ?? fromPath;
   // A label of its own near the top ("Optie" under the price) says more than "te huur" in the title.
   if (!listing.status || listing.status === "active") listing.status = statusFrom(badgeLine(html, title)) ?? listing.status;
-  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : null);
+  // The price's own label, when nothing else says it: "Loyer: 1 700 €" is a rent, "Vraagprijs: € 250.000" a sale.
+  const priceLabel = textBlock.match(/(?:^|[\n•|])[ \t]*(vraagprijs|huurprijs|prix de vente|prix demandé|loyer|asking price|rent)[ \t]*:?[ \t]*(?:€[ \t]*)?\d/im)?.[1]?.toLowerCase();
+  const byLabel = priceLabel ? (/huur|loyer|rent/.test(priceLabel) ? "rent" : "sale") : null;
+  listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : byLabel);
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
   listing.propertyType = propertyTypeFrom(path, title);

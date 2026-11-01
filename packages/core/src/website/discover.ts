@@ -308,7 +308,10 @@ function walk(state: DiscoveryState, item: QueueItem, html: string, pageUrl: str
   }
   // Go on while pages add listings: new to the search, or new to an overview that doesn't hold what it says yet. A page
   // that adds nothing (the site shows page 1 again, or a slice of what we have) ends the overview.
-  const goOn = (isFirst || newToSite > 0 || (fresh > 0 && o.stated != null && o.found < o.stated)) && o.pages < MAX_PAGES_PER_OVERVIEW;
+  // A page reached by the site's own links (not a guessed address) that adds listings to this overview also goes on:
+  // La Clé des Maisons' list starts with the newest listings, which the home page already showed.
+  const byLinks = !item.guess && o.via !== "guess" && !isFirst;
+  const goOn = (isFirst || newToSite > 0 || (fresh > 0 && (o.stated != null ? o.found < o.stated : byLinks))) && o.pages < MAX_PAGES_PER_OVERVIEW;
   if (goOn) {
     const links = nextPageLinks(html, pageUrl).filter(unseen);
     const viaForm = formPage(html, pageUrl, (pageNumber(pageUrl)?.number ?? 1) + 1);

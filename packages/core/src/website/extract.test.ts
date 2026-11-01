@@ -344,4 +344,16 @@ describe("reading a listing page", () => {
       expect(extractListing(html, "https://www.example.be/fr/bien/a-louer/appartement/1050-ixelles/7891219").listing.agentName).toBe(null);
     }
   });
+
+  it("takes sale or rent from the price's label when nothing else says it", () => {
+    const html = `<html><head><title>Belle surface commerciale : BDG IMMO</title></head><body><p>Belle surface commerciale à 7000 Mons • Loyer: 1 700 €</p><p>Surface: 120 m²</p></body></html>`;
+    const { listing } = extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591");
+    expect(listing.transaction).toBe("rent");
+    expect(listing.price).toBe(1700);
+  });
+
+  it("sees a listing whose address says detail in its query", () => {
+    expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591", "https://www.bdgimmo.be")).toBe(true);
+    expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerBiens&action=V", "https://www.bdgimmo.be")).toBe(false);
+  });
 });
