@@ -26,6 +26,7 @@ const looks: Look[] = [
   { url: "https://www.domestic.be/nl", show: ["links"] },
   { url: "https://www.lacledesmaisons.be/fr/", show: ["links"] },
   { url: "https://bytheway.immo/", show: ["links"] },
+  { url: "https://www.way-home.be/", show: ["links"] },
   { url: "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", needle: "€", show: ["markup", "text"] },
 ];
 
