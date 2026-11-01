@@ -474,7 +474,12 @@ export function transactionFrom(...hints: (string | null | undefined)[]): "sale"
 }
 
 export function statusFrom(...hints: (string | null | undefined)[]): WebsiteListingStatus | null {
-  const textHints = hints.filter(Boolean).join(" ").toLowerCase();
+  // How much of a project is sold says it is still on offer ("Pourcentage vendu: 50 %", "Reeds 40% verkocht"), unless all is.
+  const textHints = hints
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/(?:pourcentage|percentage|percent)\s+(?:vendu|verkocht|sold)\s*:?\s*\d{1,3}\s*%|\d{1,3}\s*%\s*(?:vendu|verkocht|sold)|(?:vendu|verkocht|sold)\s*:?\s*\d{1,3}\s*%/g, (share) => (/\b100\s*%/.test(share) ? " sold " : " "));
   if (soldWords.test(textHints)) return "sold";
   if (rentedWords.test(textHints)) return "rented";
   if (offerWords.test(textHints)) return "under_offer";
