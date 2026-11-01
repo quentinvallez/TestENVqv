@@ -356,4 +356,9 @@ describe("reading a listing page", () => {
     expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591", "https://www.bdgimmo.be")).toBe(true);
     expect(looksLikeListingUrl("https://www.bdgimmo.be/index.php?p=listerBiens&action=V", "https://www.bdgimmo.be")).toBe(false);
   });
+
+  it("takes sale or rent from the amount as a last resort", () => {
+    const html = `<html><head><title>Maison rénovée : BDG IMMO</title></head><body><p>Maison rénovée à 7000 Mons • Offre à partir de : 189 000 €</p><p>Surface: 120 m²</p><p>3 chambres</p></body></html>`;
+    expect(extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7910178").listing.transaction).toBe("sale");
+  });
 });

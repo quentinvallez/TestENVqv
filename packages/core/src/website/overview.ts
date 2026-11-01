@@ -224,7 +224,7 @@ export function languageOf(url: string): string | null {
 
 /** Overviews of what was sold or rented ("Referenties", "Recent verkocht"): no listing on offer there. */
 export function isArchiveUrl(url: string): boolean {
-  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|\blou[ée]s?\b|\bsold\b|\brented\b/i.test(decodeURIComponent(new URL(url).pathname));
+  return /referenti|references|realisati|verkocht|verhuurd|\bvendus?\b|(?<![\p{L}\d])lou[ée]e?s?(?![\p{L}\d])|\bsold\b|\brented\b/iu.test(decodeURIComponent(new URL(url).pathname));
 }
 
 /** Which way a page address numbers its pages: the query key ("page", "start"), or "path" for "/page/2". */
@@ -239,10 +239,12 @@ const VOID_ELEMENTS = new Set(["area", "base", "br", "col", "embed", "hr", "img"
 /** What a card's badge can say: a listing on offer has none. */
 export type CardBadge = Exclude<WebsiteListingStatus, "active">;
 
+// Whole words with accents: \b doesn't see "é" as part of a word, so /\blou[ée]\b/ never matched "loué".
+const badgeWords = (alternatives: string) => new RegExp(`(?<![\\p{L}\\d])(?:${alternatives})(?![\\p{L}\\d])`, "iu");
 const BADGES: [RegExp, CardBadge][] = [
-  [/\b(verkocht|vendus?|sold)\b/i, "sold"],
-  [/\b(verhuurd|lou[ée]s?|rented|let agreed)\b/i, "rented"],
-  [/\b(optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
+  [badgeWords("verkocht|vendue?s?|sold"), "sold"],
+  [badgeWords("verhuurd|lou[ée]e?s?|rented|let agreed"), "rented"],
+  [badgeWords("optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]e?|reserved"), "under_offer"],
 ];
 
 type Element = { name: string; start: number; end: number; shape: string; depth: number };

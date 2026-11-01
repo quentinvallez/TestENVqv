@@ -680,6 +680,8 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
   const priceLabel = textBlock.match(/(?:^|[\n•|])[ \t]*(vraagprijs|huurprijs|prix de vente|prix demandé|loyer|asking price|rent)[ \t]*:?[ \t]*(?:€[ \t]*)?\d/im)?.[1]?.toLowerCase();
   const byLabel = priceLabel ? (/huur|loyer|rent/.test(priceLabel) ? "rent" : "sale") : null;
   listing.transaction = transactionFrom(typeof statusLine === "string" ? statusLine : null, title, path) ?? (listing.status === "rented" || rentByPrice ? "rent" : byLabel);
+  // Still nothing: the amount itself. No Belgian rent is € 10 000 a month, and nothing sells for under € 5 000.
+  if (!listing.transaction && listing.price != null) listing.transaction = listing.price >= 10_000 ? "sale" : listing.price < 5_000 ? "rent" : null;
   // A small amount found without a label is a rent only on a page for rent; elsewhere it is a charge or a cadastral income.
   if (unlabelled && !rentByPrice && listing.transaction !== "rent" && (listing.price ?? 0) < 2_000) listing.price = null;
   listing.propertyType = propertyTypeFrom(path, title);

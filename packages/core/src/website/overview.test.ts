@@ -191,4 +191,12 @@ describe("the status a card shows", () => {
     expect(nextPageLinks(loaded, `${site}/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A0%7D`)).toEqual([`${site}/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3Afalse%7D`]);
     expect(nextPageLinks(`<a class="next" href="#">next page</a><a href="/contact">Contact</a>`, `${site}/kopen`)).toEqual([]);
   });
+
+  it("reads a card's badge with an accent", () => {
+    const card = (id: number, badge: string) => `<div class="bien"><a href="/index.php?p=listerDetailsBiens&bien=${id}"><h3>Appartement</h3><span class="badge">${badge}</span><p>2 chambres 80 m²</p></a></div>`;
+    const html = `<div class="list">${card(7883525, "loué")}${card(7880919, "loué")}${card(7895618, "sous option")}${card(7915591, "Nouveau")}</div>`;
+    const urls = [7883525, 7880919, 7895618, 7915591].map((id) => `https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=${id}`);
+    const statuses = cardStatuses(html, "https://www.bdgimmo.be/index.php?p=listerBiens&action=L", urls);
+    expect([...urls].map((u) => statuses.get(u) ?? "active")).toEqual(["rented", "rented", "under_offer", "active"]);
+  });
 });
