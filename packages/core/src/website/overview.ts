@@ -100,7 +100,8 @@ export function pageNumber(url: string): { number: number; offset: boolean } | n
 /** The overview without its page number: page 1, the key the pages of one overview share. */
 export function firstPage(url: string): string {
   const u = new URL(url);
-  for (const key of [...u.searchParams.keys()]) if (isPageKey(key) || isOffsetKey(key)) u.searchParams.delete(key);
+  // Only a number is a page: "?p=listerBiens" names the site's overview script and stays.
+  for (const [key, value] of [...u.searchParams]) if ((isPageKey(key) || isOffsetKey(key)) && /^\d{1,6}$/.test(value)) u.searchParams.delete(key);
   u.pathname = u.pathname.replace(/\/(?:page|pagina|p|blz)[/-]?\d{1,4}\/?$/i, "") || "/";
   return normalizeUrl(u.toString()) ?? url;
 }
@@ -163,16 +164,20 @@ export function guessedPages(pageUrl: string, page: number, perPage: number): st
   const base = new URL(firstPage(pageUrl));
   const withParam = (key: string, value: number) => {
     const u = new URL(base);
+    // A field the address already uses for something else ("?p=listerBiens") isn't its page number.
+    if (u.searchParams.has(key)) return "";
     u.searchParams.set(key, String(value));
     return u.toString();
   };
   const withPath = (segment: string) => {
     const u = new URL(base);
+    // "/index.php/page/2" is the same script with junk after it.
+    if (/\.\w{2,5}$/.test(u.pathname)) return "";
     u.pathname = `${u.pathname.replace(/\/$/, "")}/${segment}`;
     return u.toString();
   };
   return [withParam("page", page), withParam("pagina", page), withPath(`page/${page}`), withParam("p", page), withParam("pageindex", page), withParam("start", (page - 1) * perPage), withParam("offset", (page - 1) * perPage)]
-    .map((url) => normalizeUrl(url))
+    .map((url) => (url ? normalizeUrl(url) : null))
     .filter((url): url is string => Boolean(url));
 }
 

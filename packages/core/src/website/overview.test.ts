@@ -80,6 +80,9 @@ describe("the pages of an overview", () => {
     expect(pageNumber(`${site}/kopen?pageSize=24`)).toBeNull();
     expect(firstPage(`${site}/kopen?type=huis&page=3`)).toBe(`${site}/kopen?type=huis`);
     expect(firstPage(`${site}/kopen/page/4`)).toBe(`${site}/kopen`);
+    // "?p=" naming the overview script, not a page.
+    expect(firstPage(`${site}/index.php?p=listerBiens&action=V`)).toBe(`${site}/index.php?p=listerBiens&action=V`);
+    expect(firstPage(`${site}/index.php?p=listerBiens&action=V&page=2`)).toBe(`${site}/index.php?p=listerBiens&action=V`);
   });
 
   it("follows rel=next and numbered page links of the same overview, in order", () => {
@@ -102,6 +105,9 @@ describe("the pages of an overview", () => {
   it("tries the usual page addresses and goes on the way that worked", () => {
     expect(guessedPages(`${site}/nl/te-koop`, 2, 12)).toContain(`${site}/nl/te-koop?page=2`);
     expect(guessedPages(`${site}/nl/te-koop`, 2, 12)).toContain(`${site}/nl/te-koop?start=12`);
+    const script = guessedPages(`${site}/index.php?p=listerBiens&action=V`, 2, 6);
+    expect(script).toContain(`${site}/index.php?p=listerBiens&action=V&page=2`);
+    expect(script.some((url) => url.includes("p=2") || url.includes("/page/"))).toBe(false);
     expect(followingPage(`${site}/nl/te-koop?page=2`, 12)).toBe(`${site}/nl/te-koop?page=3`);
     expect(followingPage(`${site}/nl/te-koop?start=12`, 12)).toBe(`${site}/nl/te-koop?start=24`);
     expect(followingPage(`${site}/nl/te-koop/page/2`, 12)).toBe(`${site}/nl/te-koop/page/3`);
