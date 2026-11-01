@@ -24,8 +24,8 @@ type Look = {
 const looks: Look[] = [
   // Urbain Vastgoed: how the lone rental card 988 sits among the rented cards without a link.
   { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
-  // Habicom: the two cards on the last for-sale page, whose status changed with the list-item rule.
-  { url: "https://www.habicom.be/nl/kopen/?page=18", show: ["cards"] },
+  // Habicom: rental 22342 ("in optie"), alone among the linked cards of rentals page 4.
+  { url: "https://www.habicom.be/nl/huren?page=4", show: ["cards"] },
 ];
 
 const clean = (html: string) =>

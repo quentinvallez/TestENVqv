@@ -276,7 +276,7 @@ function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>, elements
 
 /**
  * With only one or two linked cards, the element of a list the card is one item of: the largest element around its
- * link whose parent holds two or more elements of its kind (with a class, about its size), at its level, that show a price,
+ * link whose parent holds two or more elements of its kind (with a class), at its level, that show a price,
  * an area or rooms. Those are
  * cards too, drawn without a link (rented or sold), and a card that took them in would show their "Verhuurd".
  */
@@ -284,13 +284,11 @@ function listItem(doc: string, chain: Element[], around: Element[], elements: El
   for (const e of [...chain].reverse()) {
     const parent = around[around.indexOf(e) - 1];
     if (!parent) continue;
-    // A kind with a class ("div.card"), not any bare "div", and items about the size of this one.
+    // A kind with a class ("div.card"), not any bare "div".
     if (e.shape.endsWith(".")) continue;
-    const size = e.end - e.start;
     let alike = 0;
     for (const x of elements) {
       if (x === e || x.depth !== e.depth || x.shape !== e.shape || x.start < parent.start || x.end > parent.end) continue;
-      if (x.end - x.start < size / 3 || x.end - x.start > size * 3) continue;
       if (LISTING_FACTS.test(cardText(doc.slice(x.start, x.end))) && ++alike >= 2) return e;
     }
   }

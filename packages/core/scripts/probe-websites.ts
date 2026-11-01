@@ -131,12 +131,13 @@ async function probe(site: string) {
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=found::${new URL(site).hostname} ${shownOn.size} listing pages, ${sitemapOnly.length} only in a sitemap`);
   // What the importer keeps from the cards: their badge counts when the listing's own page says nothing else.
   const cardBadge = new Map<string, string>();
+  const fewCards: string[] = [];
   for (const o of overviews) {
     const verdict = o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`;
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
-      if (process.env.GITHUB_ACTIONS && urls.length < 3) for (const url of urls) console.log(`::notice title=few cards::${url} ${statuses.get(url) ?? "on offer"} on ${page}`);
+      if (urls.length < 3) for (const url of urls) fewCards.push(`${url.replace(site, "")} ${statuses.get(url) ?? "on offer"}`);
       return urls.map((url) => statuses.get(url) ?? "on offer");
     });
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
@@ -159,6 +160,7 @@ async function probe(site: string) {
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
+  if (process.env.GITHUB_ACTIONS && fewCards.length) console.log(`::notice title=few cards::${[...new Set(fewCards)].join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=card statuses::${new URL(site).hostname} ${tally([...cardBadge.values()]) || "none"} (of ${shownOn.size})`);
 
   if (discovery.queue.length) console.log(`  next in queue: ${discovery.queue.slice(0, 5).map((q) => q.url).join(" ")}`);
