@@ -207,14 +207,15 @@ const BADGES: [RegExp, CardBadge][] = [
   [/\b(optie|option|compromis|sous offre|under offer|bod aanvaard|offre accept[ée]e|gereserveerd|r[ée]serv[ée]|reserved)\b/i, "under_offer"],
 ];
 
-type Element = { name: string; start: number; end: number; shape: string };
+type Element = { name: string; start: number; end: number; shape: string; depth: number };
 type Anchor = { url: string; at: number; around: Element[] };
 
 /** The page's elements around each link, with scripts, styles, comments and form controls blanked out (offsets kept). */
-function anchorsOf(html: string, pageUrl: string): { doc: string; anchors: Anchor[] } {
+function anchorsOf(html: string, pageUrl: string): { doc: string; anchors: Anchor[]; elements: Element[] } {
   const doc = html.replace(/<!--[\s\S]*?-->|<(script|style|template|select|textarea)\b[\s\S]*?<\/\1>/gi, (m) => " ".repeat(m.length));
   const open: Element[] = [];
   const anchors: Anchor[] = [];
+  const elements: Element[] = [];
   for (const m of doc.matchAll(/<(\/?)([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*?(\/?)>/g)) {
     const name = m[2]!.toLowerCase();
     if (m[1]) {
@@ -228,14 +229,16 @@ function anchorsOf(html: string, pageUrl: string): { doc: string; anchors: Ancho
     // (Not a class that names this one element, as page builders add: "comp-kq6hr2s2", "elementor-element-3f2a9c".)
     const classes = m[0].match(/\bclass\s*=\s*["']([^"']*)/i)?.[1]?.split(/\s+/) ?? [];
     const cls = classes.find((c) => c && !/^(comp|elementor-element|node|post|item|block)-/i.test(c))?.replace(/\d+/g, "") ?? "";
-    open.push({ name, start: m.index!, end: doc.length, shape: `${name}.${cls}` });
+    const element = { name, start: m.index!, end: doc.length, shape: `${name}.${cls}`, depth: open.length };
+    open.push(element);
+    elements.push(element);
     // Some sites draw the cards of sold listings as an element with an address but no link ("<div href=…>").
     if (name !== "a" && !/\shref\s*=/i.test(m[0])) continue;
     const href = m[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
     const url = href && normalizeUrl(decodeEntities(href[1] ?? href[2] ?? href[3] ?? ""), pageUrl);
     if (url) anchors.push({ url, at: m.index!, around: [...open] });
   }
-  return { doc, anchors };
+  return { doc, anchors, elements };
 }
 
 const PAGE_PARTS = ["html", "body", "main", "header", "nav", "footer"];
@@ -244,7 +247,7 @@ const PAGE_PARTS = ["html", "body", "main", "header", "nav", "footer"];
  * Each card's own markup: the largest element around its link that holds no other card, and isn't the page itself
  * (a page with one card would read its menu as the card).
  */
-function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>): Map<string, string> {
+function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>, elements: Element[]): Map<string, string> {
   const mine = anchors.filter((a) => cards.has(a.url));
   const chains = new Map<string, Element[]>();
   for (const { url, around } of mine) {
@@ -265,10 +268,31 @@ function cardMarkup(doc: string, anchors: Anchor[], cards: Set<string>): Map<str
   const usual = [...ends].sort((a, b) => b[1] - a[1])[0]?.[0];
   const out = new Map<string, string>();
   for (const [url, chain] of chains) {
-    const card = (chains.size >= 3 && [...chain].reverse().find((e) => e.shape === usual)) || chain.at(-1)!;
+    const card = (chains.size >= 3 && [...chain].reverse().find((e) => e.shape === usual)) || (chains.size < 3 && listItem(doc, chain, mine.find((a) => a.url === url)!.around, elements)) || chain.at(-1)!;
     out.set(url, doc.slice(card.start, card.end));
   }
   return out;
+}
+
+/**
+ * With only one or two linked cards, the element of a list the card is one item of: the largest element around its
+ * link whose parent holds two or more elements of its kind (with a class), at its level, that show a price,
+ * an area or rooms. Those are
+ * cards too, drawn without a link (rented or sold), and a card that took them in would show their "Verhuurd".
+ */
+function listItem(doc: string, chain: Element[], around: Element[], elements: Element[]): Element | null {
+  for (const e of [...chain].reverse()) {
+    const parent = around[around.indexOf(e) - 1];
+    if (!parent) continue;
+    // A kind with a class ("div.card"), not any bare "div".
+    if (e.shape.endsWith(".")) continue;
+    let alike = 0;
+    for (const x of elements) {
+      if (x === e || x.depth !== e.depth || x.shape !== e.shape || x.start < parent.start || x.end > parent.end) continue;
+      if (LISTING_FACTS.test(cardText(doc.slice(x.start, x.end))) && ++alike >= 2) return e;
+    }
+  }
+  return null;
 }
 
 const cardText = (part: string) => `${pageText(part)} ${[...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => m[1]).join(" ")}`;
@@ -283,14 +307,33 @@ const badgeText = (part: string) =>
     // "81% verkocht" on a new-build project: some units are sold, the project isn't.
     .replace(/\b\d{1,2}\s?%\s*(verkocht|vendus?|sold)\b/gi, "");
 
+/** Debug: the elements around a card's link, outermost last, each with the kinds of its parent's children. */
+export function cardTree(html: string, pageUrl: string, card: string): string[] {
+  const { anchors, elements } = anchorsOf(html, pageUrl);
+  const around = anchors.find((a) => a.url === card)?.around ?? [];
+  return around.map((e, i) => {
+    const parent = around[i - 1];
+    const kids = parent ? elements.filter((x) => x.depth === e.depth && x.start >= parent.start && x.end <= parent.end) : [];
+    const kinds = new Map<string, number>();
+    for (const k of kids) kinds.set(k.shape, (kinds.get(k.shape) ?? 0) + 1);
+    return `${e.shape} [${e.end - e.start}] siblings: ${[...kinds].map(([k, n]) => `${k}×${n}`).join(" ")}`;
+  });
+}
+
+/** Each card's own markup and the short lines its badge is read from, to see why a card got its status. */
+export function cardParts(html: string, pageUrl: string, cards: string[]): Map<string, { length: number; badge: string }> {
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
+  return new Map([...cardMarkup(doc, anchors, new Set(cards), elements)].map(([url, part]) => [url, { length: part.length, badge: badgeText(part) }]));
+}
+
 /**
  * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element.
  * Some sites show it only there, not on the listing's page. Cards without such a badge are left out.
  */
 export function cardStatuses(html: string, pageUrl: string, cards: string[]): Map<string, CardBadge> {
-  const { doc, anchors } = anchorsOf(html, pageUrl);
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
   const statuses = new Map<string, CardBadge>();
-  for (const [url, part] of cardMarkup(doc, anchors, new Set(cards))) {
+  for (const [url, part] of cardMarkup(doc, anchors, new Set(cards), elements)) {
     const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)));
     if (badge) statuses.set(url, badge[1]);
   }
@@ -322,7 +365,7 @@ export function linksWithShapes(html: string, pageUrl: string, site: string, sha
  * an area or rooms. Menus, headers and footers don't count.
  */
 export function repeatedCards(html: string, pageUrl: string, site: string): string[] {
-  const { doc, anchors } = anchorsOf(html, pageUrl);
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
   const groups = new Map<string, Set<string>>();
   for (const a of anchors) {
     if (!sameSite(a.url, site) || a.around.some((e) => ["nav", "header", "footer"].includes(e.name)) || pageNumber(a.url) || a.url === normalizeUrl(pageUrl)) continue;
@@ -333,7 +376,7 @@ export function repeatedCards(html: string, pageUrl: string, site: string): stri
   const found = new Set<string>();
   for (const urls of groups.values()) {
     if (urls.size < 3) continue;
-    const parts = cardMarkup(doc, anchors, urls);
+    const parts = cardMarkup(doc, anchors, urls, elements);
     const withFacts = [...parts.values()].filter((part) => LISTING_FACTS.test(cardText(part))).length;
     if (withFacts >= 3 && withFacts * 10 >= urls.size * 6) for (const url of parts.keys()) found.add(url);
   }

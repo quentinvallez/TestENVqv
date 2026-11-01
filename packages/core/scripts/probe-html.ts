@@ -5,7 +5,7 @@
  */
 import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
-import { formPage, nextPageLinks, pageNumber } from "../src/website/overview";
+import { cardParts, cardTree, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
 import { SiteReader } from "../src/website/reader";
 
 type Look = {
@@ -17,18 +17,15 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data")[];
+  show: ("markup" | "text" | "links" | "data" | "cards")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Canius: the listing links on each page of the for-sale overview.
-  { url: "https://www.canius.be/nl/kopen/page-2/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-3/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-4/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-5/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-6/", show: ["links"] },
-  { url: "https://www.canius.be/nl/kopen/page-7/", show: ["links"] },
+  // Urbain Vastgoed: how the lone rental card 988 sits among the rented cards without a link.
+  { url: "https://www.urbainvastgoed.be/nl/huren/", show: ["cards"] },
+  // Habicom: rental 22342 ("in optie"), alone among the linked cards of rentals page 4.
+  { url: "https://www.habicom.be/nl/huren?page=4", show: ["cards"] },
 ];
 
 const clean = (html: string) =>
@@ -85,6 +82,11 @@ async function main() {
       if (look.show.includes("links")) {
         const links = pageLinks(html, read.url).filter((l) => sameSite(l, origin));
         console.log(`links (${links.length}): ${links.map((l) => `${l.replace(origin, "")}${looksLikeListingUrl(l, origin) ? " [L]" : ""}`).join("  ")}`);
+      }
+      if (look.show.includes("cards")) {
+        const cards = pageLinks(read.html, read.url).filter((l) => /\/\d{3,}\/?$/.test(new URL(l).pathname));
+        for (const [url, part] of cardParts(read.html, read.url, cards)) console.log(`card ${url.replace(origin, "")} (${part.length} chars) badge lines: ${JSON.stringify(part.badge.slice(0, 300))}`);
+        if (cards.length < 3) for (const url of cards) console.log(`tree of ${url.replace(origin, "")}:\n  ${cardTree(read.html, read.url, url).join("\n  ")}`);
       }
       if (look.show.includes("markup")) {
         const body = clean(html);

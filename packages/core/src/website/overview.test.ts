@@ -109,6 +109,18 @@ describe("the pages of an overview", () => {
 });
 
 describe("the status a card shows", () => {
+  it("keeps a lone linked card apart from the rented cards drawn without a link next to it", () => {
+    // Urbain Vastgoed's rentals: one card on offer with a link, eleven rented ones without.
+    const rented = `<div class="card"><span class="badge">Verhuurd</span><p>Te huur</p><p>ANTWERPEN</p><p>64 m²</p></div>`;
+    // As there: a bare wrapper div next to other bare divs that mention prices and areas (menus, filters).
+    const html = `<body><div>Prijs tot € 1.000</div><div>Oppervlakte vanaf 50 m²</div><div><div class="list"><div class="card"><a href="/nl/huren/antwerpen/appartement/zonnig/988"><span class="badge">Nieuw</span><p>Te huur</p><p>70 m²</p><p>€ 980 / maand</p></a></div>${rented.repeat(11)}</div></div></body>`;
+    const card = `${site}/nl/huren/antwerpen/appartement/zonnig/988`;
+    expect(cardStatuses(html, `${site}/nl/huren`, [card]).get(card)).toBeUndefined();
+    // A lone card that is rented itself still says so.
+    const own = html.replace('<span class="badge">Nieuw</span>', '<span class="badge">Verhuurd</span>');
+    expect(cardStatuses(own, `${site}/nl/huren`, [card]).get(card)).toBe("rented");
+  });
+
   it("reads the badge on each card, not its neighbour's", () => {
     const card = (id: number, badge = "") =>
       `<div class="card"><a href="/te-koop/gent/woning/${id}"><img src="/p/${id}.jpg" alt="Woning">${badge}</a><h3><a href="/te-koop/gent/woning/${id}">Woning te koop</a></h3><p>€ 349 000</p></div>`;
