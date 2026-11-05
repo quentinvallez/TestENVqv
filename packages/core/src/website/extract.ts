@@ -701,7 +701,9 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
       if (firstName.length < 3) continue;
       const first = new RegExp(`\\b${firstName}\\b`);
       const near = [lines[i - 1], lines[i + 1], lines[i + 2]].filter((l): l is string => l != null);
-      if (near.some((l) => first.test(l) || phone.test(l))) {
+      // The first name alone ("Stephane helpt je graag verder!"); a line repeating the whole name is a project's title
+      // under its name ("Maison West", "Maison West – Jouw oase van rust aan de kust").
+      if (near.some((l) => (first.test(l) && !l.includes(line)) || phone.test(l))) {
         listing.agentName = line;
         break;
       }

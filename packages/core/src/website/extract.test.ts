@@ -401,6 +401,14 @@ describe("reading a listing page", () => {
     expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Géode Properties")), url).listing.agentName).toBeNull();
   });
 
+  it("takes no project's name above its title for the agent (Caenen)", () => {
+    // As caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm shows it (2026-11-05).
+    const html = `<html><body><p>Te koop</p><p>Nieuwbouwproject</p><p>Ref. 4338687</p><h1>Maison West</h1><p>Westendelaan 309-317, 8434 Westende</p>
+      <h2>Maison West – Jouw oase van rust aan de kust</h2><p>Vanaf</p><p>€ 199.000</p><p>Interesse? Contacteer ons.</p>
+      <p>Stephane helpt je graag verder!</p><p>Stephane Vanhaekendover</p></body></html>`;
+    expect(extractListing(html, "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm").listing.agentName).toBe("Stephane Vanhaekendover");
+  });
+
   it("takes sale or rent from the price's label when nothing else says it", () => {
     const html = `<html><head><title>Belle surface commerciale : BDG IMMO</title></head><body><p>Belle surface commerciale à 7000 Mons • Loyer: 1 700 €</p><p>Surface: 120 m²</p></body></html>`;
     const { listing } = extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591");
