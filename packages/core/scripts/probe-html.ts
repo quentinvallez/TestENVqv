@@ -25,9 +25,9 @@ const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
   // Domestic listings: one whose agent we miss (Dirk Luyckx under "UW CONTACT") next to one we find.
   { url: "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805", needle: "Luyckx", show: ["markup", "text"] },
-  // Domestic listings that still name no agent, and the Géode listing whose agent was its office's name.
-  { url: "https://www.domestic.be/nl/te-koop/appartement/duplex/tielen-2460/6521885", needle: "representative", show: ["markup", "text"] },
-  { url: "https://www.geodeproperties.be/fr/bien/a-louer/appartement/1000-bruxelles/7888659", needle: "Géode Properties", show: ["markup", "text"] },
+  // Caenen project pages whose agent is read as the project's name ("Maison West").
+  { url: "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm", needle: "Maison West", show: ["markup", "text"] },
+  { url: "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm", needle: "Sint Paulus", show: ["markup"] },
 ];
 
 const clean = (html: string) =>
