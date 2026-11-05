@@ -384,6 +384,20 @@ describe("reading a listing page", () => {
     }
   });
 
+  it("reads the agent under \"Uw contact\" and from the page's agent block, without the button below (Domestic)", () => {
+    // As domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805 shows it (2026-11-05).
+    const contact = `<aside class="property-representative"> <div class="representative"> <div class="title"><span>Uw contact</span></div> <div class="image"><picture><img src="/images/about/person/image/regular/luyckx.jpg" alt="Luyckx"/></picture></div> <div class="representative-container"> <div class="name">Dirk Luyckx</div> <a href="#property-contact" class="scrollTo button">Bezoek aanvragen</a> </div> </div> </aside>`;
+    const page = (aside: string) => `<html><body><h1>Landelijk gelegen vrijstaande woning</h1><p>€ 395.000</p><p>Ref. 7920805</p><p>Gansheideweg 9, 2310 Rijkevorsel</p>
+      <p>Neem contact met Domestic makelaars op 014 610386 en plan uw bezoek.</p>${aside}<section id="property-details"><dl><dt>Prijs</dt><dd>€ 395.000</dd><dt>Slaapkamers</dt><dd>2</dd></dl></section></body></html>`;
+    const url = "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805";
+    expect(extractListing(page(contact), url).listing.agentName).toBe("Dirk Luyckx");
+    // Without the label, the block's name element still names them.
+    expect(extractListing(page(contact.replace("Uw contact", "")), url).listing.agentName).toBe("Dirk Luyckx");
+    // A name element outside an agent block (a review, the office) is no agent.
+    expect(extractListing(page(`<div class="testimonial"><div class="name">Jan Peeters</div></div>`), url).listing.agentName).toBeNull();
+    expect(extractListing(page(`<div class="agent-card"><div class="office-name">Hilde Claes</div></div>`), url).listing.agentName).toBeNull();
+  });
+
   it("takes sale or rent from the price's label when nothing else says it", () => {
     const html = `<html><head><title>Belle surface commerciale : BDG IMMO</title></head><body><p>Belle surface commerciale à 7000 Mons • Loyer: 1 700 €</p><p>Surface: 120 m²</p></body></html>`;
     const { listing } = extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591");
