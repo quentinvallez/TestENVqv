@@ -407,6 +407,10 @@ describe("reading a listing page", () => {
       <h2>Maison West – Jouw oase van rust aan de kust</h2><p>Vanaf</p><p>€ 199.000</p><p>Interesse? Contacteer ons.</p>
       <p>Stephane helpt je graag verder!</p><p>Stephane Vanhaekendover</p></body></html>`;
     expect(extractListing(html, "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm").listing.agentName).toBe("Stephane Vanhaekendover");
+    // Nor one above a street named after it: "Sint Paulus", "Sint-Paulusstraat 10, 8400 Oostende".
+    const paulus = `<html><body><p>Ref. 4435957</p><h1>Sint Paulus</h1><p>Sint-Paulusstraat 10, 8400 Oostende</p><p>Vernieuwbouw residentie in Centrum Oostende</p>
+      <p>Vanaf</p><p>€ 275.000</p><p>Morgan helpt je graag verder!</p><p>Morgan Vandeghinste</p><p>059 40 40 30</p><p>Mail Morgan</p></body></html>`;
+    expect(extractListing(paulus, "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm").listing.agentName).toBe("Morgan Vandeghinste");
   });
 
   it("takes sale or rent from the price's label when nothing else says it", () => {
