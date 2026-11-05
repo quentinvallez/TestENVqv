@@ -25,9 +25,11 @@ const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
   // Domestic listings: one whose agent we miss (Dirk Luyckx under "UW CONTACT") next to one we find.
   { url: "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805", needle: "Luyckx", show: ["markup", "text"] },
-  // Caenen project pages whose agent is read as the project's name ("Maison West").
-  { url: "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm", needle: "Maison West", show: ["markup", "text"] },
-  { url: "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm", needle: "Sint Paulus", show: ["markup"] },
+  // Caenen's project page whose agent is read as the project's name ("Sint Paulus"); Git and Immotalenco listings
+  // that name no agent: do their pages show one?
+  { url: "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm", needle: "helpt je graag", show: ["text"] },
+  { url: "https://www.git.be/fr/bien/a-louer/appartement/7500-tournai/7911924", needle: "Contact", show: ["text"] },
+  { url: "https://www.immotalenco.com/nl/te-koop?view=detail&id=5883", needle: "Contact", show: ["text"] },
 ];
 
 const clean = (html: string) =>
@@ -122,6 +124,7 @@ async function main() {
         const near = look.needle ? lines.findIndex((l) => l.includes(look.needle!)) : -1;
         console.log(`text (${lines.length} lines, main part ${mainPart(pageText(html)).split("\n").length}):\n${lines.slice(0, 160).join("\n")}`);
         if (near >= 160) console.log(`text around line ${near}:\n${lines.slice(near - 30, near + 15).join("\n")}`);
+        else if (lines.length > 160) console.log(`text from line 160:\n${lines.slice(160, 320).join("\n")}`);
       }
       break;
     }
