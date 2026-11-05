@@ -249,6 +249,11 @@ async function probe(site: string) {
     const listings = read.filter((url) => ["active", "under_offer"].includes(outcome.get(url)!.status));
     const withoutAgent = listings.filter((url) => !outcome.get(url)!.agent);
     if (listings.length) console.log(`      agents: ${listings.length - withoutAgent.length} of ${listings.length} listings read name one (${tally(listings.map((url) => outcome.get(url)!.agent ?? "none"))})${withoutAgent.length ? `; none on e.g. ${withoutAgent.slice(0, 5).map((url) => url.replace(site, "")).join(" ")}` : ""}`);
+    // A name on one or two listings only is worth a look: an office, a project or a street taken for a person.
+    const perName = new Map<string, string[]>();
+    for (const url of listings) if (outcome.get(url)!.agent) perName.set(outcome.get(url)!.agent!, [...(perName.get(outcome.get(url)!.agent!) ?? []), url]);
+    const rare = [...perName].filter(([, on]) => on.length <= 2);
+    if (rare.length && rare.length < perName.size) console.log(`      agents on one or two listings: ${rare.slice(0, 12).map(([name, on]) => `${name} on ${on[0]!.replace(site, "")}`).join("; ")}`);
     const badged = urls.filter((url) => cardBadge.has(url));
     console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };

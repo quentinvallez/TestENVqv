@@ -396,6 +396,9 @@ describe("reading a listing page", () => {
     // A name element outside an agent block (a review, the office) is no agent.
     expect(extractListing(page(`<div class="testimonial"><div class="name">Jan Peeters</div></div>`), url).listing.agentName).toBeNull();
     expect(extractListing(page(`<div class="agent-card"><div class="office-name">Hilde Claes</div></div>`), url).listing.agentName).toBeNull();
+    // A name with "van der" keeps all its words; an office isn't a person.
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Ellen Van der Eycken")), url).listing.agentName).toBe("Ellen Van der Eycken");
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Géode Properties")), url).listing.agentName).toBeNull();
   });
 
   it("takes sale or rent from the price's label when nothing else says it", () => {

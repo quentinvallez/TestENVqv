@@ -423,7 +423,7 @@ const rules: Rule[] = [
   { field: "epcScore", labels: "epc-score|epc score|epc-waarde|epc waarde|e-peil|epc|peb|e spec|espec|énergie primaire|energy performance", value: /^[^\n\d]{0,14}(\d{2,4})\s*kwh/i, parse: integer(2000) },
   { field: "epcLabel", labels: "epc-label|epc label|epc klasse|epc-klasse|energielabel|label|classe énergétique|peb|epc", value: /^[\s:|-]{0,6}([A-G](?:\+{1,3})?)(?![a-z])/, parse: (raw) => raw.toUpperCase() },
   // The name's words stay on one line: "Uw contact", "Dirk Luyckx", "Bezoek aanvragen" is Dirk Luyckx, not "Dirk Luyckx Bezoek".
-  { field: "agentName", labels: "uw contactpersoon|contactpersoon|uw contact|jouw contact|je contact|uw makelaar|makelaar|votre contact|ton contact|votre agent|contact person|your contact|your agent|agent", value: /^[\s:|-]{0,6}([A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3})/, parse: (raw) => raw.trim() },
+  { field: "agentName", labels: "uw contactpersoon|contactpersoon|uw contact|jouw contact|je contact|uw makelaar|makelaar|votre contact|ton contact|votre agent|contact person|your contact|your agent|agent", value: /^[\s:|-]{0,6}([A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:(?:van|der|den|des|de|du|le|la|von)(?![a-zà-ÿ'’-])|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3})/, parse: (raw) => raw.trim() },
 ];
 
 const perSquareMetre = /^\s*(?:\/|per|par|le)\s*m(?:²|2|\b)/i;
@@ -571,12 +571,13 @@ function titleTag(html: string): string | null {
 }
 
 // A person's name of one to four words, the first a capitalised first name of three letters or more.
-const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
-const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
+const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:(?:van|der|den|des|de|du|le|la|von)(?![a-zà-ÿ'’-])|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
+// A particle is a whole word: "Ellen Van der Eycken", not "Ellen Van de" + "r Eycken".
+const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:(?:van|der|den|des|de|du|le|la|von)(?![a-zà-ÿ'’-])|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
 // Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
 // Vétérinaires", "Augustin Delportestraat"), menus ("Notre Philosophie") and features ("Avec Jardin") aren't people either.
-const notAPerson = /\b(rue|avenue|chauss[ée]e|boulevard|place|clos|square|dr[eè]ve|chemin|all[ée]e|impasse|quai|sentier|\w+straat|\w+laan|\w+steenweg|\w+plein|\w+dreef|notre|nos|votre|vos|avec|local|jardin|terrasse|philosophie|services?|estimation|gestion|accueil|chasseur|facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
+const notAPerson = /\b(rue|avenue|chauss[ée]e|boulevard|place|clos|square|dr[eè]ve|chemin|all[ée]e|impasse|quai|sentier|\w+straat|\w+laan|\w+steenweg|\w+plein|\w+dreef|notre|nos|votre|vos|avec|local|jardin|terrasse|philosophie|services?|estimation|gestion|accueil|chasseur|facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|propert(?:y|ies)|realty|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
