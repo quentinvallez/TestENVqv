@@ -23,7 +23,8 @@ type Look = {
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
-  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
+  // Domestic listings: one whose agent we miss (Dirk Luyckx under "UW CONTACT") next to one we find.
+  { url: "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805", needle: "Luyckx", show: ["markup", "text"] },
 ];
 
 const clean = (html: string) =>
@@ -114,7 +115,10 @@ async function main() {
         console.log(`facts: ${JSON.stringify({ ...listing, description: listing.description?.slice(0, 60), photos: listing.photos.length })}`);
         console.log(`canonical: ${html.match(/<link[^>]*rel=["']canonical["'][^>]*>/i)?.[0] ?? "-"}`);
         console.log(`main (first 40):\n${mainPart(pageText(html)).split("\n").slice(0, 40).join("\n")}`);
-        console.log(`text:\n${pageText(html).split("\n").slice(0, 160).join("\n")}`);
+        const lines = pageText(html).split("\n");
+        const near = look.needle ? lines.findIndex((l) => l.includes(look.needle!)) : -1;
+        console.log(`text (${lines.length} lines, main part ${mainPart(pageText(html)).split("\n").length}):\n${lines.slice(0, 160).join("\n")}`);
+        if (near >= 160) console.log(`text around line ${near}:\n${lines.slice(near - 30, near + 15).join("\n")}`);
       }
       break;
     }
