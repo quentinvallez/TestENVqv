@@ -312,4 +312,32 @@ describe("searching a site for its listing pages", () => {
     expect(found.get(`${site}/nieuwbouw/lede/magnolia`)).toEqual(new Set([`${site}/nieuwbouw`]));
     expect(state.overviews.find((o) => o.url === `${site}/nieuwbouw`)).toMatchObject({ found: 4, complete: true });
   });
+
+  it("takes listings an infinite-scroll overview shows as cards without a link, and reads on past a page of only those", async () => {
+    // Bienatoi (Whise/Webulous): 5 linked cards a page; listings under option are the same card without its link, and
+    // their pages are gone. The list loads through "next page" links.
+    const linked = (id: number) => `<div class="col estate-list__item"><a href="/fr/bien/a-vendre/maison/5000-namur/${id}" class="estate-card"><img src="https://r2.storagewhise.eu/storage7717/Pictures/${id}/640/a.jpg" alt="Maison - &#xE0; vendre - 5000 Namur"><span>Namur</span><span>295&#x202F;000 &#x20AC;</span><span>143 m²</span></a></div>`;
+    const option = (id: number, city = "5100 Dave") => `<div class="col estate-list__item"><a class="estate-card"><span class="estate-flag__text estate-flag__text--option">Option</span><img src="https://r2.storagewhise.eu/storage7717/Pictures/${id}/640/b.jpg" alt="Maison - &#xE0; vendre - ${city}"><span>229,55 m²</span></a></div>`;
+    const page = (n: number) => `/fr/List/InfiniteScroll?json=%7B%22PageNumber%22%3A${n}%7D`;
+    const { reader, hooks, found } = fakeSite({
+      "/": `<nav><a href="/fr/2/chercher-bien/a-vendre">A vendre</a></nav>`,
+      "/fr/2/chercher-bien/a-vendre": `<div class="infinite-scroll"> <a href='${page(0)}'></a></div>`,
+      [page(0)]: `<section>${[7926968, 7791783, 7840888, 7797697, 7778010].map(linked).join("")}</section><a href='${page(1)}'>next page</a>`,
+      [page(1)]: `<section>${[7703058, 7702998, 7700001].map((id) => option(id)).join("")}</section><a href='${page(2)}'>next page</a>`,
+      [page(2)]: `<section>${option(7600002, "5300 Andenne")}</section><a href=""></a>`,
+    });
+    const cards = new Map<string, unknown>();
+    const record = hooks.found;
+    hooks.found = async (urls, root, badges, linkless) => {
+      for (const [url, facts] of linkless ?? []) cards.set(url, { ...facts, badge: badges?.get(url) });
+      return record(urls, root, badges, linkless);
+    };
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    const root = `${site}/fr/2/chercher-bien/a-vendre`;
+    expect(found.size).toBe(9);
+    expect([...cards.keys()].sort()).toEqual([7600002, 7700001, 7702998, 7703058].map((id) => `${root}#listing-${id}`));
+    expect(cards.get(`${root}#listing-7703058`)).toMatchObject({ reference: "7703058", transaction: "sale", propertyType: "house", postcode: "5100", city: "Dave", livingArea: 230, status: "under_offer", badge: "under_offer" });
+    expect(state.overviews[0]).toMatchObject({ url: root, found: 9 });
+  });
 });

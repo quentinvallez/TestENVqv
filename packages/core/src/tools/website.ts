@@ -9,6 +9,7 @@ import { badgeFromImage, extractWithAi, mergeExtraction } from "../website/ai";
 import { openBrowser } from "../website/browser";
 import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
+  cardId,
   extractListing,
   withShownAgent,
   isListingPage,
@@ -76,9 +77,10 @@ export function websiteFromInput(input: string): string | null {
  * Reads one page and creates, updates or archives its listing. `overviewsWhole`: the site's overviews were read in
  * full and hold what they state, so a listing page only a sitemap lists is no longer on offer (sitemaps keep old pages).
  */
-async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean, overviewsWhole = false): Promise<PageOutcome> {
+async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, team: AgentRow[], useAi: boolean, overviewsWhole = false, searchDone = false): Promise<PageOutcome> {
   const { site } = reader;
   const now = new Date();
+  if (cardId(page.url)) return processCard(ctx, page, team, now, searchDone);
   const shownOnOverview = page.foundOn.some((tag) => tag !== ELSEWHERE);
   if (overviewsWhole && page.foundOn.length === 1 && page.foundOn[0] === ELSEWHERE) return removePage(ctx, page, now);
   let fetched = await reader.read(page.url);
@@ -155,15 +157,64 @@ async function processPage(ctx: ToolContext, reader: SiteReader, page: PageRow, 
   return outcome.created ? "created" : "updated";
 }
 
+/**
+ * A listing an overview shows only as a card without a link (its page is gone, as on Bienatoi for listings under
+ * option): made or kept from what the card shows. It goes when a finished search no longer finds the card.
+ */
+async function processCard(ctx: ToolContext, page: PageRow, team: AgentRow[], now: Date, searchDone: boolean): Promise<PageOutcome> {
+  if (!page.foundOn.length) {
+    if (searchDone) return removePage(ctx, page, now);
+    await ctx.db.update(websitePages).set({ lastCheckedAt: now }).where(eq(websitePages.id, page.id));
+    return "unchanged";
+  }
+  if (!page.cardFacts) {
+    await ctx.db.update(websitePages).set({ kind: "other", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+    return "other";
+  }
+  const facts = { ...(page.cardFacts as ExtractedListing), status: page.cardStatus ?? page.cardFacts.status ?? "active" };
+  const hash = `${EXTRACTION_VERSION}:card:${textFingerprint(JSON.stringify(facts))}`;
+  if (page.kind === "listing" && page.listingId && page.contentHash === hash) {
+    await ctx.db.update(websitePages).set({ lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
+    return "unchanged";
+  }
+  // A card names no contact; its description sometimes does ("Renseignements et visites: Stéphanie MOREAU").
+  const agent = matchAgent(team, null, facts.description ?? "");
+  const outcome = await saveListing(ctx, page, facts, agent?.id ?? null, "card");
+  await ctx.db
+    .update(websitePages)
+    .set({ kind: "listing", listingId: outcome.listingId, contentHash: hash, extractedBy: "card", lastCheckedAt: now, lastError: null })
+    .where(eq(websitePages.id, page.id));
+  return outcome.created ? "created" : "updated";
+}
+
 const isHomePage = (url: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(url).pathname);
 
 async function removePage(ctx: ToolContext, page: PageRow, now: Date, kind: "gone" | "error" = "gone"): Promise<PageOutcome> {
   if (kind === "gone") await ctx.db.update(websitePages).set({ kind: "gone", lastCheckedAt: now, lastError: null }).where(eq(websitePages.id, page.id));
   if (!page.listingId) return "other";
+  // The site still shows the listing as a card without a link (its page went when it came under option): it stays,
+  // and the card's own page row carries it on.
+  const id = cardId(page.url) ? null : referenceFromUrl(page.url);
+  if (id) {
+    const [card] = await ctx.db
+      .select({ id: websitePages.id })
+      .from(websitePages)
+      .where(and(eq(websitePages.agencyId, ctx.agencyId), sql`${websitePages.url} like ${`%#listing-${id}`}`, sql`cardinality(${websitePages.foundOn}) > 0`))
+      .limit(1);
+    if (card) return "other";
+  }
   const [archived] = await ctx.db
     .update(listings)
     .set({ status: "archived" })
-    .where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, page.listingId), inArray(listings.status, ["draft", "active", "under_offer"])))
+    .where(
+      and(
+        eq(listings.agencyId, ctx.agencyId),
+        eq(listings.id, page.listingId),
+        inArray(listings.status, ["draft", "active", "under_offer"]),
+        // A listing another page now shows (its card, or its page again after it came off option) isn't taken offline.
+        or(isNull(listings.websiteUrl), eq(listings.websiteUrl, page.url)),
+      ),
+    )
     .returning({ id: listings.id, reference: listings.reference });
   if (!archived) return "other";
   await recordEvent(ctx, { type: "listing.removed_from_website", subjectType: "listing", subjectId: archived.id, data: { url: page.url, reference: archived.reference } });
@@ -238,10 +289,16 @@ async function saveListing(ctx: ToolContext, page: PageRow, facts: ExtractedList
     websiteUrl: page.url,
   };
   // Keep what we had for anything this read of the page didn't find.
-  const changes = Object.fromEntries(Object.entries(values).filter(([, v]) => v != null)) as Partial<typeof values>;
+  let changes = Object.fromEntries(Object.entries(values).filter(([, v]) => v != null)) as Partial<typeof values>;
   // The address is one fact: a new read replaces all of it, so no part of an older, wrong one stays.
   if (facts.street || facts.city) Object.assign(changes, { street: facts.street, houseNumber: facts.houseNumber, postcode: facts.postcode, city: facts.city });
-  const photos = facts.photos.slice(0, 20).map((url) => ({ url }));
+  let photos = facts.photos.slice(0, 20).map((url) => ({ url }));
+  // A card says less than the listing's own page did (no street, a shorter text): a listing read from its page keeps
+  // those facts and takes only the card's status.
+  if (cardId(page.url) && existing?.websiteUrl && !cardId(existing.websiteUrl)) {
+    changes = { status: values.status, websiteUrl: page.url };
+    photos = [];
+  }
   const soldNow = (status === "sold" || status === "rented") && !existing?.soldAt;
 
   if (existing) {
@@ -331,15 +388,22 @@ const ELSEWHERE = "*";
 /** The search's findings go into website_pages, each page marked with the overviews that show it. */
 function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: number) => void): DiscoveryHooks {
   return {
-    async found(urls, root, badges) {
+    async found(urls, root, badges, cards) {
       const unique = [...new Set(urls)];
       const allowed = unique.filter((url) => reader.robots.allowed(url));
       onBlocked(unique.length - allowed.length);
       if (!allowed.length) return { newToOverview: 0, newToSite: 0 };
       const tag = root ?? ELSEWHERE;
+      // What a card without a link shows now: its listing is made again from it when that changed.
+      for (const [url, facts] of cards ?? []) {
+        await ctx.db
+          .update(websitePages)
+          .set({ cardFacts: facts, contentHash: null })
+          .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.url, url), sql`${websitePages.cardFacts} is distinct from ${JSON.stringify(facts)}::jsonb`));
+      }
       const inserted = await ctx.db
         .insert(websitePages)
-        .values(allowed.map((url) => ({ agencyId: ctx.agencyId, url, foundOn: [tag], cardStatus: root ? (badges?.get(url) ?? null) : null })))
+        .values(allowed.map((url) => ({ agencyId: ctx.agencyId, url, foundOn: [tag], cardStatus: root ? (badges?.get(url) ?? null) : null, cardFacts: cards?.get(url) ?? null })))
         .onConflictDoNothing()
         .returning({ url: websitePages.url });
       const added = new Set(inserted.map((row) => row.url));
@@ -471,12 +535,14 @@ export const importWebsiteListings = defineTool({
     // Overviews read in full that hold what they state: a page only a sitemap lists is then an old one.
     const overviewsNow = state?.overviews ?? previous.overviews ?? [];
     const overviewsWhole = overviewsNow.some((o) => o.found > 0) && overviewsNow.every((o) => o.complete && !o.more && (o.stated == null || o.found >= o.stated));
+    // A search read to its end: a listing shown only as a card that it didn't find again is off the site.
+    const searchDone = Boolean(state ? state.discovery.doneAt : previous.discovery?.doneAt);
     const tally: Record<PageOutcome, number> = { created: 0, updated: 0, unchanged: 0, removed: 0, other: 0, failed: 0, blocked: 0 };
     let checked = 0;
     for (const page of due) {
       // Blocked pages cost no request, so they don't wait for a slot.
       if (reader.robots.allowed(page.url) && !reader.fits(deadline)) break;
-      tally[await processPage(ctx, reader, page, people, input.useAi, overviewsWhole)]++;
+      tally[await processPage(ctx, reader, page, people, input.useAi, overviewsWhole, searchDone)]++;
       checked++;
     }
 

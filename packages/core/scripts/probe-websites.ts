@@ -8,14 +8,14 @@
  */
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
-import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
-import { cardStatuses, statedCount } from "../src/website/overview";
+import { cardId, type ExtractedListing, extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
+import { cardStatuses, isArchiveCard, statedCount } from "../src/website/overview";
 import { aiAvailable } from "../src/ai/client";
 import { badgeFromImage } from "../src/website/ai";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01, mdi since 2026-11-06).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01, mdi and bienatoi since 2026-11-06).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -47,6 +47,7 @@ const sites = [
   "https://www.immosciara.be/",
   "https://www.immovl.be/",
   "https://mdi.be/",
+  "https://www.bienatoi.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
@@ -61,6 +62,13 @@ const checks: Record<string, string[]> = {
   ],
   immobolle: ["https://www.immobolle.be/fr/page/10004/protection-juridique"],
   domestic: ["https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805"],
+  // Under-option cards without a link: does the page exist at the site's address template, and with any slug?
+  bienatoi: [
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/5100-dave/7703058",
+    "https://www.bienatoi.be/fr/bien/a-louer/appartement/5590-ciney/7786655",
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/x/7703058",
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/4500-huy/7926968",
+  ],
 };
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
@@ -71,6 +79,22 @@ process.env.WEBSITE_DEBUG ??= "1";
 async function main() {
   const only = process.argv.slice(2);
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
+}
+
+/** Sites whose every search page is printed raw (cards, loader links, scripts), to see how their lists load. */
+const dump: string[] = [];
+function dumpPage(url: string, page: Awaited<ReturnType<SiteReader["read"]>>) {
+  if (!("html" in page)) return console.log(`    [dump] ${url}: ${page.error}`);
+  const body = page.html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|svg|noscript)\b[\s\S]*?<\/\1>/gi, "<$1/>").replace(/\s+/g, " ");
+  console.log(`    [dump] ${page.status} ${url.slice(0, 120)}: ${page.html.length} chars`);
+  console.log(`      hrefs: ${[...body.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]!).filter((h) => !/\.(css|png|jpe?g|svg|ico|woff2?)/i.test(h)).slice(0, 80).join(" ").slice(0, 6000)}`);
+  if (/InfiniteScroll|chercher-bien/i.test(url)) {
+    const at = body.search(/estate|infinite/i);
+    console.log(`      body: ${body.slice(Math.max(0, at - 500), at + 5000)}`);
+    console.log(`      tail: ${body.slice(-2500)}`);
+    for (const m of page.html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) if (/InfiniteScroll|PageNumber|jscroll|nextSelector/i.test(m[1]!)) console.log(`      script: ${m[1]!.replace(/\s+/g, " ").slice(0, 3000)}`);
+    console.log(`      script srcs: ${[...page.html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+  }
 }
 
 /** The text around a card's first link, as a rough check of what the card shows. */
@@ -97,13 +121,19 @@ async function probe(site: string) {
       const page = await reader.read(url);
       lastUrl = url;
       if ("html" in page) html.set(url, page.html);
+      if (dump.some((d) => site.includes(d))) dumpPage(url, page);
       return page;
     },
   };
   const shownOn = new Map<string, Set<string>>();
+  // Listings shown only as a card without a link, with what their card shows.
+  const cardFacts = new Map<string, ExtractedListing>();
+  const linklessBadge = new Map<string, string>();
   const pagesOf = new Map<string, Map<string, string[]>>();
   const hooks: DiscoveryHooks = {
-    found: async (urls, root) => {
+    found: async (urls, root, badges, cards) => {
+      for (const [url, facts] of cards ?? []) cardFacts.set(url, facts);
+      for (const url of cards?.keys() ?? []) if (badges?.get(url)) linklessBadge.set(url, badges.get(url)!);
       const tag = root ?? "*";
       if (root) pagesOf.set(root, (pagesOf.get(root) ?? new Map()).set(lastUrl, urls));
       let newToOverview = 0;
@@ -171,6 +201,8 @@ async function probe(site: string) {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls, state.badgeImages);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
       if (urls.length < 3) for (const url of urls) fewCards.push(`${url.replace(site, "")} ${statuses.get(url) ?? "on offer"}`);
+      for (const url of urls) if (linklessBadge.has(url)) statuses.set(url, linklessBadge.get(url) as never);
+      for (const [url, badge] of statuses) cardBadge.set(url, badge);
       return urls.map((url) => statuses.get(url) ?? "on offer");
     });
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
@@ -193,6 +225,12 @@ async function probe(site: string) {
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
+  // What the rules on cards without a link and on sold/rented overviews numbered like listings did here, as a notice
+  // on the run (Bienatoi has both; Webulous sites such as lacledesmaisons have a "vendu---loue" overview).
+  const linkless = [...cardFacts.keys()];
+  const archiveCards = [...new Set([...html.values()].flatMap((page) => pageLinks(page, site)).filter((url) => sameSite(url, site) && looksLikeListingUrl(url, site) && isArchiveCard(url)))];
+  console.log(`VERDICT cards without a link: ${linkless.length}${linkless.length ? ` (${linkless.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}; sold/rented overviews left out as cards: ${archiveCards.length}${archiveCards.length ? ` (${archiveCards.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}`);
+  if (linkless.length || archiveCards.length) console.log(`::notice::${new URL(site).host} cards without a link ${linkless.length}, sold/rented overviews left out ${archiveCards.length}`);
   if (process.env.GITHUB_ACTIONS && fewCards.length) console.log(`::notice title=few cards::${[...new Set(fewCards)].join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=card statuses::${new URL(site).hostname} ${tally([...cardBadge.values()]) || "none"} (of ${shownOn.size})`);
 
@@ -204,6 +242,11 @@ async function probe(site: string) {
   const boilerplate = await reader.siteBoilerplate();
   const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null; agent?: string | null }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
+    const card = cardFacts.get(url);
+    if (cardId(url) && card) {
+      const status = cardBadge.get(url) ?? card.status ?? "active";
+      return outcome.set(url, { status, transaction: card.transaction, price: card.price, reference: card.reference, why: `card without a link: ${card.reference} ${card.propertyType ?? "?"} ${card.postcode ?? ""} ${card.city ?? ""} €${card.price ?? "?"} ${card.livingArea ?? "?"}m² ${card.transaction ?? "?"} ${card.photos.length} photos` });
+    }
     const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
     let page = await reader.read(url);
     // As the importer: a page sent to the home page is read again without the numbers of the visit that found it.

@@ -258,3 +258,73 @@ describe.skipIf(!process.env.DATABASE_URL)("every listing on the site, each coun
     expect(listing2).toMatchObject({ street: "Kerkstraat", houseNumber: "2", websiteUrl: card(2) });
   });
 });
+
+describe.skipIf(!process.env.DATABASE_URL)("listings a site shows only as a card without a link", () => {
+  const agencyId = newId("org");
+  const ctx: ToolContext = { db, agencyId, actor: { type: "user", id: null } };
+  const home = "https://www.bien-test.be";
+  const overviewUrl = `${home}/fr/2/chercher-bien/a-vendre`;
+  const pageOf = (id: number) => `${home}/fr/bien/a-vendre/maison/5000-namur/${id}`;
+  const photo = (id: number) => `https://r2.storagewhise.eu/storage7717/Pictures/${id}/640/a.jpg`;
+  // Whise/Webulous cards: a listing under option is the same card without its link, and its page is gone.
+  const linked = (id: number) => `<div class="col"><a href="${pageOf(id).replace(home, "")}" class="estate-card"><img src="${photo(id)}" alt="Maison - à vendre - 5000 Namur"><span>Namur</span><span>295 000 €</span><span>143 m²</span></a></div>`;
+  const option = (id: number, place = "5000 Namur") => `<div class="col"><a class="estate-card"><span class="estate-flag">Option</span><img src="${photo(id)}" alt="Maison - à vendre - ${place}"><span>229,55 m²</span></a></div>`;
+  const showing = (cards: string[]) => site.set(overviewUrl, { status: 200, html: `<main><section>${cards.join("")}</section></main>` });
+  const detail = (id: number) => listingPage({ title: "Maison à vendre à Namur", price: "€ 295.000", ref: String(id), address: `Rue de Fer ${id % 100}, 5000 Namur`, agent: "Stéphanie Moreau" });
+  const listingOf = async (reference: string) => (await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, reference))))[0]!;
+
+  async function importAll() {
+    // Each step is a new day: a new search of the site, and every listing read again.
+    await db.update(schema.websitePages).set({ lastCheckedAt: new Date(Date.now() - 2 * 86400000) }).where(eq(schema.websitePages.agencyId, agencyId));
+    const [settings] = await db.select().from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, agencyId));
+    if (settings?.websiteSync?.discoveredAt) {
+      await db
+        .update(schema.agencySettings)
+        .set({ websiteSync: { ...settings.websiteSync, discoveredAt: new Date(Date.now() - 2 * 86400000).toISOString() } })
+        .where(eq(schema.agencySettings.agencyId, agencyId));
+    }
+    for (let run = 0; run < 20; run++) {
+      const result = await runTool(tools.importWebsiteListings, ctx, { useAi: false, budgetSeconds: 20 });
+      if (!result.searching && !result.remaining) return result;
+    }
+    throw new Error("The import didn't finish");
+  }
+
+  beforeAll(async () => {
+    crawlPace.minDelayMs = 0;
+    await db.insert(schema.organization).values({ id: agencyId, name: "Bien Test", slug: agencyId, createdAt: new Date() });
+    await db.insert(schema.agencySettings).values({ agencyId, websiteUrl: `${home}/` });
+    site.set(`${home}/robots.txt`, { status: 200, html: `User-agent: *` });
+    site.set(home, { status: 200, html: `<nav><a href="/fr/2/chercher-bien/a-vendre">A vendre</a></nav>` });
+    for (const id of [7926968, 7791783, 7840888]) site.set(pageOf(id), { status: 200, html: detail(id) });
+    showing([linked(7926968), linked(7791783), linked(7840888), option(7703058, "5100 Dave")]);
+  });
+  afterAll(async () => {
+    await db.delete(schema.organization).where(eq(schema.organization.id, agencyId));
+  });
+
+  it("lists a card without a link as a listing under option, read from the card", async () => {
+    await importAll();
+    expect(await listingOf("7703058")).toMatchObject({ status: "under_offer", transaction: "sale", propertyType: "house", postcode: "5100", city: "Dave", livingArea: 230, websiteUrl: `${overviewUrl}#listing-7703058` });
+    const status = await runTool(tools.websiteImportStatus, ctx, {});
+    expect(status.listings).toHaveLength(4);
+    expect(status.overviews).toEqual([expect.objectContaining({ url: overviewUrl, found: 4, counts: expect.objectContaining({ onOffer: 3, underOffer: 1 }) })]);
+    expect(status.listings.find((l) => l.reference === "7703058")).toMatchObject({ status: "under_offer", extractedBy: "card" });
+  });
+
+  it("keeps a listing whose page went when it came under option, and marks it under option", async () => {
+    const before = await listingOf("7926968");
+    site.delete(pageOf(7926968));
+    showing([option(7926968), linked(7791783), linked(7840888), option(7703058, "5100 Dave")]);
+    await importAll();
+    const after = await listingOf("7926968");
+    expect(after).toMatchObject({ id: before.id, status: "under_offer", street: "Rue de Fer", houseNumber: "68", price: 295000, bedrooms: 3 });
+  });
+
+  it("archives a listing shown only as a card once the card is gone", async () => {
+    showing([option(7926968), linked(7791783), linked(7840888)]);
+    await importAll();
+    expect((await listingOf("7703058")).status).toBe("archived");
+    expect((await listingOf("7926968")).status).toBe("under_offer");
+  });
+});

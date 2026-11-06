@@ -91,6 +91,31 @@ export type WebsiteOverview = {
   more?: boolean;
 };
 
+/** What a listing card shows on an overview, for a listing the site shows only as a card (core's ExtractedListing). */
+export type WebsiteCardFacts = {
+  reference: string | null;
+  transaction: "sale" | "rent" | null;
+  status: "active" | "under_offer" | "sold" | "rented" | null;
+  propertyType: string | null;
+  title: string | null;
+  description: string | null;
+  street: string | null;
+  houseNumber: string | null;
+  postcode: string | null;
+  city: string | null;
+  price: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  livingArea: number | null;
+  plotArea: number | null;
+  epcScore: number | null;
+  epcLabel: string | null;
+  photos: string[];
+  agentName: string | null;
+  agentEmail: string | null;
+  agentPhone: string | null;
+};
+
 export type WebsiteDiscovery = {
   startedAt: string;
   doneAt?: string;
@@ -111,6 +136,8 @@ export type WebsiteDiscovery = {
   keys?: Record<string, string>;
   /** Address templates of the listing cards on the overviews (cards at "/nl/te-koop/ronse/huis/woning/793" give one): a link of one of them is a listing, not an overview. */
   listingShapes?: string[];
+  /** Kinds of element the site's linked listing cards are drawn as ("a.estate-card"), to know its cards drawn without a link. */
+  cardKinds?: string[];
   /** Pictures seen on one listing card so far, with that card and its overview: on a second card, one may be a status sticker. */
   singleImages?: Record<string, [string, string | null]>;
 };
@@ -349,13 +376,15 @@ export const websitePages = pgTable(
     /** Hash of the page text, so unchanged pages aren't read again by the AI. */
     contentHash: text(),
     /** What read the listing facts: structured data in the page, our rules, or Claude. */
-    extractedBy: text().$type<"structured" | "rules" | "ai">(),
+    extractedBy: text().$type<"structured" | "rules" | "ai" | "card">(),
     /** The contact person named on the page, also when they aren't one of the agency's agents yet. */
     agentName: text(),
     /** The overview pages that show this page as a listing card, from the latest search of the site. */
     foundOn: text().array().notNull().default(sql`'{}'::text[]`),
     /** The status the listing's card shows on an overview ("Optie", "Verkocht"), which some sites show only there. */
     cardStatus: text().$type<"under_offer" | "sold" | "rented">(),
+    /** For a listing an overview shows only as a card without a link (address from `cardUrl`): what the card shows. */
+    cardFacts: jsonb().$type<WebsiteCardFacts>(),
     lastError: text(),
     lastCheckedAt: timestamp({ withTimezone: true }),
     ...timestamps,

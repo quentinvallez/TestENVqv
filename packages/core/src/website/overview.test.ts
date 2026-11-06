@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
+import { cardKinds, cardStatuses, firstPage, linklessCards, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -196,6 +196,20 @@ describe("the status a card shows", () => {
     expect(nextPageLinks(`<a class="next" href="#">next page</a><a href="/contact">Contact</a>`, `${site}/kopen`)).toEqual([]);
   });
 
+  it("takes no sold-or-rented overview for a card, even numbered like a listing", () => {
+    const site = "https://www.bienatoi.be";
+    const card = (path: string) => `<div class="estate"><a href="${path}"><h3>Maison</h3><p>3 chambres 150 m² 295.000 €</p></a></div>`;
+    const html = `<header><a href="/fr/2/chercher-bien/a-vendre">A vendre</a></header><div><a href="/fr/10002/biens/vendu-loue">Vendu/Loué</a></div>${card("/fr/bien/a-vendre/maison/4500-huy/7926968")}${card("/fr/bien/a-vendre/maison/5000-namur/7797697")}`;
+    expect(listingLinks(html, `${site}/fr/2/chercher-bien/a-vendre`, site).sort()).toEqual([`${site}/fr/bien/a-vendre/maison/4500-huy/7926968`, `${site}/fr/bien/a-vendre/maison/5000-namur/7797697`]);
+  });
+
+  it("keeps a sold listing whose own address says so", () => {
+    const site = "https://immo-center.be";
+    const card = (path: string) => `<div class="estate"><a href="${path}"><h3>Appartement</h3><p>2 slaapkamers 3600 Genk</p></a></div>`;
+    const html = `${card("/nl/aanbod/4481757/rijwoning-te-koop-in-3600-genk")}${card("/nl/aanbod/4355059/appartement-verkocht-in-3600-genk")}`;
+    expect(listingLinks(html, `${site}/nl/te-koop`, site).sort()).toEqual([`${site}/nl/aanbod/4355059/appartement-verkocht-in-3600-genk`, `${site}/nl/aanbod/4481757/rijwoning-te-koop-in-3600-genk`]);
+  });
+
   it("reads a card's badge with an accent", () => {
     const card = (id: number, badge: string) => `<div class="bien"><a href="/index.php?p=listerDetailsBiens&bien=${id}"><h3>Appartement</h3><span class="badge">${badge}</span><p>2 chambres 80 m²</p></a></div>`;
     const html = `<div class="list">${card(7883525, "loué")}${card(7880919, "loué")}${card(7895618, "sous option")}${card(7915591, "Nouveau")}</div>`;
@@ -211,5 +225,22 @@ describe("the status a card shows", () => {
     const urls = [1392, 1368].map((id) => `https://www.immotop.be/fr/a-louer?view=detail&id=${id}&page=2`);
     const statuses = cardStatuses(html, "https://www.immotop.be/fr/a-louer?page=2", urls);
     expect(urls.map((u) => statuses.get(u) ?? "active")).toEqual(["active", "active"]);
+  });
+
+  it("finds cards drawn like the linked ones but without a link, known by the id in their photo", () => {
+    const site = "https://www.bienatoi.be";
+    const linked = (id: number) => `<div class="col"><a href="/fr/bien/a-louer/appartement/5300-andenne/${id}" class="estate-card"><img src="https://r2.storagewhise.eu/Pictures/${id}/640/a.jpg" alt="Appartement - à louer - 5300 Andenne"><span>970 €</span></a></div>`;
+    const bare = (id: number, flag: string) => `<div class="col"><a class="estate-card"><span class="estate-flag">${flag}</span><img src="https://r2.storagewhise.eu/Pictures/${id}/640/b.jpg" alt="Appartement - à louer - 5590 Ciney"><span>78 m²</span></a></div>`;
+    const first = `<header><a class="estate-card">menu</a></header><section>${linked(7907469)}${linked(7907470)}</section>`;
+    const urls = [7907469, 7907470].map((id) => `${site}/fr/bien/a-louer/appartement/5300-andenne/${id}`);
+    const kinds = cardKinds(first, `${site}/fr/7/chercher-bien/a-louer`, urls);
+    expect(kinds).toEqual(["a.estate-card"]);
+    const html = `<section>${linked(7907469)}${bare(7786655, "Option")}${bare(7786656, "Loué")}${bare(7786655, "Option")}<a class="estate-card"><span>Estimation gratuite</span></a></section>`;
+    expect(linklessCards(html, `${site}/fr/List/InfiniteScroll?json=x`, kinds).map((c) => [c.id, c.badge])).toEqual([
+      ["7786655", "under_offer"],
+      ["7786656", "rented"],
+    ]);
+    // Without a learned kind, nothing.
+    expect(linklessCards(html, `${site}/fr/List/InfiniteScroll?json=x`, [])).toEqual([]);
   });
 });
