@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  cardUrl,
+  listingFromCard,
   safeDecode,
   statusFrom,
   transactionFrom,
@@ -407,5 +409,20 @@ describe("reading a listing page", () => {
     const url = "https://www.immosciara.be/bien/a-vendre/immeuble-mixte/4031-liege-angleur/7792428";
     expect(extractListing(page(`<div class="form-row"> <label>Prix du bien (€)</label> <input type="number" class="sim-pret-prix" value="199000" min="0" step="1000"> </div>`), url).listing.price).toBe(199000);
     expect(extractListing(page(""), url).listing.price).toBe(null);
+  });
+
+  it("reads a listing from its card when the site shows it only as a card without a link", () => {
+    // Bienatoi's "Option" card: the town and "à vendre" are in the photo's alt text; the description says "loué" (the studio is let).
+    const card = `<a class="estate-card"> <span class="estate-card__flag"> <span class="estate-flag"> <span class="estate-flag__text estate-flag__text--option">Option</span> </span> </span> <span class="estate-card__photo"> <img src="https://r2.storagewhise.eu/storage7717/Pictures/7702998/640/6bf3e1d3.jpg" alt="Studio - &#xE0; vendre - 5000 Namur"> <span class="aspect-ratio" style="background-image: url('https://r2.storagewhise.eu/storage7717/Pictures/7702998/640/6bf3e1d3.jpg')"></span> </span> <span class="estate-card__peb"> <img src="https://cdn.webulous.io/templates/t4/images/peb/peb-c.svg" alt="PEB : C"> </span> <span class="estate-description__town">Namur</span> <span class="estate-description__type">Studio &#xE0; vendre</span> <span class="estate-description__description">Situé à proximité du centre-ville, studio lumineux et fonctionnel comprenant un hall d’entrée et une cuisine semi-équipée. Peb C! Actuellement loué! FO à partir de 95.000 euros.</span> <span class="estate-facts__item"><i class="fal fa-expand-arrows"></i> 30 m²</span> </a>`;
+    const overview = "https://www.bienatoi.be/fr/2/chercher-bien/a-vendre";
+    const listing = listingFromCard(card, overview, "7702998", "under_offer");
+    expect(listing).toMatchObject({ reference: "7702998", transaction: "sale", status: "under_offer", propertyType: "apartment", postcode: "5000", city: "Namur", price: null, livingArea: 30 });
+    expect(listing.photos).toEqual(["https://r2.storagewhise.eu/storage7717/Pictures/7702998/640/6bf3e1d3.jpg"]);
+    expect(listing.description).toMatch(/^Situé à proximité/);
+    // Its address: the overview with the id, one per card, the same listing as the page it had ("/…/7702998").
+    const url = cardUrl(overview, "7702998");
+    expect(url).toBe(`${overview}#listing-7702998`);
+    expect(referenceFromUrl(url)).toBe("7702998");
+    expect(listingKey(url)).not.toBe(listingKey(cardUrl(overview, "7703058")));
   });
 });

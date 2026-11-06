@@ -16,7 +16,7 @@ export const maxDuration = 60;
 
 function ReadBy({ by }: { by: string | null }) {
   if (by === "ai") return <AiPill>Read by Claude</AiPill>;
-  return <Pill>{by === "structured" ? "Page data" : "Rules"}</Pill>;
+  return <Pill>{by === "structured" ? "Page data" : by === "card" ? "Overview card" : "Rules"}</Pill>;
 }
 
 /** What the pages we found on the site turned out to be, as one thin bar with a legend. */

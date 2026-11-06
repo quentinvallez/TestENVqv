@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
-import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardStatuses, type CardBadge, firstPage, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { cardUrl, type ExtractedListing, listingFromCard, listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
+import { cardKinds, cardStatuses, type CardBadge, firstPage, linklessCards, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -44,9 +44,10 @@ export type Renderer = (url: string, deadline: number) => Promise<string | null>
 export type DiscoveryHooks = {
   /**
    * Saves listing pages found on an overview (root null: found elsewhere), with the status badges their cards show
-   * there, and says how many were new to it and to the search.
+   * there, and says how many were new to it and to the search. `cards`: listings the overview shows only as a card
+   * without a link, under the address `cardUrl` gives them, with what their card shows.
    */
-  found(urls: string[], root: string | null, badges?: Map<string, CardBadge>): Promise<{ newToOverview: number; newToSite: number }>;
+  found(urls: string[], root: string | null, badges?: Map<string, CardBadge>, cards?: Map<string, ExtractedListing>): Promise<{ newToOverview: number; newToSite: number }>;
 };
 
 export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[] };
@@ -217,9 +218,23 @@ export async function continueDiscovery(
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
     // On a new-build overview, cards without a listing id below it are projects, read for their units.
     if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
-    const fresh = await hooks.found(cards, item.root, item.root ? cardStatuses(page.html, page.url, cards) : undefined);
-    if (process.env.WEBSITE_DEBUG) console.log(`  [walk] ${page.url} root=${item.root ?? "-"} cards=${cards.length} new=${fresh.newToOverview}/${fresh.newToSite}`);
-    if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
+    const badges = item.root ? cardStatuses(page.html, page.url, cards) : undefined;
+    // Listings on offer or under option the overview draws like its other cards but without a link (their page is
+    // gone): each becomes a listing of its own, read from its card. Sold and rented ones stay out, as everywhere.
+    const linkless = new Map<string, ExtractedListing>();
+    if (item.root && !projectsRoot) {
+      rememberKinds(discovery, cardKinds(page.html, page.url, cards));
+      for (const card of linklessCards(page.html, page.url, discovery.cardKinds ?? [])) {
+        if (card.badge === "sold" || card.badge === "rented") continue;
+        const url = cardUrl(item.root, card.id);
+        linkless.set(url, listingFromCard(card.part, item.root, card.id, card.badge));
+        if (card.badge) badges!.set(url, card.badge);
+      }
+    }
+    const shown = [...cards, ...linkless.keys()];
+    const fresh = await hooks.found(shown, item.root, badges, linkless.size ? linkless : undefined);
+    if (process.env.WEBSITE_DEBUG) console.log(`  [walk] ${page.url} root=${item.root ?? "-"} cards=${cards.length}${linkless.size ? ` + ${linkless.size} without a link` : ""} new=${fresh.newToOverview}/${fresh.newToSite}`);
+    if (item.root) walk(state, item, page.html, page.url, shown.length, fresh.newToOverview, fresh.newToSite, visited);
     const projects = projectsRoot ? queueProjects(state, projectsRoot, page.html, page.url, cards, visited, reader, inLanguage) : [];
 
     // Overviews this page links to (the home page's menu, "new builds" on an overview): page 1 of each, the shallowest first.
@@ -259,17 +274,27 @@ function rememberShapes(discovery: WebsiteDiscovery, cards: string[]) {
   if (shapes.size) discovery.listingShapes = [...shapes];
 }
 
+const MAX_KINDS = 10;
+
+/** Remembers the kinds of element the site's linked cards are drawn as, to know its cards drawn without a link. */
+function rememberKinds(discovery: WebsiteDiscovery, kinds: string[]) {
+  const known = new Set(discovery.cardKinds ?? []);
+  for (const kind of kinds) if (known.size < MAX_KINDS) known.add(kind);
+  if (known.size) discovery.cardKinds = [...known];
+}
+
 const isListingShape = (discovery: WebsiteDiscovery, url: string) => (discovery.listingShapes ?? []).includes(urlShape(url));
 
 /** Each listing under the first address the search saw for it, also when the site links it under several. */
 function oneAddressPerListing(state: DiscoveryState, hooks: DiscoveryHooks): DiscoveryHooks {
   return {
-    found(urls, root, badges) {
+    found(urls, root, badges, cards) {
       const keys = (state.discovery.keys ??= {});
       const same = new Map<string, string>();
       for (const url of urls) same.set(url, (keys[listingKey(url)] ??= url));
       const mapped = badges && new Map([...badges].map(([url, badge]) => [same.get(url) ?? url, badge]));
-      return hooks.found([...new Set(same.values())], root, mapped);
+      const mappedCards = cards && new Map([...cards].map(([url, facts]) => [same.get(url) ?? url, facts]));
+      return hooks.found([...new Set(same.values())], root, mapped, mappedCards);
     },
   };
 }

@@ -8,7 +8,7 @@
  */
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
-import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
+import { cardId, type ExtractedListing, extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
@@ -77,12 +77,12 @@ async function main() {
 }
 
 /** Sites whose every search page is printed raw (cards, loader links, scripts), to see how their lists load. */
-const dump = ["bienatoi"];
+const dump: string[] = [];
 function dumpPage(url: string, page: Awaited<ReturnType<SiteReader["read"]>>) {
   if (!("html" in page)) return console.log(`    [dump] ${url}: ${page.error}`);
   const body = page.html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|svg|noscript)\b[\s\S]*?<\/\1>/gi, "<$1/>").replace(/\s+/g, " ");
   console.log(`    [dump] ${page.status} ${url.slice(0, 120)}: ${page.html.length} chars`);
-  console.log(`      hrefs: ${[...body.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]).filter((h) => !/\.(css|png|jpe?g|svg|ico|woff2?)/i.test(h)).slice(0, 80).join(" ").slice(0, 6000)}`);
+  console.log(`      hrefs: ${[...body.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]!).filter((h) => !/\.(css|png|jpe?g|svg|ico|woff2?)/i.test(h)).slice(0, 80).join(" ").slice(0, 6000)}`);
   if (/InfiniteScroll|chercher-bien/i.test(url)) {
     const at = body.search(/estate|infinite/i);
     console.log(`      body: ${body.slice(Math.max(0, at - 500), at + 5000)}`);
@@ -121,9 +121,12 @@ async function probe(site: string) {
     },
   };
   const shownOn = new Map<string, Set<string>>();
+  // Listings shown only as a card without a link, with what their card shows.
+  const cardFacts = new Map<string, ExtractedListing>();
   const pagesOf = new Map<string, Map<string, string[]>>();
   const hooks: DiscoveryHooks = {
-    found: async (urls, root) => {
+    found: async (urls, root, _badges, cards) => {
+      for (const [url, facts] of cards ?? []) cardFacts.set(url, facts);
       const tag = root ?? "*";
       if (root) pagesOf.set(root, (pagesOf.get(root) ?? new Map()).set(lastUrl, urls));
       let newToOverview = 0;
@@ -212,6 +215,11 @@ async function probe(site: string) {
   const boilerplate = await reader.siteBoilerplate();
   const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
+    const card = cardFacts.get(url);
+    if (cardId(url) && card) {
+      const status = cardBadge.get(url) ?? card.status ?? "active";
+      return outcome.set(url, { status, transaction: card.transaction, price: card.price, reference: card.reference, why: `card without a link: ${card.reference} ${card.propertyType ?? "?"} ${card.postcode ?? ""} ${card.city ?? ""} €${card.price ?? "?"} ${card.livingArea ?? "?"}m² ${card.transaction ?? "?"} ${card.photos.length} photos` });
+    }
     const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
     let page = await reader.read(url);
     // As the importer: a page sent to the home page is read again without the numbers of the visit that found it.

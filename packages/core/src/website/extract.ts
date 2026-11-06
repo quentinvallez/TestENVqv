@@ -155,12 +155,29 @@ export function looksLikeListingUrl(url: string, site: string): boolean {
 }
 
 /**
+ * The address we give a listing an overview shows as a card without a link (Bienatoi's "Option" cards: the site took
+ * its page down but still lists it): the overview's address with the listing's id as fragment.
+ */
+export function cardUrl(overview: string, id: string): string {
+  const u = new URL(overview);
+  u.hash = `listing-${id}`;
+  return u.toString();
+}
+
+/** The listing id of a card address made by `cardUrl`, else null. */
+export function cardId(url: string): string | null {
+  return url.match(/#listing-(\d{3,12})$/)?.[1] ?? null;
+}
+
+/**
  * What makes two addresses one listing: its id in the query ("?view=detail&id=1462" on any page of the site), or its
  * address without the position numbers some sites append to each card ("/te-koop/niel/4493114/0/70084328/1/2/0/0").
  */
 export function listingKey(url: string): string {
   const u = new URL(url);
   const host = siteHost(u);
+  const card = cardId(url);
+  if (card) return `${host}#listing-${card}`;
   const id = queryId(u);
   if (id) return `${host}?${id}`;
   const segments = u.pathname.split("/").filter(Boolean);
@@ -771,6 +788,8 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
 
 /** The CRM id in a listing URL (/detail/7917339/…, …-264763), used when the page shows no reference. */
 export function referenceFromUrl(url: string): string | null {
+  const card = cardId(url);
+  if (card) return card;
   const parsed = new URL(url);
   const ids = [...parsed.pathname.matchAll(/(?:^|[^\d])(\d{5,9})(?=[^\d]|$)/g)].map((m) => m[1]!);
   return ids.at(-1) ?? queryId(parsed);
@@ -842,4 +861,37 @@ export function matchAgent<T extends { name: string }>(agents: T[], ...texts: (s
 /** Which fields matter most and are still missing, so Claude is only asked when it helps. */
 export function missingKeyFacts(listing: ExtractedListing): (keyof ExtractedListing)[] {
   return (["price", "postcode", "city", "propertyType", "transaction", "bedrooms", "livingArea", "agentName"] as const).filter((field) => listing[field] == null);
+}
+
+/**
+ * The facts a listing card on an overview shows, for a listing the site shows only as a card (no link, no page of its
+ * own): type, sale or rent, town, price, area and photos. Read from the card's short lines and its photo's alt text
+ * ("Maison - à vendre - 5100 Dave"), not its description ("Actuellement loué !" on a studio for sale).
+ */
+export function listingFromCard(part: string, overview: string, id: string, status: WebsiteListingStatus | null): ExtractedListing {
+  const text = pageText(part);
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const alts = [...part.matchAll(/\b(?:alt|title)\s*=\s*"([^"]*)"/gi)].map((m) => decodeEntities(m[1]!).trim()).filter((alt) => alt && !/^(peb|epc)\b/i.test(alt));
+  const short = [...alts, ...lines.filter((line) => line.length <= 60)];
+  const place = short.map((line) => line.match(/(?<!\d)([1-9]\d{3})\s+([\p{L}][\p{L}'’. -]{1,40})/u)).find(Boolean);
+  const priceLine = short.find((line) => /€|\beur\b/i.test(line) && !/\/\s*m(²|2)/i.test(line));
+  const areaLine = short.find((line) => /\d\s*m(²|2)(?![\p{L}\d])/iu.test(line));
+  const photos = [...part.matchAll(/(?:\bsrc\s*=\s*["']|url\(\s*['"]?)([^"')\s]+\.(?:jpe?g|png|webp|avif)(?:\?[^"')\s]*)?)/gi)]
+    .map((m) => normalizeUrl(decodeEntities(m[1]!), overview))
+    .filter((url): url is string => Boolean(url));
+  const description = lines.filter((line) => line.length > 80).sort((a, b) => b.length - a.length)[0] ?? null;
+  return {
+    ...emptyListing(),
+    reference: id,
+    transaction: transactionFrom(short.join(" ")) ?? transactionFrom(new URL(overview).pathname),
+    status,
+    propertyType: propertyTypeFrom(short.join(" ")),
+    title: alts[0] ?? null,
+    description,
+    postcode: place?.[1] ?? null,
+    city: place?.[2]?.trim().replace(/\s+/g, " ") ?? null,
+    price: priceLine ? parseAmount(priceLine) : null,
+    livingArea: areaLine ? parseArea(areaLine.match(/(\d[\d.,\s]*)\s*m(²|2)/i)![0]) : null,
+    photos: [...new Set(photos)],
+  };
 }

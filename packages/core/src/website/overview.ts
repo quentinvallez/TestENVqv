@@ -426,3 +426,46 @@ export function repeatedCards(html: string, pageUrl: string, site: string): stri
   }
   return [...found];
 }
+
+/**
+ * The kinds of element ("a.estate-card") the site's linked listing cards are drawn as, learned from an overview's
+ * cards, to know its cards drawn without a link elsewhere.
+ */
+export function cardKinds(html: string, pageUrl: string, cards: string[]): string[] {
+  const wanted = new Set(cards);
+  const kinds = new Map<string, number>();
+  for (const a of anchorsOf(html, pageUrl).anchors) {
+    const own = a.around.at(-1);
+    if (!wanted.has(a.url) || !own || own.name !== "a" || own.shape.endsWith(".")) continue;
+    kinds.set(own.shape, (kinds.get(own.shape) ?? 0) + 1);
+  }
+  // A kind most cards share, not a "more" button among them.
+  return [...kinds].filter(([, n]) => n >= 2).map(([kind]) => kind);
+}
+
+export type LinklessCard = { id: string; part: string; badge: CardBadge | null };
+
+/**
+ * Listing cards drawn as the site's linked cards are ("a.estate-card"), but without a link: Bienatoi shows its listings
+ * under option that way, and has taken their pages down. Each is known by the listing id in its photo's address
+ * ("/Pictures/7703058/640/…jpg"); a card without one can't be told apart from the next, so it is left out.
+ */
+export function linklessCards(html: string, pageUrl: string, kinds: readonly string[]): LinklessCard[] {
+  if (!kinds.length) return [];
+  const known = new Set(kinds);
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
+  const linked = new Set(anchors.map((a) => a.at));
+  const outside = elements.filter((e) => ["nav", "header", "footer"].includes(e.name));
+  const found = new Map<string, LinklessCard>();
+  for (const e of elements) {
+    if (!known.has(e.shape) || linked.has(e.start) || outside.some((o) => o.start <= e.start && o.end >= e.end)) continue;
+    const part = doc.slice(e.start, e.end);
+    if (!LISTING_FACTS.test(cardText(part)) && !/<img\b/i.test(part)) continue;
+    const photo = part.match(/(?:\bsrc\s*=\s*["']|url\(\s*['"]?)([^"')\s]+\.(?:jpe?g|png|webp|avif))/i)?.[1];
+    const id = photo?.split(/[/?#]/).find((segment) => /^\d{5,9}$/.test(segment));
+    if (!id || found.has(id)) continue;
+    const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)))?.[1] ?? null;
+    found.set(id, { id, part, badge });
+  }
+  return [...found.values()];
+}
