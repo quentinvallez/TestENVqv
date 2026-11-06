@@ -377,6 +377,28 @@ describe("reading a listing page", () => {
     expect(extractListing(page.replace(/Visitez[^<]*Antonin/g, "Visitez avec un de nos agents dès demain"), "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
   });
 
+  it("reads the agent from a contact button, not from feature labels that repeat a word (MDI)", () => {
+    const page = `<html><body><main><h1>QUATRE VENTS</h1><p>155.000 €</p><p>Molenbeek-Saint-Jean</p><p>Appartement</p>
+      <h3>Composition</h3><p>Chambre 1</p><p>13</p><p>Salle De Séjour</p><p>16</p><p>Salle De Bain 1</p><p>5</p>
+      <h3>Bâtiment</h3><p>Parking Intérieur</p><p>Non</p><p>Parking Extérieur</p><p>Non</p>
+      <aside><p>Contactez</p><p>Didier</p><p><a href="tel:023532430">02 353 24 30</a></p><a class="button">Contactez Didier</a></aside></main></body></html>`;
+    const { listing } = extractListing(page, "https://mdi.be/nos-biens/quatre-vents/");
+    expect(listing).toMatchObject({ agentName: "Didier", agentPhone: "+3223532430" });
+    // Without the button, the feature labels still give no agent.
+    const noButton = page.replace(/<aside>[\s\S]*<\/aside>/, "");
+    expect(extractListing(noButton, "https://mdi.be/nos-biens/quatre-vents/").listing.agentName).toBeNull();
+    expect(extractListing(page.replace(/Didier/g, "nous"), "https://mdi.be/nos-biens/quatre-vents/").listing.agentName).toBeNull();
+  });
+
+  it("takes no lowercase words before a phone number for the agent", () => {
+    for (const line of ["Contacteer ons zeker snel via 03 123 45 67", "Neem contact op met Ferhat via 0478 12 34 56", "Contactez Sabine au 0478 12 34 56"]) {
+      const html = `<html><body><h1>Huis te koop</h1><p>Prijs: € 250.000</p><p>3 slaapkamers</p><p>${line}</p></body></html>`;
+      expect(extractListing(html, "https://www.example.be/nl/te-koop/huis/123456").listing.agentName).toBeNull();
+    }
+    const named = `<html><body><h1>Huis te koop</h1><p>Prijs: € 250.000</p><p>Tel. Ilona Bewaert, 0496/22.02.66</p></body></html>`;
+    expect(extractListing(named, "https://www.example.be/nl/te-koop/huis/123456").listing.agentName).toBe("Ilona Bewaert");
+  });
+
   it("takes no street, menu item or cookie service for the agent", () => {
     for (const line of ["Notre Philosophie", "Facebook Pixel", "Rue des Vétérinaires", "Augustin Delportestraat"]) {
       const html = `<html><body><h1>Appartement à louer</h1><p>Prix: 950 €</p><p>2 chambres</p><p>${line}</p><p>0478 12 34 56</p><p>Contact: ${line}</p></body></html>`;

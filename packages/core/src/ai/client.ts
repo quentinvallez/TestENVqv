@@ -25,7 +25,8 @@ let client: Anthropic | undefined;
  */
 export async function generateStructured<S extends z.ZodType>(options: {
   system: string;
-  prompt: string;
+  /** Text, or content blocks when a picture goes with it. */
+  prompt: string | Anthropic.Beta.Messages.BetaContentBlockParam[];
   schema: S;
   effort?: "low" | "medium" | "high";
 }): Promise<z.output<S>> {

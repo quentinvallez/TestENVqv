@@ -10,10 +10,12 @@ import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
 import { extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, statedCount } from "../src/website/overview";
+import { aiAvailable } from "../src/ai/client";
+import { badgeFromImage } from "../src/website/ai";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01, mdi since 2026-11-06).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -44,9 +46,11 @@ const sites = [
   "https://www.geodeproperties.be/",
   "https://www.immosciara.be/",
   "https://www.immovl.be/",
+  "https://mdi.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
+  mdi: ["https://mdi.be/nos-biens/quatre-vents/"],
   valorvastgoed: ["https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832975"],
   urbainvastgoed: ["https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/"],
   ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
@@ -113,6 +117,18 @@ async function probe(site: string) {
       }
       return { newToOverview, newToSite };
     },
+    // Pictures over the cards' photos that may be a status sticker: read by Claude when the key is set, else listed.
+    readBadgeImage: async (url) => {
+      if (!aiAvailable()) {
+        console.log(`  [sticker?] ${url} (no ANTHROPIC_API_KEY: not read)`);
+        return undefined;
+      }
+      const image = await reader.readImage(url);
+      const answer = image ? await badgeFromImage(url, image).catch((e) => (console.log(`  [sticker] ${url}: ${e}`), undefined)) : undefined;
+      console.log(`  [sticker] ${url}: ${image ? (answer ?? "-") : "unreadable"}`);
+      if (process.env.GITHUB_ACTIONS) console.log(`::notice title=sticker::${url} ${answer ?? "-"}`);
+      return answer;
+    },
   };
   const state = newDiscovery(site);
   const browser = await openBrowser(reader);
@@ -152,7 +168,7 @@ async function probe(site: string) {
   for (const o of overviews) {
     const verdict = (o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`) + (o.more ? ", says it has more pages (load more)" : "");
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
-      const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+      const statuses = cardStatuses(html.get(page) ?? "", page, urls, state.badgeImages);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
       if (urls.length < 3) for (const url of urls) fewCards.push(`${url.replace(site, "")} ${statuses.get(url) ?? "on offer"}`);
       return urls.map((url) => statuses.get(url) ?? "on offer");
@@ -160,7 +176,7 @@ async function probe(site: string) {
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
     // What a few cards' own elements say, to check the badges are read from the right card.
     const [page, urls] = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())][0] ?? ["", []];
-    const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+    const statuses = cardStatuses(html.get(page) ?? "", page, urls, state.badgeImages);
     for (const url of [...urls.filter((u) => statuses.has(u)).slice(0, 3), ...urls.filter((u) => !statuses.has(u)).slice(0, 2)]) {
       console.log(`      card ${statuses.get(url) ?? "on offer"}: ${url.replace(site, "")}  "${short(cardText(html.get(page) ?? "", url), 200)}"`);
     }

@@ -574,10 +574,11 @@ function titleTag(html: string): string | null {
 const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:(?:van|der|den|des|de|du|le|la|von)(?![a-zà-ÿ'’-])|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
 // A particle is a whole word: "Ellen Van der Eycken", not "Ellen Van de" + "r Eycken".
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:(?:van|der|den|des|de|du|le|la|von)(?![a-zà-ÿ'’-])|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
+const wholeName = new RegExp(`^${personName.source}$`);
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
 // Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
 // Vétérinaires", "Augustin Delportestraat"), menus ("Notre Philosophie") and features ("Avec Jardin") aren't people either.
-const notAPerson = /\b(rue|avenue|chauss[ée]e|boulevard|place|clos|square|dr[eè]ve|chemin|all[ée]e|impasse|quai|sentier|\w+straat|\w+laan|\w+steenweg|\w+plein|\w+dreef|notre|nos|votre|vos|avec|local|jardin|terrasse|philosophie|services?|estimation|gestion|accueil|chasseur|facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|propert(?:y|ies)|realty|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
+const notAPerson = /\b(rue|avenue|chauss[ée]e|boulevard|place|clos|square|dr[eè]ve|chemin|all[ée]e|impasse|quai|sentier|\w+straat|\w+laan|\w+steenweg|\w+plein|\w+dreef|notre|nos|votre|vos|avec|local|jardin|terrasse|parking|garage|salle|s[ée]jour|chambre|cuisine|int[ée]rieur|ext[ée]rieur|philosophie|services?|estimation|gestion|accueil|chasseur|facebook|pixel|google|analytics|tag manager|hotjar|linkedin|instagram|youtube|tiktok|pinterest|whise|webulous|cookies?|immo\w*|immobili[eë]n|vastgoed|real|estate|propert(?:y|ies)|realty|makelaar|makelaars|kantoor|agence|groep|group|bvba|bv|nv|srl|sprl|vzw|team|contact|interesse|residenti[eë]|r[ée]sidence|project)\b/i;
 
 const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
@@ -677,10 +678,11 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
       }
     }
   }
-  // The name on the button or heading that books a visit with them: "Visitez avec Antonin", "Bezoek dit pand met Liselotte".
+  // The name on the button or heading that books a visit with them or writes to them: "Visitez avec Antonin",
+  // "Bezoek dit pand met Liselotte", "Contactez Didier".
   // Often a first name only; it is still the name the page shows.
   if (!listing.agentName) {
-    const visit = /(?:^|\n)[ \t]*(?:visite[rz]?(?: ce bien| cette propri[ée]t[ée]| ce logement)?[ \t]+avec|(?:prenez|prendre) rendez-vous avec|(?:bezoek(?:en)?|bezichtig(?:en)?)(?: dit pand| deze woning| dit eigendom)?[ \t]+met|(?:maak een )?afspraak(?: maken)? met|visit(?: this property| this home)?[ \t]+with|book a viewing with)[ \t]+([^\n]{3,60})(?=\n|$)/gi;
+    const visit = /(?:^|\n)[ \t]*(?:contacte[rz]|contacteer|neem contact op met|visite[rz]?(?: ce bien| cette propri[ée]t[ée]| ce logement)?[ \t]+avec|(?:prenez|prendre) rendez-vous avec|(?:bezoek(?:en)?|bezichtig(?:en)?)(?: dit pand| deze woning| dit eigendom)?[ \t]+met|(?:maak een )?afspraak(?: maken)? met|visit(?: this property| this home)?[ \t]+with|book a viewing with)[ \t]+([^\n]{3,60})(?=\n|$)/gi;
     const nameOnly = new RegExp(`^(${agentFirstName.source})[ \\t]*[!.]?$`);
     for (const match of textBlock.matchAll(visit)) {
       const name = match[1]!.trim().match(nameOnly)?.[1];
@@ -703,8 +705,10 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
       const first = new RegExp(`(?<![\\w-])${firstName}(?![\\w-])`);
       const near = [lines[i - 1], lines[i + 1], lines[i + 2]].filter((l): l is string => l != null);
       // The first name alone ("Stephane helpt je graag verder!"); a line repeating the whole name is a project's title
-      // under its name ("Maison West", "Maison West – Jouw oase van rust aan de kust").
-      if (near.some((l) => (first.test(l) && !l.includes(line)) || phone.test(l))) {
+      // under its name ("Maison West", "Maison West – Jouw oase van rust aan de kust"). A neighbour starting with the same
+      // word and another capitalised word is a sibling label in a list of features ("Parking Intérieur" above "Parking Extérieur").
+      const sibling = (l: string) => new RegExp(`^${firstName}[ \\t]+[A-ZÀ-Ý\\d]`).test(l);
+      if (near.some((l) => (first.test(l) && !l.includes(line) && !sibling(l)) || phone.test(l))) {
         listing.agentName = line;
         break;
       }
@@ -716,7 +720,9 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     const withPhone = new RegExp(`(tel\\.?|bel|gsm|contact\\w*|afspraak)?[ \\t:]*(${personName.source})[ \\t]*[,;:–-]?[ \\t]*(?:\\+32|0)[ \\t]?[1-9](?:[ \\t./-]?\\d){7,9}`, "gi");
     for (const match of textBlock.matchAll(withPhone)) {
       const name = match[2]!;
-      if (notAPerson.test(name)) continue;
+      // The pattern ignores case for "Tel."/"tel"; the name itself must be capitalised ("Contacteer ons zeker snel via 03…",
+      // "Neem contact op met Ferhat via 0478…" name no one).
+      if (notAPerson.test(name) || !wholeName.test(name)) continue;
       if (match[1] || contactNear(textBlock, name).agentEmail) {
         listing.agentName = name;
         break;

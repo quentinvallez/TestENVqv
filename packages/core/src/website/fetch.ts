@@ -127,3 +127,27 @@ async function readCapped(response: Response): Promise<string> {
   }
   return new TextDecoder().decode(Buffer.concat(chunks));
 }
+
+export type FetchedImage = { mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string };
+/** Claude takes pictures up to 5 MB; a sticker is far smaller. */
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * GET one picture of the agency's site (a status sticker on its cards), as base64. Same rules as a page: on the
+ * site, public host, no redirect elsewhere; only PNG, JPEG, GIF or WebP up to 2 MB.
+ */
+export async function fetchSiteImage(input: string, site: string, timeoutMs = 12_000): Promise<FetchedImage> {
+  const url = new URL(input);
+  if (!sameSite(url, site)) throw new FetchError(`${url.hostname} is not on the agency's website`);
+  await assertPublicUrl(url);
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(timeoutMs), headers: { accept: "image/*", "user-agent": USER_AGENT } });
+  const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  const mediaType = (["image/png", "image/jpeg", "image/gif", "image/webp"] as const).find((t) => t === type);
+  if (!response.ok || !mediaType) {
+    await response.body?.cancel();
+    throw new FetchError(response.ok ? `Not a picture (${type || "unknown type"})` : `The picture answered with error ${response.status}`, response.status);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > MAX_IMAGE_BYTES) throw new FetchError("The picture is too large");
+  return { mediaType, data: Buffer.from(bytes).toString("base64") };
+}

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { generateStructured } from "../ai/client";
 import type { ExtractedListing } from "./extract";
+import type { FetchedImage } from "./fetch";
+import type { CardBadge } from "./overview";
 
 const schema = z.object({
   isListing: z.boolean().describe("True only if this page presents one single property (not an overview, article or project list)."),
@@ -52,4 +54,28 @@ export function mergeExtraction(rules: ExtractedListing, ai: Omit<ExtractedListi
   if (merged.agentEmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(merged.agentEmail)) merged.agentEmail = null;
   if (merged.postcode && !/^[1-9]\d{3}$/.test(merged.postcode)) merged.postcode = merged.postcode.match(/[1-9]\d{3}/)?.[0] ?? null;
   return merged;
+}
+
+const badgeSchema = z.object({
+  status: z
+    .enum(["sold", "rented", "under_offer", "none"])
+    .describe("sold: the picture says sold (vendu, verkocht); rented: rented (loué, verhuurd); under_offer: option, compromis, reserved (optie, sous option); none: anything else or no status word"),
+});
+
+/**
+ * Claude reads a picture an agency lays over the photos of some listing cards (a sticker "VENDU!" held by an agent),
+ * to tell which status it shows. Called once per picture and site. Throws when Claude isn't available.
+ */
+export async function badgeFromImage(url: string, image: FetchedImage): Promise<CardBadge | "none"> {
+  const { status } = await generateStructured({
+    system: `You look at one picture from a Belgian real estate agency's website. The agency lays it over the photos of some listings on its overview pages.
+Say which listing status the picture's text shows. Only a status written in the picture counts; "none" when it shows another word (new, price drop) or no word.`,
+    prompt: [
+      { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } },
+      { type: "text", text: `Picture address: ${url}` },
+    ],
+    schema: badgeSchema,
+    effort: "low",
+  });
+  return status;
 }

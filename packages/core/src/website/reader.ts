@@ -1,5 +1,5 @@
 import { boilerplateLines } from "./extract";
-import { fetchSitePage, type FetchedPage } from "./fetch";
+import { fetchSiteImage, fetchSitePage, type FetchedImage, type FetchedPage } from "./fetch";
 import { allowAll, disallowAll, parseRobots, type RobotsPolicy } from "./robots";
 
 /** The longest crawl delay we wait for; a site asking more is read at this pace. */
@@ -69,6 +69,19 @@ export class SiteReader {
     const wait = this.lastRequest + this.delayMs - Date.now();
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     this.lastRequest = Date.now();
+  }
+
+  /** One picture of the site, in its turn like a page; null when robots.txt doesn't allow it or it can't be read. */
+  async readImage(url: string): Promise<FetchedImage | null> {
+    if (!this.robots.allowed(url)) return null;
+    await this.turn();
+    try {
+      return await fetchSiteImage(url, this.site);
+    } catch {
+      return null;
+    } finally {
+      this.lastRequest = Date.now();
+    }
   }
 
   async read(url: string, headers?: Record<string, string>): Promise<ReadResult> {
