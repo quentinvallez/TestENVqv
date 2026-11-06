@@ -6,6 +6,7 @@
 import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { cardParts, cardTree, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
+import { USER_AGENT } from "../src/website/fetch";
 import { SiteReader } from "../src/website/reader";
 
 type Look = {
@@ -17,15 +18,16 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data" | "cards" | "tail" | "raw")[];
+  show: ("markup" | "text" | "links" | "data" | "cards" | "tail" | "raw" | "image")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
   // MDI (Quentin's site, 2026-11-06): status only in photos? agent (Didier) not found.
-  { url: "https://mdi.be/a-vendre", show: ["links", "cards", "raw"] },
-  { url: "https://mdi.be/a-louer", show: ["links", "cards", "raw"] },
+  // MDI: the images laid over some card photos (the status badges?), small sizes, printed as base64.
+  ...["2957", "2970", "3008", "3185"].map((n): Look => ({ url: `https://mdi.be/wp-content/uploads/2025/03/IMG_${n}-600x400-1-300x200.png`, show: ["image"] })),
+  { url: "https://mdi.be/nos-biens/sam/", show: ["markup"], needle: "IMG_3008" },
 ];
 
 const clean = (html: string) =>
@@ -43,6 +45,19 @@ async function main() {
     const reader = readers.get(origin) ?? (await SiteReader.open(origin));
     readers.set(origin, reader);
     console.log(`\n================ ${look.url}${look.needle ? ` (looking for "${look.needle}")` : ""}`);
+    if (look.show.includes("image")) {
+      if (!reader.robots.allowed(look.url)) {
+        console.log("not allowed by robots.txt");
+        continue;
+      }
+      await reader.turn();
+      const response = await fetch(look.url, { headers: { "user-agent": USER_AGENT } });
+      const bytes = Buffer.from(await response.arrayBuffer());
+      console.log(`image ${response.status} ${response.headers.get("content-type")} ${bytes.length} bytes`);
+      const b64 = bytes.toString("base64");
+      for (let i = 0; i < b64.length; i += 8000) console.log(`b64 ${b64.slice(i, i + 8000)}`);
+      continue;
+    }
     let url: string | null = look.url;
     for (let page = 1; url && page <= (look.pages ?? 1); page++) {
       const read = await reader.read(url);
