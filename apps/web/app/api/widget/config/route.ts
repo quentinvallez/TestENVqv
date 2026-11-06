@@ -1,4 +1,6 @@
-import { widgetConfig } from "@viewing/core/public";
+import { after } from "next/server";
+import { runTool, tools } from "@viewing/core";
+import { systemContext, widgetConfig } from "@viewing/core/public";
 import { valuationText } from "@/lib/valuation-i18n";
 import { toWidgetLang, widgetText } from "@/lib/widget-i18n";
 
@@ -17,6 +19,17 @@ export async function GET(request: Request) {
   if (!agency) return Response.json({ error: "agency is required" }, { status: 400, headers: cors });
   const config = await widgetConfig(agency);
   if (!config) return Response.json({ error: "unknown agency" }, { status: 404, headers: cors });
+  // The page the script runs on, for the install check in the back office ("Installed on your site").
+  const page = url.searchParams.get("page");
+  if (page) {
+    after(async () => {
+      try {
+        await runTool(tools.noteWidgetSeen, systemContext(agency), { url: page });
+      } catch (error) {
+        console.error("Noting the widget failed", error);
+      }
+    });
+  }
   const lang = toWidgetLang(url.searchParams.get("lang") ?? undefined);
   const text = valuationText[lang];
   return Response.json(

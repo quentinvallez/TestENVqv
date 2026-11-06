@@ -10,7 +10,7 @@ import { decideProposal, listProposals } from "./tools/proposals";
 import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
-import { getWidgetSettings, updateWidgetSettings } from "./tools/settings";
+import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
@@ -22,6 +22,8 @@ export const tools = {
   listListings,
   getWidgetSettings,
   updateWidgetSettings,
+  noteWidgetSeen,
+  readWebsiteLook,
   getListing,
   createListing,
   assignListingAgent,

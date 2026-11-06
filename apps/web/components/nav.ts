@@ -36,7 +36,7 @@ export const navSections: { title?: string; items: NavItem[] }[] = [
   {
     title: "Tools",
     items: [
-      { href: "/widget", label: "Booking widget", icon: Code2 },
+      { href: "/widget", label: "Website & widget", icon: Code2 },
       { href: "/reports", label: "Reports", icon: BarChart3, soon: true },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
