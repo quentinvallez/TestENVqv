@@ -152,32 +152,9 @@ export function nextPageLinks(html: string, pageUrl: string): string[] {
     const raw = href && decodeEntities(href[1] ?? href[2] ?? "");
     if (!raw || raw.startsWith("#") || /^javascript:/i.test(raw)) continue;
     const url = normalizeUrl(raw, pageUrl);
-    const following = url && scriptPageAfter(url, pageUrl);
-    if (following && new URL(following).origin === here.origin && following !== normalizeUrl(pageUrl) && !out.has(following)) out.set(following, current + 1);
+    if (url && new URL(url).origin === here.origin && url !== normalizeUrl(pageUrl) && !out.has(url)) out.set(url, current + 1);
   }
   return [...out].sort((a, b) => a[1] - b[1]).map(([url]) => url);
-}
-
-/** "PageNumber":2 in a loader address's JSON settings ("?json={…}"), as written or percent-encoded. */
-const SCRIPT_PAGE = /((?:%22|")PageNumber(?:%22|")\s*(?:%3A|:)\s*)(\d{1,4})/i;
-
-/** The page number a loader address carries in its JSON settings, if any. */
-function scriptPageNumber(url: string): number | null {
-  const m = new URL(url).search.match(SCRIPT_PAGE);
-  return m ? Number(m[2]) : null;
-}
-
-/**
- * The address a loader script reads after this page. Whise/Webulous lists end each loaded page with a "next page" link
- * that still carries that page's own number ("PageNumber":0); the site's script raises it by one before loading it,
- * so we do the same, keeping the rest of the address as the site wrote it. Other addresses stay as they are.
- */
-export function scriptPageAfter(url: string, pageUrl: string): string {
-  const link = scriptPageNumber(url);
-  const here = scriptPageNumber(pageUrl);
-  if (link == null || here == null || link > here) return url;
-  const u = new URL(url);
-  return `${u.origin}${u.pathname}${u.search.replace(SCRIPT_PAGE, (_, label: string) => `${label}${here + 1}`)}${u.hash}`;
 }
 
 /**

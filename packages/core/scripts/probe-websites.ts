@@ -57,6 +57,13 @@ const checks: Record<string, string[]> = {
     "https://jurimex.be/nl/aanbod/4406798/kantoorruimte-te-huur-in-3600-genk",
   ],
   immobolle: ["https://www.immobolle.be/fr/page/10004/protection-juridique"],
+  // Under-option cards without a link: does the page exist at the site's address template, and with any slug?
+  bienatoi: [
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/5100-dave/7703058",
+    "https://www.bienatoi.be/fr/bien/a-louer/appartement/5590-ciney/7786655",
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/x/7703058",
+    "https://www.bienatoi.be/fr/bien/a-vendre/maison/4500-huy/7926968",
+  ],
 };
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();

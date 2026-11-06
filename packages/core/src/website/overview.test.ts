@@ -196,19 +196,6 @@ describe("the status a card shows", () => {
     expect(nextPageLinks(`<a class="next" href="#">next page</a><a href="/contact">Contact</a>`, `${site}/kopen`)).toEqual([]);
   });
 
-  it("raises the page number a loaded infinite-scroll page's next link still carries, as the site's script does", () => {
-    const site = "https://www.bienatoi.be";
-    const page = (first: boolean, n: number) => `${site}/fr/List/InfiniteScroll?json=%7B%22FirstPage%22%3A${first},%22MaxItemsPerPage%22%3A5,%22PageNumber%22%3A${n},%22CustomQuery%22%3A%22%5C%22PurposeIDList%5C%22%3A%5B1%5D%22%7D`;
-    const loaded = (n: number) => `<a href="/fr/bien/a-vendre/maison/4500-huy/7926968">x</a> <a href='${page(false, n).replace(site, "")}'>next page</a>`;
-    // Page 0 links "next page" with PageNumber 0 still: page 1 is read.
-    expect(nextPageLinks(loaded(0), page(true, 0))).toEqual([page(false, 1)]);
-    expect(nextPageLinks(loaded(0), page(false, 1))).toEqual([page(false, 2)]);
-    // A link that already carries a later page is followed as written.
-    expect(nextPageLinks(loaded(3), page(false, 1))).toEqual([page(false, 3)]);
-    // From the overview itself, the loader's first address is read as it is.
-    expect(nextPageLinks(`<div class="infinite-scroll"> <a href='${page(true, 0).replace(site, "")}'></a></div>`, `${site}/fr/2/chercher-bien/a-vendre`)).toEqual([page(true, 0)]);
-  });
-
   it("takes no sold-or-rented overview for a card, even numbered like a listing", () => {
     const site = "https://www.bienatoi.be";
     const card = (path: string) => `<div class="estate"><a href="${path}"><h3>Maison</h3><p>3 chambres 150 m² 295.000 €</p></a></div>`;
