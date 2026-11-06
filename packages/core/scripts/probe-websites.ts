@@ -69,6 +69,22 @@ async function main() {
   for (const site of sites) if (!only.length || only.some((o) => site.includes(o))) await probe(site).catch((e) => console.log(`!! ${site}: ${e instanceof Error ? e.stack : e}`));
 }
 
+/** Sites whose every search page is printed raw (cards, loader links, scripts), to see how their lists load. */
+const dump = ["bienatoi"];
+function dumpPage(url: string, page: Awaited<ReturnType<SiteReader["read"]>>) {
+  if (!("html" in page)) return console.log(`    [dump] ${url}: ${page.error}`);
+  const body = page.html.replace(/<!--[\s\S]*?-->/g, "").replace(/<(style|svg|noscript)\b[\s\S]*?<\/\1>/gi, "<$1/>").replace(/\s+/g, " ");
+  console.log(`    [dump] ${page.status} ${url.slice(0, 120)}: ${page.html.length} chars`);
+  console.log(`      hrefs: ${[...body.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]).filter((h) => !/\.(css|png|jpe?g|svg|ico|woff2?)/i.test(h)).slice(0, 80).join(" ").slice(0, 6000)}`);
+  if (/InfiniteScroll|chercher-bien/i.test(url)) {
+    const at = body.search(/estate|infinite/i);
+    console.log(`      body: ${body.slice(Math.max(0, at - 500), at + 5000)}`);
+    console.log(`      tail: ${body.slice(-2500)}`);
+    for (const m of page.html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) if (/InfiniteScroll|PageNumber|jscroll|nextSelector/i.test(m[1]!)) console.log(`      script: ${m[1]!.replace(/\s+/g, " ").slice(0, 3000)}`);
+    console.log(`      script srcs: ${[...page.html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+  }
+}
+
 /** The text around a card's first link, as a rough check of what the card shows. */
 function cardText(html: string, url: string): string {
   const u = new URL(url);
@@ -93,6 +109,7 @@ async function probe(site: string) {
       const page = await reader.read(url);
       lastUrl = url;
       if ("html" in page) html.set(url, page.html);
+      if (dump.some((d) => site.includes(d))) dumpPage(url, page);
       return page;
     },
   };
