@@ -24,9 +24,8 @@ type Look = {
 const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
   // MDI (Quentin's site, 2026-11-06): status only in photos? agent (Didier) not found.
-  { url: "https://mdi.be/nos-biens/quatre-vents/", show: ["text", "raw"] },
-  { url: "https://mdi.be/nos-biens/", show: ["links", "cards", "raw"] },
-  { url: "https://mdi.be/", show: ["links"] },
+  { url: "https://mdi.be/a-vendre", show: ["links", "cards", "raw"] },
+  { url: "https://mdi.be/a-louer", show: ["links", "cards", "raw"] },
 ];
 
 const clean = (html: string) =>
