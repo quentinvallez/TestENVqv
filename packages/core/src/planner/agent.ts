@@ -4,11 +4,13 @@ import { z } from "zod";
 import { conversationFor } from "../channels";
 import { aiAvailable, AiUnavailableError, generateStructured } from "../ai/client";
 import { availableSlots } from "../tools/booking";
+import { decideProposal } from "../tools/proposals";
 import { AGENCY_TIMEZONE } from "../time";
+import { recordEvent } from "../events";
 import { runTool, type ToolContext } from "../tool";
 import { composeMessage, detailLabels, formatSlot, linkLabels, signature, templates, toLang, type Lang } from "./language";
 
-const { conversations, messages, contacts, listings, agents, appointments, leads, organization, proposals } = schema;
+const { conversations, messages, contacts, listings, agents, appointments, leads, organization, proposals, agencySettings } = schema;
 
 /** What the planner can classify an incoming message as. "booking" is only set by the system for widget bookings. */
 export const categories = ["viewing_request", "reschedule", "cancellation", "question", "offer", "feedback", "confirmation", "other"] as const;
@@ -201,8 +203,11 @@ export type DraftPlan = {
 async function planFor(ctx: ToolContext, thread: Thread, t: Triage): Promise<DraftPlan | null> {
   const lang = t.language;
   const name = thread.contact?.firstName ?? "";
+  // Only active listings take viewings: under option, sold or off the site, there are no times or booking link to offer.
+  const offMarket = thread.listing && thread.listing.status !== "active" ? thread.listing.status : null;
+  const bookLink = thread.listing && !offMarket ? { url: `/book/${thread.listing.id}`, label: linkLabels.book[lang] } : undefined;
   const slotsFor = async (excludeAppointmentId?: string) => {
-    if (!thread.agent) return [];
+    if (!thread.agent || offMarket) return [];
     const { slots } = await runTool(availableSlots, ctx, { agentId: thread.agent.id, listingId: thread.listing?.id, days: 10, excludeAppointmentId });
     return pickSpreadSlots(slots);
   };
@@ -227,20 +232,35 @@ async function planFor(ctx: ToolContext, thread: Thread, t: Triage): Promise<Dra
         purpose: "The client cancels. Confirm the cancellation and, without pushing, offer the times below in case they still want to come.",
         templateKey: "cancellation",
         slots,
-        link: thread.listing ? { url: `/book/${thread.listing.id}`, label: linkLabels.book[lang] } : undefined,
+        link: bookLink,
         cancelAppointmentId: thread.upcoming?.id,
-        leadStage: "invited",
+        leadStage: offMarket ? undefined : "invited",
         summary: thread.upcoming ? `Cancel ${name}'s viewing and offer new times` : `Reply to ${name}'s cancellation`,
       };
     }
     case "viewing_request": {
+      if (offMarket) {
+        const status = offMarket === "under_offer" || offMarket === "sold" || offMarket === "rented" ? offMarket : "unavailable";
+        return {
+          kind: "reply",
+          purpose: {
+            under_offer: "The client asks to visit, but the property is under option, so no viewings are planned now. Thank them, say so kindly, and promise to let them know straight away if the option falls through.",
+            sold: "The client asks to visit, but the property has been sold. Thank them, say so kindly, and offer to let them know about similar properties.",
+            rented: "The client asks to visit, but the property has been let. Thank them, say so kindly, and offer to let them know about similar properties.",
+            unavailable: "The client asks to visit, but the property is no longer available. Thank them, say so kindly, and offer to let them know about similar properties.",
+          }[status],
+          templateKey: `unavailable_${status}`,
+          slots: [],
+          summary: `Tell ${name} the property is ${{ under_offer: "under option", sold: "sold", rented: "let", unavailable: "no longer available" }[status]}`,
+        };
+      }
       const slots = await slotsFor();
       return {
         kind: "reply",
         purpose: "The client asks to visit. Thank them, confirm the property is available, and offer the times below.",
         templateKey: "viewing_request",
         slots,
-        link: thread.listing ? { url: `/book/${thread.listing.id}`, label: linkLabels.book[lang] } : undefined,
+        link: bookLink,
         leadStage: "invited",
         summary: `Invite ${name} with ${slots.length} viewing times`,
       };
@@ -339,8 +359,9 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
   return { body, by: "template" };
 }
 
-export async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: Lang, reasoning: string, useAi: boolean) {
-  const { body, by } = await writeBody(thread, plan, lang, useAi);
+export async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: Lang, reasoning: string, useAi: boolean, options: { fixedText?: boolean } = {}) {
+  // Text that goes out without a human reading it first is the fixed template, never written by AI.
+  const { body, by } = await writeBody(thread, plan, lang, useAi && !options.fixedText);
   const text = composeMessage({
     lang,
     body,
@@ -398,8 +419,44 @@ export async function handleConversation(ctx: ToolContext, conversationId: strin
   if (thread.contact && !thread.contact.language) await ctx.db.update(contacts).set({ language: t.language }).where(eq(contacts.id, thread.contact.id));
 
   const plan = await planFor(ctx, thread, t);
-  const proposal = plan ? await propose(ctx, thread, plan, t.language, `${t.summary} (classified by ${t.by === "ai" ? "AI" : "keyword rules"})`, useAi) : null;
-  return { triage: t, proposalId: proposal?.id ?? null };
+  const auto = plan ? await portalAutoReply(ctx, thread, t, plan) : null;
+  const reasoning = `${t.summary} (classified by ${t.by === "ai" ? "AI" : "keyword rules"})`;
+  const proposal = plan
+    ? await propose(ctx, thread, auto ? { ...plan, messageKind: "portal_reply" } : plan, t.language, auto ? `${reasoning}. Portal lead asking to visit: sent on its own with the booking link (Settings → Agent autonomy).` : reasoning, useAi, { fixedText: Boolean(auto) })
+    : null;
+  if (proposal && auto) {
+    const decided = await decideProposal.run(ctx, { proposalId: proposal.id, decision: "approved" });
+    const output = (decided.result as { output?: { delivery?: string } } | null)?.output;
+    await recordEvent(ctx, {
+      type: "planner.auto_replied",
+      subjectType: "conversation",
+      subjectId: thread.conversation.id,
+      data: { proposalId: proposal.id, portal: auto.portal, listingId: thread.listing?.id ?? null, status: decided.status, delivery: output?.delivery ?? null },
+    });
+    return { triage: t, proposalId: proposal.id, autoReplied: { status: decided.status, delivery: output?.delivery ?? null } };
+  }
+  return { triage: t, proposalId: proposal?.id ?? null, autoReplied: null };
+}
+
+/** Within this time after our last message, a new request waits for a human instead of getting another automatic reply. */
+const AUTO_REPLY_QUIET_MS = 24 * 3600 * 1000;
+
+/**
+ * Whether the planner may answer this message on its own: a lead from
+ * Immoweb, Zimmo or Immovlan that asks to visit an active listing we matched,
+ * with free times to offer, a client email address, and the agency allowing
+ * it (autonomy.portal_replies = "act"). Everything else stays a draft.
+ */
+export async function portalAutoReply(ctx: ToolContext, thread: Thread, t: Triage, plan: DraftPlan): Promise<{ portal: string } | null> {
+  const lastInbound = [...thread.conversation.messages].reverse().find((m) => m.direction === "inbound" && m.authorType === "contact");
+  const portal = lastInbound?.metadata?.portal;
+  if (typeof portal !== "string") return null;
+  if (t.category !== "viewing_request" || !plan.link || plan.slots.length === 0) return null;
+  if (thread.listing?.status !== "active" || !thread.contact?.email || thread.conversation.channel !== "email" || thread.upcoming) return null;
+  const recentReply = thread.conversation.messages.some((m) => m.direction === "outbound" && Date.now() - m.sentAt.getTime() < AUTO_REPLY_QUIET_MS);
+  if (recentReply) return null;
+  const [settings] = await ctx.db.select({ autonomy: agencySettings.autonomy }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  return settings?.autonomy.portal_replies === "act" ? { portal } : null;
 }
 
 /** Drafts a personal follow-up after a completed viewing, on the client's preferred channel. */

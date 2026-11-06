@@ -25,6 +25,7 @@ export const defaultAutomationSettings: Required<AutomationSettings> = {
   noShows: true,
   nudges: true,
   nudgeAfterDays: 3,
+  agentAlerts: true,
 };
 
 export function automationSettings(stored: AutomationSettings | null | undefined): Required<AutomationSettings> {

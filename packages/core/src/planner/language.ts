@@ -66,6 +66,27 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre intérêt pour ${v.address}. Le bien est toujours disponible et nous serons ravis de vous le faire visiter. Voici les moments encore libres :`,
     en: (v) => `Dear ${v.name},\n\nThank you for your interest in ${v.address}. It is still available and we would be happy to show you around. These times are still free:`,
   },
+  // A visit request for a listing that no longer takes viewings: no times, no booking link.
+  unavailable_under_offer: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw interesse in ${v.address}. Het pand is intussen onder optie, daarom plannen we op dit moment geen bezoeken. Valt de optie weg, dan laten we het u meteen weten.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre intérêt pour ${v.address}. Le bien est entre-temps sous option, c'est pourquoi nous ne planifions pas de visites pour le moment. Si l'option tombe, nous vous prévenons tout de suite.`,
+    en: (v) => `Dear ${v.name},\n\nThank you for your interest in ${v.address}. It is now under option, so we are not planning viewings at the moment. If the option falls through, we'll let you know straight away.`,
+  },
+  unavailable_sold: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw interesse in ${v.address}. Het pand is intussen helaas verkocht. Laat gerust weten wat u zoekt, dan houden we u op de hoogte van gelijkaardige panden.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre intérêt pour ${v.address}. Le bien a malheureusement été vendu entre-temps. Dites-nous ce que vous recherchez et nous vous tiendrons au courant des biens similaires.`,
+    en: (v) => `Dear ${v.name},\n\nThank you for your interest in ${v.address}. Unfortunately it has been sold in the meantime. Let us know what you're looking for and we'll keep you posted on similar properties.`,
+  },
+  unavailable_rented: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw interesse in ${v.address}. Het pand is intussen helaas verhuurd. Laat gerust weten wat u zoekt, dan houden we u op de hoogte van gelijkaardige panden.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre intérêt pour ${v.address}. Le bien a malheureusement été loué entre-temps. Dites-nous ce que vous recherchez et nous vous tiendrons au courant des biens similaires.`,
+    en: (v) => `Dear ${v.name},\n\nThank you for your interest in ${v.address}. Unfortunately it has been let in the meantime. Let us know what you're looking for and we'll keep you posted on similar properties.`,
+  },
+  unavailable_unavailable: {
+    nl: (v) => `Beste ${v.name},\n\nBedankt voor uw interesse in ${v.address}. Het pand is helaas niet langer beschikbaar. Laat gerust weten wat u zoekt, dan houden we u op de hoogte van gelijkaardige panden.`,
+    fr: (v) => `Bonjour ${v.name},\n\nMerci pour votre intérêt pour ${v.address}. Le bien n'est malheureusement plus disponible. Dites-nous ce que vous recherchez et nous vous tiendrons au courant des biens similaires.`,
+    en: (v) => `Dear ${v.name},\n\nThank you for your interest in ${v.address}. Unfortunately it is no longer available. Let us know what you're looking for and we'll keep you posted on similar properties.`,
+  },
   reschedule: {
     nl: (v) => `Beste ${v.name},\n\nGeen probleem, we verplaatsen uw bezoek aan ${v.address} graag. Past een van deze momenten?`,
     fr: (v) => `Bonjour ${v.name},\n\nAucun souci, nous déplaçons volontiers votre visite de ${v.address}. L'un de ces moments vous convient-il ?`,

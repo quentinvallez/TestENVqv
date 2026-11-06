@@ -15,6 +15,13 @@ const { agents, agencySettings, calendarConnections, leads, listings, messages }
 const portals = ["immoweb", "zimmo", "immovlan"] as const;
 const portalNames = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
 
+/** Stands in for the client's text when they only ticked "I want to visit"; in their language, so the planner answers in it. */
+const visitNote = {
+  nl: (portal: string, where: string) => `Aanvraag via ${portal}: wil ${where} graag bezoeken (geen bericht).`,
+  fr: (portal: string, where: string) => `Demande via ${portal} : souhaite visiter ${where} (sans message).`,
+  en: (portal: string, where: string) => `Request via ${portal}: would like a viewing of ${where} (no message).`,
+};
+
 export const receivePortalLead = defineTool({
   name: "portal_leads_receive",
   description:
@@ -30,6 +37,7 @@ export const receivePortalLead = defineTool({
     agencyReference: z.string().trim().nullish(),
     listingId: z.string().optional().describe("When the caller already knows the listing"),
     language: z.enum(["nl", "fr", "en"]).nullish(),
+    visitRequested: z.boolean().default(false).describe("The portal marked the request as a visit request"),
     externalId: z.string().max(500).optional(),
     useAi: z.boolean().default(true),
   }),
@@ -106,7 +114,7 @@ export const receivePortalLead = defineTool({
       provider: "email",
       from: { name, email: input.email ?? undefined, phone: input.phone ?? undefined },
       subject: `${portalNames[input.portal]}: ${where}`,
-      body: input.message || `Request via ${portalNames[input.portal]} for ${where}, without a message.`,
+      body: input.message || (input.visitRequested ? visitNote[input.language ?? "nl"](portalNames[input.portal], where) : `Request via ${portalNames[input.portal]} for ${where}, without a message.`),
       listingId: listing?.id,
       externalId: input.externalId,
       metadata: { portal: input.portal, portalRef: input.portalRef ?? null, leadId: lead!.id },

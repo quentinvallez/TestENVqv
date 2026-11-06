@@ -32,7 +32,8 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Outbound messages are stored with `delivery: "simulated"` until Outlook/Gmail/WhatsApp are connected. Never present them as sent.
 - Client-facing text exists in NL, FR and EN (`planner/language.ts`, `apps/web/lib/widget-i18n.ts`).
 - When a listing goes under option, sold, rented or off the website, `draftOffMarketNotices` (`planner/off-market.ts`) drafts a message to each client with an upcoming viewing; approving it sends the message and cancels the viewing. Only `active` listings take bookings or get reminders.
-- Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it.
+- Client actions without a message (booking in the widget, moving or cancelling through the link) go through `noteClientAction`: a system note in the client's preferred channel (WhatsApp if opted in, else email) plus a draft for approval. Nothing is sent to a client without a human approving it, except what the agency switches on: reminders (`autonomy.reminders`) and the reply to a portal lead that asks to visit an active listing (`autonomy.portal_replies`, off by default; fixed template with times and the booking link, sent by `portalAutoReply` in `planner/agent.ts`). A visit request for a listing that isn't `active` gets no times or booking link.
+- Agents get an email for every viewing or valuation visit a client books, moves or cancels (`planner/agent-alerts.ts`, `emailAgent` in channels: Mailgun from the agency address, else the agent's own connected mailbox). Fixed text; `automations.agentAlerts` turns it off.
 
 ## Owners and tenants
 

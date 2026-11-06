@@ -9,7 +9,8 @@ const { agencySettings, appointments, automationRuns, conversations, leads, prop
 
 export const getAutomationSettings = defineTool({
   name: "automations_get_settings",
-  description: "Which automatic jobs run for the agency (reminders, follow-ups after viewings, no-show messages, nudges to quiet leads) and whether reminders go out without approval.",
+  description:
+    "Which automatic jobs run for the agency (reminders, follow-ups after viewings, no-show messages, nudges to quiet leads, booking emails to agents), whether reminders go out without approval, and whether portal leads asking to visit get the booking link on their own.",
   mutates: false,
   input: z.object({}),
   run: async (ctx) => {
@@ -21,6 +22,7 @@ export const getAutomationSettings = defineTool({
       ...automationSettings(row?.automations),
       sendRemindersAutomatically: row?.autonomy.reminders === "act",
       sendOccupantAlertsAutomatically: row?.autonomy.occupant_alerts !== "suggest",
+      replyToPortalLeadsAutomatically: row?.autonomy.portal_replies === "act",
     };
   },
 });
@@ -28,7 +30,7 @@ export const getAutomationSettings = defineTool({
 export const updateAutomationSettings = defineTool({
   name: "automations_update_settings",
   description:
-    "Turn automatic jobs on or off, set after how many days a quiet lead gets a nudge, and choose whether reminders and viewing alerts to owners and tenants are sent on their own or wait for approval.",
+    "Turn automatic jobs on or off, set after how many days a quiet lead gets a nudge, and choose whether reminders, viewing alerts to owners and tenants, and booking-link replies to portal leads that ask to visit are sent on their own or wait for approval.",
   mutates: true,
   input: z.object({
     reminders: z.boolean().optional(),
@@ -38,9 +40,11 @@ export const updateAutomationSettings = defineTool({
     nudgeAfterDays: z.number().int().min(1).max(14).optional(),
     sendRemindersAutomatically: z.boolean().optional(),
     sendOccupantAlertsAutomatically: z.boolean().optional(),
+    agentAlerts: z.boolean().optional(),
+    replyToPortalLeadsAutomatically: z.boolean().optional(),
   }),
   run: async (ctx, input) => {
-    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, ...jobs } = input;
+    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, replyToPortalLeadsAutomatically, ...jobs } = input;
     const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const automations = { ...row?.automations, ...jobs };
     const level = (on: boolean) => (on ? ("act" as const) : ("suggest" as const));
@@ -48,6 +52,7 @@ export const updateAutomationSettings = defineTool({
       ...row?.autonomy,
       ...(sendRemindersAutomatically !== undefined && { reminders: level(sendRemindersAutomatically) }),
       ...(sendOccupantAlertsAutomatically !== undefined && { occupant_alerts: level(sendOccupantAlertsAutomatically) }),
+      ...(replyToPortalLeadsAutomatically !== undefined && { portal_replies: level(replyToPortalLeadsAutomatically) }),
     };
     await ctx.db
       .insert(agencySettings)
@@ -58,6 +63,7 @@ export const updateAutomationSettings = defineTool({
       ...automationSettings(automations),
       sendRemindersAutomatically: autonomy.reminders === "act",
       sendOccupantAlertsAutomatically: autonomy.occupant_alerts !== "suggest",
+      replyToPortalLeadsAutomatically: autonomy.portal_replies === "act",
     };
   },
 });

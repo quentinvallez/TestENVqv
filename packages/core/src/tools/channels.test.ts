@@ -111,6 +111,70 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(message!.delivery).toBe("failed");
   });
 
+  it("answers a portal visit request on its own with times and the booking link, only when the agency allows it", async () => {
+    const lead = (n: number, ref = "21004871") => ({
+      ...immowebLead(`<auto-${n}@immoweb.be>`),
+      text: `Naam: Klant ${n}\nE-mail: klant${n}@example.be\nBericht: Kan ik dit appartement bezoeken?\n\nhttps://www.immoweb.be/nl/zoekertje/appartement/te-koop/berchem/2600/${ref}`,
+    });
+    const draftOnly = await runTool(tools.receiveEmail, ctx, lead(1));
+    if (draftOnly.kind !== "portal_lead") throw new Error("not a portal lead");
+    expect(draftOnly.autoReplied).toBeNull();
+
+    await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: true });
+    const auto = await runTool(tools.receiveEmail, ctx, lead(2));
+    if (auto.kind !== "portal_lead") throw new Error("not a portal lead");
+    expect(auto.autoReplied).toMatchObject({ status: "executed", delivery: "simulated" });
+    const conversation = await runTool(tools.getConversation, ctx, { conversationId: auto.conversationId });
+    const reply = conversation!.messages.at(-1)!;
+    expect(reply).toMatchObject({ direction: "outbound", authorType: "agent", delivery: "simulated" });
+    expect(reply.body).toContain(`/book/${auto.listingId}`);
+    expect(reply.body).toMatch(/Beste Klant/);
+    expect(conversation!.draft).toBeNull();
+    const [proposal] = await db.select().from(schema.proposals).where(eq(schema.proposals.id, auto.proposalId!));
+    expect(proposal).toMatchObject({ status: "executed", generatedBy: "template" });
+    const lead2 = await db.query.leads.findFirst({ where: eq(schema.leads.id, auto.leadId) });
+    expect(lead2!.stage).toBe("invited");
+
+    // A listing under option gets no times or link, and the reply waits for approval.
+    await db.update(schema.listings).set({ status: "under_offer" }).where(eq(schema.listings.id, auto.listingId!));
+    const option = await runTool(tools.receiveEmail, ctx, lead(3));
+    if (option.kind !== "portal_lead") throw new Error("not a portal lead");
+    expect(option.autoReplied).toBeNull();
+    const draft = (await runTool(tools.getConversation, ctx, { conversationId: option.conversationId }))!.draft!;
+    expect(draft.input.body).toContain("onder optie");
+    expect(draft.input.body).not.toContain("/book/");
+    await db.update(schema.listings).set({ status: "active" }).where(eq(schema.listings.id, auto.listingId!));
+    await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
+  });
+
+  it("emails the agent when a client books on the website, without a connected mailbox", async () => {
+    const { publicContext } = await import("../public");
+    const client = publicContext(agencyId);
+    const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "ANT-1042")));
+    const { slots } = await runTool(tools.availableSlots, ctx, { listingId: listing!.id });
+    const booked = await runTool(tools.bookViewing, client, { listingId: listing!.id, startsAt: slots[2]!.start, contact: { firstName: "Wout", email: "wout@example.be" } });
+    const alerts = await db.select().from(schema.events).where(and(eq(schema.events.agencyId, agencyId), eq(schema.events.type, "agent.alerted"), eq(schema.events.subjectId, booked.appointmentId)));
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.data).toMatchObject({ action: "booked", delivery: "simulated" });
+
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await runTool(tools.cancelAppointment, client, { appointmentId: booked.appointmentId });
+    const mail = fetchMock.mock.calls.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("subject")?.startsWith("Bezoek geannuleerd"));
+    expect(mail!.get("to")).toContain("sofie@demo-agency.be");
+    expect(mail!.get("text")).toContain("Wout");
+
+    // An agent cancelling in the app gets no email about it.
+    const before = fetchMock.mock.calls.length;
+    const again = await runTool(tools.bookViewing, client, { listingId: listing!.id, startsAt: slots[4]!.start, contact: { firstName: "Wout", email: "wout@example.be" } });
+    const afterBooking = fetchMock.mock.calls.length;
+    expect(afterBooking).toBeGreaterThan(before);
+    await runTool(tools.cancelAppointment, ctx, { appointmentId: again.appointmentId });
+    expect(fetchMock.mock.calls.slice(afterBooking).some((c) => ((c as unknown as [string, RequestInit])[1].body as URLSearchParams).get("subject")?.startsWith("Bezoek geannuleerd"))).toBe(false);
+  });
+
   it("ignores mail from the agency's own agents", async () => {
     const result = await runTool(tools.receiveEmail, ctx, { from: { name: "Sofie", email: "sofie@demo-agency.be" }, subject: "Afwezig", text: "Ik ben afwezig.", useAi: false });
     expect(result).toMatchObject({ kind: "ignored", reason: "from_agent" });

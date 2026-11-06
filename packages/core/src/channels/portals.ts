@@ -20,6 +20,8 @@ export type PortalLead = {
   /** The agency's own reference, when the portal repeats it. */
   agencyReference: string | null;
   language: "nl" | "fr" | "en" | null;
+  /** The portal's subject or request type says the client asks for a visit ("Aanvraag bezoek", "Demande de visite"). */
+  visitRequested: boolean;
 };
 
 const portalDomains: Record<Portal, RegExp> = {
@@ -36,8 +38,12 @@ const labels = {
   phone: ["telefoon", "telefoonnummer", "tel", "tel.", "gsm", "téléphone", "numéro de téléphone", "phone", "phone number", "mobile"],
   message: ["bericht", "uw bericht", "vraag", "opmerking", "message", "votre message", "commentaire", "question", "comments", "your message"],
   reference: ["referentie", "uw referentie", "ref", "ref.", "référence", "votre référence", "reference", "your reference", "referentie makelaar", "référence agence"],
+  requestType: ["type aanvraag", "soort aanvraag", "aanvraag", "type de demande", "demande", "request type", "request", "onderwerp", "objet", "subject"],
   portalRef: ["immoweb code", "code immoweb", "immoweb id", "id immoweb", "zimmo code", "code zimmo", "immovlan code", "code immovlan", "zoekertje", "annonce", "code"],
 };
+
+/** A visit request in a subject or request-type field. Only those, never the whole mail: footers say "bezoek onze website". */
+const visitWords = /\b(bezoek\w*|bezichtig\w*|visite[rs]?|viewing|visit)\b/i;
 
 const french = /\b(nom|prénom|téléphone|votre|demande|bien|visite|référence)\b/i;
 const dutch = /\b(naam|voornaam|telefoon|bericht|aanvraag|pand|bezoek|referentie|uw)\b/i;
@@ -127,6 +133,7 @@ export function parsePortalEmail(email: InboundEmail): PortalLead | null {
   const message = first(fields, labels.message);
 
   if (!clientEmail && !phone) return null;
+  const visitRequested = visitWords.test(email.subject) || visitWords.test(first(fields, labels.requestType) ?? "");
   const sample = [...fields.keys()].join(" ") + " " + email.subject;
   return {
     portal,
@@ -137,5 +144,6 @@ export function parsePortalEmail(email: InboundEmail): PortalLead | null {
     portalRef: portalRefFrom(portal, text, first(fields, labels.portalRef)),
     agencyReference: first(fields, labels.reference),
     language: french.test(sample) ? "fr" : dutch.test(sample) ? "nl" : /\b(name|phone|message|request)\b/i.test(sample) ? "en" : null,
+    visitRequested,
   };
 }
