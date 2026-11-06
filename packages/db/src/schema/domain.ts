@@ -71,6 +71,8 @@ export type WebsiteSync = {
   overviews?: WebsiteOverview[];
   /** A search of the site for listing pages, spread over several runs until done. */
   discovery?: WebsiteDiscovery;
+  /** Pictures laid over listing cards' photos (a "VENDU!" sticker), keyed by address, with the status Claude read in them ("none": no status). */
+  badgeImages?: Record<string, "under_offer" | "sold" | "rented" | "none">;
 };
 
 export type WebsiteOverview = {

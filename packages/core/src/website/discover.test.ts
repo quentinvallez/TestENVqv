@@ -54,6 +54,59 @@ describe("searching a site for its listing pages", () => {
     expect(state.discovery.doneAt).toBeTruthy();
   });
 
+  it("reads a status drawn only as a picture over the cards' photos once per picture, then on every card that shows it (MDI)", async () => {
+    // MDI lays a sticker ("VENDU!", "OPTION", "LOUÉ!") over the photo: no text, alt or class says it. Photos come from
+    // another host and differ per card; the PEB label repeats but is skipped by its name.
+    const sticker = (n: number) => `<span><img src="/wp-content/uploads/2025/03/IMG_${n}-600x400-1-300x200.png" class="attachment-large size-large" alt=""></span>`;
+    const card = (slug: string, overlay = "") =>
+      `<div class="estates__item"><a class="estates__link" href="/nos-biens/${slug}/"><section class="estates__header"><div class="estates__peb"><img src="/wp-content/themes/mdi/assets/img/peb/peb_c.png" alt=""></div>` +
+      `<div class="estates__picture"><div><img src="data:image/svg+xml,%3Csvg%3E" data-lazy-src="https://r2.storagewhise.eu/storage5823/Pictures/${slug}.jpg">${overlay}</div></div></section>` +
+      `<section class="estates__footer"><div class="estates__name"><span>${slug.toUpperCase()}</span></div><div class="estates__price">210.000 €</div></section></a></div>`;
+    const { reader, hooks, found } = fakeSite({
+      "/": `<nav><a href="/a-vendre/">A vendre</a></nav>`,
+      "/a-vendre": `<main><section class="estates"><div class="estates__list">${card("sam", sticker(3008))}${card("tom")}${card("jose")}${card("luc", sticker(3008))}${card("morris", sticker(2970))}${card("julien", sticker(2970))}</div></section></main>`,
+    });
+    const statuses = new Map<string, string>();
+    const asked: string[] = [];
+    const words: Record<string, "sold" | "under_offer"> = { "3008": "sold", "2970": "under_offer" };
+    const found0 = hooks.found;
+    hooks.found = async (urls, root, badges) => {
+      for (const [url, badge] of badges ?? []) statuses.set(url.replace(site, ""), badge);
+      return found0(urls, root, badges);
+    };
+    hooks.readBadgeImage = async (url) => {
+      asked.push(url.replace(site, ""));
+      return words[url.match(/IMG_(\d+)/)![1]!];
+    };
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(found.size).toBe(6);
+    expect(Object.fromEntries(statuses)).toEqual({ "/nos-biens/sam": "sold", "/nos-biens/luc": "sold", "/nos-biens/morris": "under_offer", "/nos-biens/julien": "under_offer" });
+    // Each sticker once; not the photos (other host, one per card) nor the energy label.
+    expect(asked.sort()).toEqual(["/wp-content/uploads/2025/03/IMG_2970-600x400-1-300x200.png", "/wp-content/uploads/2025/03/IMG_3008-600x400-1-300x200.png"]);
+    expect(state.badgeImages).toEqual({ [`${site}/wp-content/uploads/2025/03/IMG_3008-600x400-1.png`]: "sold", [`${site}/wp-content/uploads/2025/03/IMG_2970-600x400-1.png`]: "under_offer" });
+  });
+
+  it("leaves cards on offer when the picture can't be read (no Claude)", async () => {
+    const sticker = `<img src="/wp-content/uploads/vendu.png" alt="">`;
+    const card = (slug: string, overlay = "") => `<div class="item"><a class="link" href="/nos-biens/${slug}/"><img src="/wp-content/uploads/${slug}.jpg">${overlay}<h3>${slug}</h3><p>210.000 €</p></a></div>`;
+    const { reader, hooks } = fakeSite({
+      "/": `<nav><a href="/a-vendre/">A vendre</a></nav>`,
+      "/a-vendre": `<main><div class="list">${card("a", sticker)}${card("b", sticker)}${card("c")}</div></main>`,
+    });
+    const seen: (string | undefined)[] = [];
+    const found0 = hooks.found;
+    hooks.found = async (urls, root, badges) => {
+      if (root) seen.push(...urls.map((u) => badges?.get(u)));
+      return found0(urls, root, badges);
+    };
+    hooks.readBadgeImage = async () => undefined;
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(seen).toEqual([undefined, undefined, undefined]);
+    expect(state.badgeImages).toEqual({});
+  });
+
   it("keeps a lone card on an overview's last page, known by the template of the cards before it", async () => {
     // Short ids don't make an address look like a listing; three or more cards are told by their markup, one is not.
     const card = (id: number) => `<div class="card"><a class="card-link" href="/nl/kopen/borgloon/huis/woning-${id}/${id}"><h3>Woning</h3><p>€ 315.000 · 3 slaapkamers · 120 m²</p></a></div>`;

@@ -369,16 +369,57 @@ export function cardParts(html: string, pageUrl: string, cards: string[]): Map<s
   return new Map([...cardMarkup(doc, anchors, new Set(cards), elements)].map(([url, part]) => [url, { length: part.length, badge: badgeText(part) }]));
 }
 
+/** What a picture laid over card photos says, once read: a status, or "none" ("Nouveau", an energy label). Keyed by imageKey. */
+export type ImageBadges = Record<string, CardBadge | "none">;
+
+/** The images of a card: their address, or the one a lazy loader puts in later. */
+function imagesIn(part: string, pageUrl: string): string[] {
+  const found = new Set<string>();
+  for (const tag of part.matchAll(/<img\b[^>]*>/gi)) {
+    for (const m of tag[0].matchAll(/\b(?:src|data-src|data-lazy-src|data-original)\s*=\s*["']([^"']+)["']/gi)) {
+      if (/^data:/i.test(m[1]!)) continue;
+      try {
+        found.add(new URL(decodeEntities(m[1]!), pageUrl).toString());
+      } catch {
+        // Not an address.
+      }
+    }
+  }
+  return [...found];
+}
+
+/** One picture in any of its sizes: WordPress gives "sticker-300x200.png" and "sticker-1024x683.png" for "sticker.png". */
+export const imageKey = (url: string) => url.replace(/[?#].*$/, "").replace(/-\d{2,4}x\d{2,4}(?=\.\w{3,4}$)/, "");
+
+/**
+ * Pictures that may be a status drawn as an image over the cards' photos (MDI lays a sticker "VENDU!", "OPTION" or
+ * "LOUÉ!" over them, with no text, alt or class saying so): the same picture on two or more cards of the page, from
+ * the site itself, not a vector icon or an energy label. A listing's own photos differ from card to card.
+ */
+export function badgeImageCandidates(html: string, pageUrl: string, cards: string[], site: string): string[] {
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
+  const seen = new Map<string, { url: string; cards: number }>();
+  for (const part of cardMarkup(doc, anchors, new Set(cards), elements).values()) {
+    const keys = new Map(imagesIn(part, pageUrl).map((url) => [imageKey(url), url]));
+    for (const [key, url] of keys) {
+      const path = new URL(url).pathname;
+      if (!sameSite(url, site) || !/\.(png|jpe?g|gif|webp)$/i.test(path) || /(peb|epc|energ|icon|logo|picto|arrow|flag|placeholder)/i.test(path.split("/").pop()!)) continue;
+      seen.set(key, { url: seen.get(key)?.url ?? url, cards: (seen.get(key)?.cards ?? 0) + 1 });
+    }
+  }
+  return [...seen.values()].filter((x) => x.cards >= 2).map((x) => x.url);
+}
+
 /**
  * The status each card shows on an overview ("Optie" or "Verkocht" on its photo), read from the card's own element.
  * Some sites show it only there, not on the listing's page. Cards without such a badge are left out.
  */
-export function cardStatuses(html: string, pageUrl: string, cards: string[]): Map<string, CardBadge> {
+export function cardStatuses(html: string, pageUrl: string, cards: string[], imageBadges: ImageBadges = {}): Map<string, CardBadge> {
   const { doc, anchors, elements } = anchorsOf(html, pageUrl);
   const statuses = new Map<string, CardBadge>();
   for (const [url, part] of cardMarkup(doc, anchors, new Set(cards), elements)) {
-    const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)));
-    if (badge) statuses.set(url, badge[1]);
+    const badge = BADGES.find(([pattern]) => pattern.test(badgeText(part)))?.[1] ?? imagesIn(part, pageUrl).map((img) => imageBadges[imageKey(img)]).find((b) => b && b !== "none");
+    if (badge) statuses.set(url, badge as CardBadge);
   }
   return statuses;
 }

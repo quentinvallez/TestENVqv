@@ -25,9 +25,9 @@ type Look = {
 const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
   // MDI (Quentin's site, 2026-11-06): status only in photos? agent (Didier) not found.
-  // MDI: the images laid over some card photos (the status badges?), small sizes, printed as base64.
-  ...["2957", "2970", "3008", "3185"].map((n): Look => ({ url: `https://mdi.be/wp-content/uploads/2025/03/IMG_${n}-600x400-1-300x200.png`, show: ["image"] })),
-  { url: "https://mdi.be/nos-biens/sam/", show: ["markup"], needle: "IMG_3008" },
+  // MDI: the agent ("Contactez Didier") and the sticker over the photo of a sold listing.
+  { url: "https://mdi.be/nos-biens/quatre-vents/", show: ["text"] },
+  // The sticker itself can be shown as base64: { url: "https://mdi.be/wp-content/uploads/2025/03/IMG_3008-600x400-1-300x200.png", show: ["image"] }.
 ];
 
 const clean = (html: string) =>

@@ -35,6 +35,8 @@ jobs:
         if: ${{ !github.event.inputs.sites || contains(github.event.inputs.sites, matrix.site) }}
         env:
           CHROMIUM_PATH: /usr/bin/google-chrome
+          # Status stickers drawn as pictures over cards' photos are read by Claude (unset: they are only listed).
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # These sites are read without a browser, as the live server may have to.
           WEBSITE_BROWSER: ${{ contains(fromJSON('["immodyck","century21-horizon","canius"]'), matrix.site) && 'off' || 'on' }}
         run: |
