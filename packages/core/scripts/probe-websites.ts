@@ -60,6 +60,7 @@ const checks: Record<string, string[]> = {
     "https://jurimex.be/nl/aanbod/4406798/kantoorruimte-te-huur-in-3600-genk",
   ],
   immobolle: ["https://www.immobolle.be/fr/page/10004/protection-juridique"],
+  domestic: ["https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805"],
 };
 const minutes = (name: string, fallback: number) => Number(process.env[name] ?? fallback) * 60_000;
 const short = (s: string, n = 140) => (s.length > n ? `${s.slice(0, n)}…` : s).replace(/\s+/g, " ").trim();
@@ -201,8 +202,7 @@ async function probe(site: string) {
   // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
-  const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null }>();
-  const agentNames = new Map<string, number>();
+  const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null; agent?: string | null }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
     const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
     let page = await reader.read(url);
@@ -226,8 +226,7 @@ async function probe(site: string) {
     if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
-    agentNames.set(listing.agentName ?? "(none)", (agentNames.get(listing.agentName ?? "(none)") ?? 0) + 1);
-    return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
+    return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, agent: listing.agentName, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
   for (const url of sitemapSample) {
@@ -245,10 +244,6 @@ async function probe(site: string) {
     }
   }
   console.log(`read ${outcome.size} of ${shownOn.size} listing pages`);
-  // Which names the pages give as agent, to spot a street or a feature taken for a person.
-  const names = [...agentNames].sort((a, b) => b[1] - a[1]).map(([name, n]) => `${name}×${n}`).join(", ");
-  console.log(`agent names: ${names}`);
-  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=agent names::${new URL(site).hostname} ${names.slice(0, 900)}`);
   const report = (label: string, urls: string[]) => {
     const read = urls.filter((url) => outcome.has(url));
     if (!read.length) return;
@@ -266,6 +261,15 @@ async function probe(site: string) {
     if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
     // A small site: every address, to compare one by one with the agency's own list.
     if (shownOn.size <= 120) console.log(`      all: ${urls.map((url) => url.replace(site, "")).join(" ")}`);
+    // The listing's agent, as the import takes it: how many pages name none, with examples.
+    const listings = read.filter((url) => ["active", "under_offer"].includes(outcome.get(url)!.status));
+    const withoutAgent = listings.filter((url) => !outcome.get(url)!.agent);
+    if (listings.length) console.log(`      agents: ${listings.length - withoutAgent.length} of ${listings.length} listings read name one (${tally(listings.map((url) => outcome.get(url)!.agent ?? "none"))})${withoutAgent.length ? `; none on e.g. ${withoutAgent.slice(0, 5).map((url) => url.replace(site, "")).join(" ")}` : ""}`);
+    // A name on one or two listings only is worth a look: an office, a project or a street taken for a person.
+    const perName = new Map<string, string[]>();
+    for (const url of listings) if (outcome.get(url)!.agent) perName.set(outcome.get(url)!.agent!, [...(perName.get(outcome.get(url)!.agent!) ?? []), url]);
+    const rare = [...perName].filter(([, on]) => on.length <= 2);
+    if (rare.length && rare.length < perName.size) console.log(`      agents on one or two listings: ${rare.slice(0, 12).map(([name, on]) => `${name} on ${on[0]!.replace(site, "")}`).join("; ")}`);
     const badged = urls.filter((url) => cardBadge.has(url));
     console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };
@@ -289,6 +293,8 @@ async function probe(site: string) {
   console.log(line);
   if (listed.length <= 150) console.log(`  prices: ${listed.map((url) => `${outcome.get(url)!.reference ?? url.replace(site, "")} ${outcome.get(url)!.transaction ?? "?"} €${outcome.get(url)!.price ?? "?"}`).join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=listed::${new URL(site).hostname} ${line}`);
+  const agentless = listed.filter((url) => !outcome.get(url)!.agent);
+  if (process.env.GITHUB_ACTIONS && listed.length) console.log(`::notice title=agents::${new URL(site).hostname} ${listed.length - agentless.length} of ${listed.length} listed name an agent; none on e.g. ${agentless.slice(0, 6).map((url) => url.replace(site, "")).join(" ")}`);
 }
 
 main();

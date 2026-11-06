@@ -406,6 +406,35 @@ describe("reading a listing page", () => {
     }
   });
 
+  it("reads the agent under \"Uw contact\" and from the page's agent block, without the button below (Domestic)", () => {
+    // As domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805 shows it (2026-11-05).
+    const contact = `<aside class="property-representative"> <div class="representative"> <div class="title"><span>Uw contact</span></div> <div class="image"><picture><img src="/images/about/person/image/regular/luyckx.jpg" alt="Luyckx"/></picture></div> <div class="representative-container"> <div class="name">Dirk Luyckx</div> <a href="#property-contact" class="scrollTo button">Bezoek aanvragen</a> </div> </div> </aside>`;
+    const page = (aside: string) => `<html><body><h1>Landelijk gelegen vrijstaande woning</h1><p>€ 395.000</p><p>Ref. 7920805</p><p>Gansheideweg 9, 2310 Rijkevorsel</p>
+      <p>Neem contact met Domestic makelaars op 014 610386 en plan uw bezoek.</p>${aside}<section id="property-details"><dl><dt>Prijs</dt><dd>€ 395.000</dd><dt>Slaapkamers</dt><dd>2</dd></dl></section></body></html>`;
+    const url = "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805";
+    expect(extractListing(page(contact), url).listing.agentName).toBe("Dirk Luyckx");
+    // Without the label, the block's name element still names them.
+    expect(extractListing(page(contact.replace("Uw contact", "")), url).listing.agentName).toBe("Dirk Luyckx");
+    // A name element outside an agent block (a review, the office) is no agent.
+    expect(extractListing(page(`<div class="testimonial"><div class="name">Jan Peeters</div></div>`), url).listing.agentName).toBeNull();
+    expect(extractListing(page(`<div class="agent-card"><div class="office-name">Hilde Claes</div></div>`), url).listing.agentName).toBeNull();
+    // A name with "van der" keeps all its words; an office isn't a person.
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Ellen Van der Eycken")), url).listing.agentName).toBe("Ellen Van der Eycken");
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Géode Properties")), url).listing.agentName).toBeNull();
+  });
+
+  it("takes no project's name above its title for the agent (Caenen)", () => {
+    // As caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm shows it (2026-11-05).
+    const html = `<html><body><p>Te koop</p><p>Nieuwbouwproject</p><p>Ref. 4338687</p><h1>Maison West</h1><p>Westendelaan 309-317, 8434 Westende</p>
+      <h2>Maison West – Jouw oase van rust aan de kust</h2><p>Vanaf</p><p>€ 199.000</p><p>Interesse? Contacteer ons.</p>
+      <p>Stephane helpt je graag verder!</p><p>Stephane Vanhaekendover</p></body></html>`;
+    expect(extractListing(html, "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm").listing.agentName).toBe("Stephane Vanhaekendover");
+    // Nor one above a street named after it: "Sint Paulus", "Sint-Paulusstraat 10, 8400 Oostende".
+    const paulus = `<html><body><p>Ref. 4435957</p><h1>Sint Paulus</h1><p>Sint-Paulusstraat 10, 8400 Oostende</p><p>Vernieuwbouw residentie in Centrum Oostende</p>
+      <p>Vanaf</p><p>€ 275.000</p><p>Morgan helpt je graag verder!</p><p>Morgan Vandeghinste</p><p>059 40 40 30</p><p>Mail Morgan</p></body></html>`;
+    expect(extractListing(paulus, "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm").listing.agentName).toBe("Morgan Vandeghinste");
+  });
+
   it("takes sale or rent from the price's label when nothing else says it", () => {
     const html = `<html><head><title>Belle surface commerciale : BDG IMMO</title></head><body><p>Belle surface commerciale à 7000 Mons • Loyer: 1 700 €</p><p>Surface: 120 m²</p></body></html>`;
     const { listing } = extractListing(html, "https://www.bdgimmo.be/index.php?p=listerDetailsBiens&bien=7915591");
