@@ -36,6 +36,10 @@ export type WidgetSettings = {
   valuationLauncher?: boolean;
   /** Floating "book a viewing" button on listing pages found on the website, when the page has no placeholder. On unless turned off. */
   bookingLauncher?: boolean;
+  /** Where widget.js was last seen running: the install check at setup. */
+  seen?: { firstAt: string; lastAt: string; url: string };
+  /** The system the agency's site is built with, read from its home page at setup, for the install guide. */
+  siteBuilder?: string;
 };
 
 /**

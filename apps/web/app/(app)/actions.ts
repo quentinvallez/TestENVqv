@@ -171,6 +171,33 @@ export async function importWebsiteAction(_state: WebsiteImportState, form: Form
   }
 }
 
+/**
+ * Setup step 1: the agency's website. The first time (or for a new address) its home page is read for the brand
+ * colour and the system it's built with; then the listings are imported, run after run, like on the import screen.
+ */
+export async function setupWebsiteAction(state: WebsiteImportState, form: FormData): Promise<WebsiteImportState> {
+  const websiteUrl = String(form.get("websiteUrl") ?? "").trim();
+  const ctx = await getToolContext();
+  const current = await runTool(tools.getWidgetSettings, ctx, {});
+  const host = (url: string) => {
+    try {
+      return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).host.replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+  };
+  if (websiteUrl && (host(websiteUrl) !== (current.websiteUrl && host(current.websiteUrl)) || (!current.brandColor && !current.siteBuilder))) {
+    try {
+      await runTool(tools.readWebsiteLook, ctx, { websiteUrl });
+    } catch (error) {
+      // The import says the same in its own words when the site can't be read.
+      console.error("Reading the website's look failed", error);
+    }
+    revalidatePath("/widget");
+  }
+  return importWebsiteAction(state, form);
+}
+
 export type MissingListingState = { message?: string; listingId?: string | null; error?: string } | undefined;
 
 /** A listing the agency sees on its site but not here: read that page now. */

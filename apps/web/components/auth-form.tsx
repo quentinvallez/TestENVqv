@@ -55,7 +55,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "onboarding" }) 
       } else {
         await createAgency(get("agency"));
       }
-      router.push("/");
+      // A new workspace starts with the two setup steps: its website, and the line to put on it.
+      router.push(mode === "login" ? "/" : "/widget");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

@@ -220,7 +220,7 @@ const script = String.raw`(function () {
   function start() {
     scan();
     if (agency) {
-      fetch(origin + "/api/widget/config?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang())
+      fetch(origin + "/api/widget/config?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang() + "&page=" + encodeURIComponent(location.origin + location.pathname))
         .then(function (response) { return response.ok ? response.json() : null; })
         .then(bookingLauncher)
         .catch(function () {});
