@@ -48,6 +48,7 @@ const sites = [
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
 const checks: Record<string, string[]> = {
+  mdi: ["https://mdi.be/nos-biens/quatre-vents/"],
   valorvastgoed: ["https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832973", "https://www.valorvastgoed.be/nl/bouwgrond-te-koop-in-de-pinte/7832975"],
   urbainvastgoed: ["https://www.urbainvastgoed.be/nl/huren/antwerpen/appartement/energetisch-appartement-met-ruim-en-zonnig-terras/988/"],
   ngimmo: ["https://www.ngimmo.be/fr/bien/a-louer/maison/6000-charleroi/6132111"],
@@ -142,6 +143,18 @@ async function probe(site: string) {
       }
       return { newToOverview, newToSite };
     },
+    // Pictures over the cards' photos that may be a status sticker: read by Claude when the key is set, else listed.
+    readBadgeImage: async (url) => {
+      if (!aiAvailable()) {
+        console.log(`  [sticker?] ${url} (no ANTHROPIC_API_KEY: not read)`);
+        return undefined;
+      }
+      const image = await reader.readImage(url);
+      const answer = image ? await badgeFromImage(url, image).catch((e) => (console.log(`  [sticker] ${url}: ${e}`), undefined)) : undefined;
+      console.log(`  [sticker] ${url}: ${image ? (answer ?? "-") : "unreadable"}`);
+      if (process.env.GITHUB_ACTIONS) console.log(`::notice title=sticker::${url} ${answer ?? "-"}`);
+      return answer;
+    },
   };
   const state = newDiscovery(site);
   const browser = await openBrowser(reader);
@@ -181,7 +194,7 @@ async function probe(site: string) {
   for (const o of overviews) {
     const verdict = (o.stated == null ? "no total shown" : o.found >= o.stated ? "ALL" : `MISSING ${o.stated - o.found}`) + (o.more ? ", says it has more pages (load more)" : "");
     const badges = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())].flatMap(([page, urls]) => {
-      const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+      const statuses = cardStatuses(html.get(page) ?? "", page, urls, state.badgeImages);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
       if (urls.length < 3) for (const url of urls) fewCards.push(`${url.replace(site, "")} ${statuses.get(url) ?? "on offer"}`);
       for (const url of urls) if (linklessBadge.has(url)) statuses.set(url, linklessBadge.get(url) as never);
@@ -191,7 +204,7 @@ async function probe(site: string) {
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
     // What a few cards' own elements say, to check the badges are read from the right card.
     const [page, urls] = [...(pagesOf.get(o.url) ?? new Map<string, string[]>())][0] ?? ["", []];
-    const statuses = cardStatuses(html.get(page) ?? "", page, urls);
+    const statuses = cardStatuses(html.get(page) ?? "", page, urls, state.badgeImages);
     for (const url of [...urls.filter((u) => statuses.has(u)).slice(0, 3), ...urls.filter((u) => !statuses.has(u)).slice(0, 2)]) {
       console.log(`      card ${statuses.get(url) ?? "on offer"}: ${url.replace(site, "")}  "${short(cardText(html.get(page) ?? "", url), 200)}"`);
     }
@@ -223,7 +236,7 @@ async function probe(site: string) {
   // Samples read the way the importer reads them: the pages only a sitemap lists first, then spread over the overviews.
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
-  const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null }>();
+  const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null; agent?: string | null }>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
     const card = cardFacts.get(url);
     if (cardId(url) && card) {
@@ -252,7 +265,7 @@ async function probe(site: string) {
     if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
-    return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
+    return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, agent: listing.agentName, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
   for (const url of sitemapSample) {
@@ -287,6 +300,15 @@ async function probe(site: string) {
     if (disagree.length) console.log(`      card and page disagree on ${disagree.length}, e.g. ${disagree.slice(0, 3).map((url) => `${url.replace(site, "")} card ${cardBadge.get(url)} page ${outcome.get(url)!.status}`).join("; ")}`);
     // A small site: every address, to compare one by one with the agency's own list.
     if (shownOn.size <= 120) console.log(`      all: ${urls.map((url) => url.replace(site, "")).join(" ")}`);
+    // The listing's agent, as the import takes it: how many pages name none, with examples.
+    const listings = read.filter((url) => ["active", "under_offer"].includes(outcome.get(url)!.status));
+    const withoutAgent = listings.filter((url) => !outcome.get(url)!.agent);
+    if (listings.length) console.log(`      agents: ${listings.length - withoutAgent.length} of ${listings.length} listings read name one (${tally(listings.map((url) => outcome.get(url)!.agent ?? "none"))})${withoutAgent.length ? `; none on e.g. ${withoutAgent.slice(0, 5).map((url) => url.replace(site, "")).join(" ")}` : ""}`);
+    // A name on one or two listings only is worth a look: an office, a project or a street taken for a person.
+    const perName = new Map<string, string[]>();
+    for (const url of listings) if (outcome.get(url)!.agent) perName.set(outcome.get(url)!.agent!, [...(perName.get(outcome.get(url)!.agent!) ?? []), url]);
+    const rare = [...perName].filter(([, on]) => on.length <= 2);
+    if (rare.length && rare.length < perName.size) console.log(`      agents on one or two listings: ${rare.slice(0, 12).map(([name, on]) => `${name} on ${on[0]!.replace(site, "")}`).join("; ")}`);
     const badged = urls.filter((url) => cardBadge.has(url));
     console.log(`      cards with a status: ${badged.length}, of which read: ${badged.filter((url) => outcome.has(url)).length}`);
   };
@@ -310,6 +332,8 @@ async function probe(site: string) {
   console.log(line);
   if (listed.length <= 150) console.log(`  prices: ${listed.map((url) => `${outcome.get(url)!.reference ?? url.replace(site, "")} ${outcome.get(url)!.transaction ?? "?"} €${outcome.get(url)!.price ?? "?"}`).join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=listed::${new URL(site).hostname} ${line}`);
+  const agentless = listed.filter((url) => !outcome.get(url)!.agent);
+  if (process.env.GITHUB_ACTIONS && listed.length) console.log(`::notice title=agents::${new URL(site).hostname} ${listed.length - agentless.length} of ${listed.length} listed name an agent; none on e.g. ${agentless.slice(0, 6).map((url) => url.replace(site, "")).join(" ")}`);
 }
 
 main();

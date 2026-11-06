@@ -50,7 +50,44 @@ export type DiscoveryHooks = {
   found(urls: string[], root: string | null, badges?: Map<string, CardBadge>, cards?: Map<string, ExtractedListing>): Promise<{ newToOverview: number; newToSite: number }>;
 };
 
-export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[] };
+/** `badgeImages`: pictures read so far, kept from one search to the next. */
+export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOverview[]; badgeImages?: ImageBadges };
+
+/** Pictures read per run at most: a site has a handful of stickers, energy labels and the like. */
+const MAX_BADGE_IMAGES = 12;
+
+/** Pictures seen on one card only so far, remembered for the rest of the search (a listing's photos fill most of it). */
+const MAX_SINGLE_IMAGES = 300;
+
+/**
+ * The status badges of an overview page's cards: written on them, or drawn as a picture over their photos. A picture
+ * on two or more cards (on this page, or one card here and another earlier in the search) that wasn't read yet is
+ * read first (by Claude, once per picture and site); the earlier card then gets its status too.
+ */
+async function cardBadges(state: DiscoveryState, hooks: DiscoveryHooks, reader: DiscoveryReader, deadline: number, root: string | null, html: string, pageUrl: string, cards: string[]) {
+  const known = (state.badgeImages ??= {});
+  if (hooks.readBadgeImage && cards.length) {
+    const single = (state.discovery.singleImages ??= {});
+    let asked = 0;
+    for (const [url, onCards] of badgeImageCandidates(html, pageUrl, cards, reader.site)) {
+      const key = imageKey(url);
+      if (key in known) continue;
+      const earlier = single[key];
+      if (onCards.length < 2 && (!earlier || earlier[0] === onCards[0])) {
+        if (!earlier && Object.keys(single).length < MAX_SINGLE_IMAGES) single[key] = [onCards[0]!, root];
+        continue;
+      }
+      if (asked >= MAX_BADGE_IMAGES || !reader.robots.allowed(url) || !reader.fits(deadline)) continue;
+      asked++;
+      const answer = await hooks.readBadgeImage(url).catch(() => undefined);
+      if (!answer) continue;
+      known[key] = answer;
+      delete single[key];
+      if (earlier && answer !== "none" && !onCards.includes(earlier[0])) await hooks.found([earlier[0]], earlier[1], new Map([[earlier[0], answer]]));
+    }
+  }
+  return cardStatuses(html, pageUrl, cards, known);
+}
 type QueueItem = WebsiteDiscovery["queue"][number];
 
 /** Whether the search has only the browser reads left, which deserve a run's whole time. */
@@ -188,7 +225,7 @@ export async function continueDiscovery(
     if (item.project && item.root) {
       // A new-build project: the units it links below its own address, or the project itself when it has no page per unit.
       const units = listingLinks(page.html, page.url, site).filter((url) => inLanguage(url) && pathOf(url).startsWith(`${pathOf(item.url)}/`));
-      const fresh = await hooks.found(units.length ? units : [item.url], item.root, cardStatuses(page.html, page.url, units));
+      const fresh = await hooks.found(units.length ? units : [item.url], item.root, await cardBadges(state, hooks, reader, deadline, item.root, page.html, page.url, units));
       const o = overviews.find((x) => x.url === item.root);
       if (o) o.found += fresh.newToOverview;
       settle(state, item.root);
@@ -296,6 +333,7 @@ function oneAddressPerListing(state: DiscoveryState, hooks: DiscoveryHooks): Dis
       const mappedCards = cards && new Map([...cards].map(([url, facts]) => [same.get(url) ?? url, facts]));
       return hooks.found([...new Set(same.values())], root, mapped, mappedCards);
     },
+    readBadgeImage: hooks.readBadgeImage,
   };
 }
 
@@ -428,7 +466,7 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
     }
     const language = state.discovery.language ?? null;
     const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
-    const fresh = await hooks.found(cards, o.url, cardStatuses(html, o.url, cards));
+    const fresh = await hooks.found(cards, o.url, await cardBadges(state, hooks, reader, deadline, o.url, html, o.url, cards));
     if (fresh.newToOverview > 0) {
       o.found += fresh.newToOverview;
       o.via = "browser";

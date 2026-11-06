@@ -5,7 +5,7 @@ import { aiAvailable } from "../ai/client";
 import { recordEvent } from "../events";
 import { draftOffMarketNotices } from "../planner/off-market";
 import { defineTool, type ToolContext } from "../tool";
-import { extractWithAi, mergeExtraction } from "../website/ai";
+import { badgeFromImage, extractWithAi, mergeExtraction } from "../website/ai";
 import { openBrowser } from "../website/browser";
 import { continueDiscovery, newDiscovery, onlyBrowserLeft, type DiscoveryHooks, type DiscoveryState } from "../website/discover";
 import {
@@ -56,7 +56,7 @@ const REDISCOVER = 20 * HOUR;
 const RECHECK_VISIT = 6 * HOUR;
 
 /** Bump when the reading rules change, so listings read with older rules are read again. */
-const EXTRACTION_VERSION = "v13";
+const EXTRACTION_VERSION = "v15";
 
 type PageRow = typeof websitePages.$inferSelect;
 type AgentRow = { id: string; name: string };
@@ -435,6 +435,12 @@ function foundPages(ctx: ToolContext, reader: SiteReader, onBlocked: (count: num
       }
       return { newToOverview: inserted.length + marked.length, newToSite: inserted.length + marked.filter((row) => row.foundOn.length === 1).length };
     },
+    // A status drawn only in a picture over the cards' photos is read by Claude; without Claude those cards stay on offer.
+    async readBadgeImage(url) {
+      if (!aiAvailable()) return undefined;
+      const image = await reader.readImage(url);
+      return image ? badgeFromImage(url, image) : undefined;
+    },
   };
 }
 
@@ -473,9 +479,10 @@ export const importWebsiteListings = defineTool({
       .where(and(eq(websitePages.agencyId, ctx.agencyId), eq(websitePages.kind, "pending")));
     const searching = Boolean(previous.discovery && !previous.discovery.doneAt && !siteChanged);
     const recentlyDiscovered = previous.discoveredAt && Date.now() - new Date(previous.discoveredAt).getTime() < REDISCOVER;
-    let state: DiscoveryState | null = searching ? { discovery: previous.discovery!, overviews: previous.overviews ?? [] } : null;
+    const badgeImages = siteChanged ? {} : (previous.badgeImages ?? {});
+    let state: DiscoveryState | null = searching ? { discovery: previous.discovery!, overviews: previous.overviews ?? [], badgeImages } : null;
     if (!state && (siteChanged || waiting === 0 || !recentlyDiscovered)) {
-      state = newDiscovery(site);
+      state = { ...newDiscovery(site), badgeImages };
       // Which overview shows which page is counted again in each search.
       await ctx.db.update(websitePages).set({ foundOn: [] }).where(eq(websitePages.agencyId, ctx.agencyId));
     }
@@ -564,6 +571,7 @@ export const importWebsiteListings = defineTool({
       remaining: due.length - checked,
       overviews: state?.overviews ?? previous.overviews,
       // A finished search keeps only when it ran; one still going keeps where it is.
+      badgeImages: state?.badgeImages ?? previous.badgeImages,
       discovery: state ? (done ? { startedAt: state.discovery.startedAt, doneAt: done, queue: [], visited: [] } : state.discovery) : previous.discovery,
       ...(discoveryError && !due.length ? { error: discoveryError } : {}),
     };

@@ -379,11 +379,62 @@ describe("reading a listing page", () => {
     expect(extractListing(page.replace(/Visitez[^<]*Antonin/g, "Visitez avec un de nos agents dès demain"), "https://bytheway.immo/bien/7881006-francois-gay-139/").listing.agentName).toBeNull();
   });
 
+  it("reads the agent from a contact button, not from feature labels that repeat a word (MDI)", () => {
+    const page = `<html><body><main><h1>QUATRE VENTS</h1><p>155.000 €</p><p>Molenbeek-Saint-Jean</p><p>Appartement</p>
+      <h3>Composition</h3><p>Chambre 1</p><p>13</p><p>Salle De Séjour</p><p>16</p><p>Salle De Bain 1</p><p>5</p>
+      <h3>Bâtiment</h3><p>Parking Intérieur</p><p>Non</p><p>Parking Extérieur</p><p>Non</p>
+      <aside><p>Contactez</p><p>Didier</p><p><a href="tel:023532430">02 353 24 30</a></p><a class="button">Contactez Didier</a></aside></main></body></html>`;
+    const { listing } = extractListing(page, "https://mdi.be/nos-biens/quatre-vents/");
+    expect(listing).toMatchObject({ agentName: "Didier", agentPhone: "+3223532430" });
+    // Without the button, the feature labels still give no agent.
+    const noButton = page.replace(/<aside>[\s\S]*<\/aside>/, "");
+    expect(extractListing(noButton, "https://mdi.be/nos-biens/quatre-vents/").listing.agentName).toBeNull();
+    expect(extractListing(page.replace(/Didier/g, "nous"), "https://mdi.be/nos-biens/quatre-vents/").listing.agentName).toBeNull();
+  });
+
+  it("takes no lowercase words before a phone number for the agent", () => {
+    for (const line of ["Contacteer ons zeker snel via 03 123 45 67", "Neem contact op met Ferhat via 0478 12 34 56", "Contactez Sabine au 0478 12 34 56"]) {
+      const html = `<html><body><h1>Huis te koop</h1><p>Prijs: € 250.000</p><p>3 slaapkamers</p><p>${line}</p></body></html>`;
+      expect(extractListing(html, "https://www.example.be/nl/te-koop/huis/123456").listing.agentName).toBeNull();
+    }
+    const named = `<html><body><h1>Huis te koop</h1><p>Prijs: € 250.000</p><p>Tel. Ilona Bewaert, 0496/22.02.66</p></body></html>`;
+    expect(extractListing(named, "https://www.example.be/nl/te-koop/huis/123456").listing.agentName).toBe("Ilona Bewaert");
+  });
+
   it("takes no street, menu item or cookie service for the agent", () => {
     for (const line of ["Notre Philosophie", "Facebook Pixel", "Rue des Vétérinaires", "Augustin Delportestraat"]) {
       const html = `<html><body><h1>Appartement à louer</h1><p>Prix: 950 €</p><p>2 chambres</p><p>${line}</p><p>0478 12 34 56</p><p>Contact: ${line}</p></body></html>`;
       expect(extractListing(html, "https://www.example.be/fr/bien/a-louer/appartement/1050-ixelles/7891219").listing.agentName).toBe(null);
     }
+  });
+
+  it("reads the agent under \"Uw contact\" and from the page's agent block, without the button below (Domestic)", () => {
+    // As domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805 shows it (2026-11-05).
+    const contact = `<aside class="property-representative"> <div class="representative"> <div class="title"><span>Uw contact</span></div> <div class="image"><picture><img src="/images/about/person/image/regular/luyckx.jpg" alt="Luyckx"/></picture></div> <div class="representative-container"> <div class="name">Dirk Luyckx</div> <a href="#property-contact" class="scrollTo button">Bezoek aanvragen</a> </div> </div> </aside>`;
+    const page = (aside: string) => `<html><body><h1>Landelijk gelegen vrijstaande woning</h1><p>€ 395.000</p><p>Ref. 7920805</p><p>Gansheideweg 9, 2310 Rijkevorsel</p>
+      <p>Neem contact met Domestic makelaars op 014 610386 en plan uw bezoek.</p>${aside}<section id="property-details"><dl><dt>Prijs</dt><dd>€ 395.000</dd><dt>Slaapkamers</dt><dd>2</dd></dl></section></body></html>`;
+    const url = "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805";
+    expect(extractListing(page(contact), url).listing.agentName).toBe("Dirk Luyckx");
+    // Without the label, the block's name element still names them.
+    expect(extractListing(page(contact.replace("Uw contact", "")), url).listing.agentName).toBe("Dirk Luyckx");
+    // A name element outside an agent block (a review, the office) is no agent.
+    expect(extractListing(page(`<div class="testimonial"><div class="name">Jan Peeters</div></div>`), url).listing.agentName).toBeNull();
+    expect(extractListing(page(`<div class="agent-card"><div class="office-name">Hilde Claes</div></div>`), url).listing.agentName).toBeNull();
+    // A name with "van der" keeps all its words; an office isn't a person.
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Ellen Van der Eycken")), url).listing.agentName).toBe("Ellen Van der Eycken");
+    expect(extractListing(page(contact.replace(/Dirk Luyckx/g, "Géode Properties")), url).listing.agentName).toBeNull();
+  });
+
+  it("takes no project's name above its title for the agent (Caenen)", () => {
+    // As caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm shows it (2026-11-05).
+    const html = `<html><body><p>Te koop</p><p>Nieuwbouwproject</p><p>Ref. 4338687</p><h1>Maison West</h1><p>Westendelaan 309-317, 8434 Westende</p>
+      <h2>Maison West – Jouw oase van rust aan de kust</h2><p>Vanaf</p><p>€ 199.000</p><p>Interesse? Contacteer ons.</p>
+      <p>Stephane helpt je graag verder!</p><p>Stephane Vanhaekendover</p></body></html>`;
+    expect(extractListing(html, "https://www.caenen.be/nl/te-koop/project-westende-maison-west-4338687.htm").listing.agentName).toBe("Stephane Vanhaekendover");
+    // Nor one above a street named after it: "Sint Paulus", "Sint-Paulusstraat 10, 8400 Oostende".
+    const paulus = `<html><body><p>Ref. 4435957</p><h1>Sint Paulus</h1><p>Sint-Paulusstraat 10, 8400 Oostende</p><p>Vernieuwbouw residentie in Centrum Oostende</p>
+      <p>Vanaf</p><p>€ 275.000</p><p>Morgan helpt je graag verder!</p><p>Morgan Vandeghinste</p><p>059 40 40 30</p><p>Mail Morgan</p></body></html>`;
+    expect(extractListing(paulus, "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm").listing.agentName).toBe("Morgan Vandeghinste");
   });
 
   it("takes sale or rent from the price's label when nothing else says it", () => {

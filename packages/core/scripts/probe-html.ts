@@ -6,6 +6,7 @@
 import { flightProperty } from "../src/website/page-data";
 import { extractListing, looksLikeListingUrl, mainPart, pageLinks, pageText, sameSite } from "../src/website/extract";
 import { cardParts, cardTree, formPage, nextPageLinks, pageNumber } from "../src/website/overview";
+import { USER_AGENT } from "../src/website/fetch";
 import { SiteReader } from "../src/website/reader";
 
 type Look = {
@@ -17,7 +18,7 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data" | "cards" | "tail")[];
+  show: ("markup" | "text" | "links" | "data" | "cards" | "tail" | "raw" | "image")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
@@ -46,6 +47,19 @@ async function main() {
     const reader = readers.get(origin) ?? (await SiteReader.open(origin));
     readers.set(origin, reader);
     console.log(`\n================ ${look.url}${look.needle ? ` (looking for "${look.needle}")` : ""}`);
+    if (look.show.includes("image")) {
+      if (!reader.robots.allowed(look.url)) {
+        console.log("not allowed by robots.txt");
+        continue;
+      }
+      await reader.turn();
+      const response = await fetch(look.url, { headers: { "user-agent": USER_AGENT } });
+      const bytes = Buffer.from(await response.arrayBuffer());
+      console.log(`image ${response.status} ${response.headers.get("content-type")} ${bytes.length} bytes`);
+      const b64 = bytes.toString("base64");
+      for (let i = 0; i < b64.length; i += 8000) console.log(`b64 ${b64.slice(i, i + 8000)}`);
+      continue;
+    }
     let url: string | null = look.url;
     for (let page = 1; url && page <= (look.pages ?? 1); page++) {
       const read = await reader.read(url);
@@ -114,12 +128,23 @@ async function main() {
         console.log(`data: ${JSON.stringify(flat)}`);
         for (const [k, v] of Object.entries(p ?? {})) if (Array.isArray(v) && /picture/i.test(k)) console.log(`${k}: ${JSON.stringify(v.slice(0, 3))}`);
       }
+      if (look.show.includes("raw")) {
+        const body = clean(html);
+        const start = Math.max(0, body.search(/<body\b/i));
+        for (let i = start; i < Math.min(body.length, start + 120_000); i += 4000) console.log(`raw ${i}: ${body.slice(i, i + 4000)}`);
+        console.log(`scripts: ${[...html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+        console.log(`head: ${clean(html.slice(0, html.search(/<body\b/i))).slice(0, 6000)}`);
+      }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);
         console.log(`facts: ${JSON.stringify({ ...listing, description: listing.description?.slice(0, 60), photos: listing.photos.length })}`);
         console.log(`canonical: ${html.match(/<link[^>]*rel=["']canonical["'][^>]*>/i)?.[0] ?? "-"}`);
         console.log(`main (first 40):\n${mainPart(pageText(html)).split("\n").slice(0, 40).join("\n")}`);
-        console.log(`text:\n${pageText(html).split("\n").slice(0, 160).join("\n")}`);
+        const lines = pageText(html).split("\n");
+        const near = look.needle ? lines.findIndex((l) => l.includes(look.needle!)) : -1;
+        console.log(`text (${lines.length} lines, main part ${mainPart(pageText(html)).split("\n").length}):\n${lines.slice(0, 160).join("\n")}`);
+        if (near >= 160) console.log(`text around line ${near}:\n${lines.slice(near - 30, near + 15).join("\n")}`);
+        else if (lines.length > 160) console.log(`text from line 160:\n${lines.slice(160, 320).join("\n")}`);
       }
       break;
     }
