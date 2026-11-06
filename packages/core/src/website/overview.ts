@@ -93,7 +93,9 @@ export function listingLinks(html: string, pageUrl: string, site: string): strin
 
 /** An overview of what was sold or rented that the site's CMS numbers like a listing ("/fr/10002/biens/vendu-loue"): no card. */
 export function isArchiveCard(url: string): boolean {
-  return isArchiveUrl(`https://x.be/${safeDecode(new URL(url).pathname).split("/").filter(Boolean).at(-1) ?? ""}`);
+  // Only when the last segment is nothing but such words: a sold listing's own slug ("appartement-verkocht-in-3600-genk") stays a card.
+  const words = (safeDecode(new URL(url).pathname).split("/").filter(Boolean).at(-1) ?? "").split(/[^\p{L}\d]+/u).filter(Boolean);
+  return words.length > 0 && words.every((word) => isArchiveUrl(`https://x.be/${word}`));
 }
 
 /** An address that is plainly an overview, not one property: "/te-koop", "/fr/biens", "/nl/aanbod/huizen". */

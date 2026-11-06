@@ -203,6 +203,13 @@ describe("the status a card shows", () => {
     expect(listingLinks(html, `${site}/fr/2/chercher-bien/a-vendre`, site).sort()).toEqual([`${site}/fr/bien/a-vendre/maison/4500-huy/7926968`, `${site}/fr/bien/a-vendre/maison/5000-namur/7797697`]);
   });
 
+  it("keeps a sold listing whose own address says so", () => {
+    const site = "https://immo-center.be";
+    const card = (path: string) => `<div class="estate"><a href="${path}"><h3>Appartement</h3><p>2 slaapkamers 3600 Genk</p></a></div>`;
+    const html = `${card("/nl/aanbod/4481757/rijwoning-te-koop-in-3600-genk")}${card("/nl/aanbod/4355059/appartement-verkocht-in-3600-genk")}`;
+    expect(listingLinks(html, `${site}/nl/te-koop`, site).sort()).toEqual([`${site}/nl/aanbod/4355059/appartement-verkocht-in-3600-genk`, `${site}/nl/aanbod/4481757/rijwoning-te-koop-in-3600-genk`]);
+  });
+
   it("reads a card's badge with an accent", () => {
     const card = (id: number, badge: string) => `<div class="bien"><a href="/index.php?p=listerDetailsBiens&bien=${id}"><h3>Appartement</h3><span class="badge">${badge}</span><p>2 chambres 80 m²</p></a></div>`;
     const html = `<div class="list">${card(7883525, "loué")}${card(7880919, "loué")}${card(7895618, "sous option")}${card(7915591, "Nouveau")}</div>`;
