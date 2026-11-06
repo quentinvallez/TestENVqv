@@ -10,7 +10,6 @@ import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, 
 import { CopyText, WhatsAppForm } from "./channels";
 
 const capabilities = [
-  ["Reply to new portal leads with a booking link", "act"],
   ["Handle cancellations and reschedules from replies", "suggest"],
   ["Reassign a lead to another agent", "suggest"],
 ] as const;
@@ -51,6 +50,12 @@ export default async function SettingsPage() {
       on: automations.nudges,
       title: "Check in with quiet leads",
       description: `When a lead hasn't answered your last message for ${automations.nudgeAfterDays} days, the planner drafts a short check-in. At most two, and never once they booked.`,
+    },
+    {
+      key: "agentAlerts",
+      on: automations.agentAlerts,
+      title: "Email the agent about bookings",
+      description: "When a client books, moves or cancels a viewing or valuation visit on the website or through their link, the agent gets an email at their own address. No mailbox needs to be connected.",
     },
   ] as const;
 
@@ -159,10 +164,26 @@ export default async function SettingsPage() {
             </h2>
             <p className="mb-2 text-muted">Choose what the planner may do on its own. Anything set to “Ask me first” lands in your inbox.</p>
             <Panel className="divide-y divide-line">
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>Reply to portal leads that ask to visit</span>
+                    <Pill className={automations.replyToPortalLeadsAutomatically ? "border-ai-line bg-ai-soft text-ai" : undefined}>
+                      {automations.replyToPortalLeadsAutomatically ? autonomyLabel.act : autonomyLabel.suggest}
+                    </Pill>
+                  </div>
+                  <p className="mt-0.5 max-w-xl text-muted">
+                    When an Immoweb, Zimmo or Immovlan lead asks to visit an active listing, the planner replies right away with free times and the listing&apos;s booking link. Fixed text in the client&apos;s language; the AI only recognises the request. Listings under option or sold, questions and everything else stay drafts.
+                  </p>
+                </div>
+                <form action={updateAutomationsAction.bind(null, { replyToPortalLeadsAutomatically: !automations.replyToPortalLeadsAutomatically })} className="shrink-0">
+                  <Button type="submit">{automations.replyToPortalLeadsAutomatically ? "Ask me first instead" : "Reply automatically"}</Button>
+                </form>
+              </div>
               {capabilities.map(([label, level]) => (
                 <div key={label} className="flex items-center justify-between gap-4 px-4 py-3">
                   <span>{label}</span>
-                  <Pill className={level === "act" ? "border-ai-line bg-ai-soft text-ai" : undefined}>{autonomyLabel[level]}</Pill>
+                  <Pill>{autonomyLabel[level]}</Pill>
                 </div>
               ))}
             </Panel>

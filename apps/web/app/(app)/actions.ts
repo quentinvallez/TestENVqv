@@ -124,6 +124,8 @@ export async function updateAutomationsAction(change: {
   nudgeAfterDays?: number;
   sendRemindersAutomatically?: boolean;
   sendOccupantAlertsAutomatically?: boolean;
+  agentAlerts?: boolean;
+  replyToPortalLeadsAutomatically?: boolean;
 }) {
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
   revalidatePath("/settings");

@@ -129,9 +129,15 @@ export type AutomationSettings = {
   nudges?: boolean;
   /** Days without an answer before a nudge. */
   nudgeAfterDays?: number;
+  /** Email the agent when a client books, moves or cancels a viewing or valuation visit. */
+  agentAlerts?: boolean;
 };
 
-/** How much an AI agent may do on its own, per capability. */
+/**
+ * How much an AI agent may do on its own, per capability. Keys in use:
+ * reminders, occupant_alerts, portal_replies (answer a portal lead that asks
+ * to visit with free times and the listing's booking link).
+ */
 export type Autonomy = Record<string, "suggest" | "act_and_notify" | "act">;
 
 export const agencySettings = pgTable("agency_settings", {

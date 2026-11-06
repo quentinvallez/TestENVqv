@@ -123,7 +123,15 @@ describe("portal leads", () => {
       portalRef: "11223344",
       agencyReference: "VP-2041",
       language: "nl",
+      visitRequested: false,
     });
+  });
+
+  it("sees a visit request in the subject or the request type, not in the footer", () => {
+    const base = { from: { name: "Immoweb", email: "noreply@immoweb.be" }, text: "Naam: Lies Maes\nE-mail: lies@example.be\n\nBezoek ook onze website voor tips." };
+    expect(parsePortalEmail(mail({ ...base, subject: "Nieuwe aanvraag voor een bezoek" }))?.visitRequested).toBe(true);
+    expect(parsePortalEmail(mail({ ...base, subject: "Nouvelle demande", text: "Nom: Luc\nEmail: luc@example.be\nType de demande: Visiter le bien" }))?.visitRequested).toBe(true);
+    expect(parsePortalEmail(mail({ ...base, subject: "Nieuwe aanvraag voor uw zoekertje" }))?.visitRequested).toBe(false);
   });
 
   it("reads an HTML Immoweb lead in French with first and last name", () => {

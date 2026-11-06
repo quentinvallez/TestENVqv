@@ -264,7 +264,7 @@ export const receiveMessage = defineTool({
         .from(messages)
         .where(and(eq(messages.agencyId, ctx.agencyId), eq(messages.externalId, input.externalId)))
         .limit(1);
-      if (seen) return { conversationId: seen.conversationId, triage: null, proposalId: null, duplicate: true };
+      if (seen) return { conversationId: seen.conversationId, triage: null, proposalId: null, autoReplied: null, duplicate: true };
     }
     const contact = await findOrCreateContact(ctx, { name: input.from.name, email: input.from.email, phone: input.from.phone, whatsappOptIn: input.channel === "whatsapp" });
 
@@ -317,7 +317,7 @@ export const receiveMessage = defineTool({
     // "Code 123456" from the owner's own WhatsApp verifies a pending home valuation.
     if (input.channel === "whatsapp" && input.from.phone) {
       const { verifyFromWhatsApp } = await import("./valuations");
-      if (await verifyFromWhatsApp(ctx, input.from.phone, input.body)) return { conversationId: conversation.id, triage: null, proposalId: null, verifiedValuation: true };
+      if (await verifyFromWhatsApp(ctx, input.from.phone, input.body)) return { conversationId: conversation.id, triage: null, proposalId: null, autoReplied: null, verifiedValuation: true };
     }
     const result = await handleConversation({ ...ctx, actor: { type: "agent", id: "planner" } }, conversation.id, { useAi: input.useAi });
     if (result.proposalId) {

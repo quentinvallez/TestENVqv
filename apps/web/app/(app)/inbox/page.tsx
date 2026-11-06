@@ -175,8 +175,10 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   );
 }
 
-/** A message the automatic jobs sent without a human approving it (only reminders, when the agency allows it). */
-const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) => m.authorType === "agent" && m.metadata.kind === "reminder";
+/** A message sent without a human approving it, when the agency allows it: reminders, and booking links to portal leads asking to visit. */
+const automaticLabel: Record<string, string> = { reminder: "Reminder · automatic", portal_reply: "Booking link · automatic" };
+const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) =>
+  m.authorType === "agent" && typeof m.metadata.kind === "string" ? (automaticLabel[m.metadata.kind] ?? null) : null;
 
 type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.run>>>;
 
@@ -283,7 +285,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                   {(m.intent || m.delivery) && (
                     <footer className="flex items-center gap-2 px-4 pb-3">
                       {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
-                      {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
+                      {sentAutomatically(m) && <AiPill>{sentAutomatically(m)}</AiPill>}
                       <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="email" />
                     </footer>
                   )}
@@ -298,7 +300,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-faint">
                   {formatTime(m.sentAt)}
                   {m.intent && <AiPill>{categoryMeta[m.intent]?.label ?? m.intent}</AiPill>}
-                  {sentAutomatically(m) && <AiPill>Reminder · automatic</AiPill>}
+                  {sentAutomatically(m) && <AiPill>{sentAutomatically(m)}</AiPill>}
                   <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel="whatsapp" />
                 </div>
               </div>

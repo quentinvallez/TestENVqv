@@ -7,6 +7,7 @@ import { qualify } from "../planner/qualification";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
 import { alertOccupants } from "../planner/occupants";
+import { alertAgent } from "../planner/agent-alerts";
 
 const { agents, appointments, availabilityRules, contacts, leads, listingBlocks, listings, listingWindows } = schema;
 
@@ -294,6 +295,7 @@ export const bookViewing = defineTool({
       await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
     }
     await alertOccupants(ctx, result.appointment.id, { kind: "booked" });
+    await alertAgent(ctx, result.appointment.id, { kind: "booked" });
     return {
       appointmentId: result.appointment.id,
       manageToken: result.appointment.manageToken,
@@ -356,6 +358,7 @@ export const cancelAppointment = defineTool({
       await noteClientAction(ctx, appointment.id, { kind: "cancelled" });
     }
     await alertOccupants(ctx, appointment.id, { kind: "cancelled" });
+    await alertAgent(ctx, appointment.id, { kind: "cancelled" });
     return { changed: true };
   },
 });
@@ -411,6 +414,7 @@ export const rescheduleAppointment = defineTool({
       await noteClientAction(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     }
     await alertOccupants(ctx, updated.id, { kind: "rescheduled", from: previousStart });
+    await alertAgent(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     return { appointmentId: updated.id, startsAt: updated.startsAt, endsAt: updated.endsAt };
   },
 });
@@ -511,6 +515,7 @@ export const bookValuationVisit = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
     }
+    await alertAgent(ctx, result.appointment.id, { kind: "booked" });
     return { appointmentId: result.appointment.id, manageToken: result.appointment.manageToken, startsAt: result.appointment.startsAt, agentName: result.agent.name };
   },
 });
