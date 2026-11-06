@@ -17,13 +17,16 @@ type Look = {
   /** Read the first link on the page whose address holds this text, and show that page instead. */
   follow?: string;
   /** "markup": the markup around the needle; "text": page text lines and facts; "links": every link on the page. */
-  show: ("markup" | "text" | "links" | "data" | "cards" | "tail")[];
+  show: ("markup" | "text" | "links" | "data" | "cards" | "tail" | "raw")[];
 };
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
   // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
-  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
+  // MDI (Quentin's site, 2026-11-06): status only in photos? agent (Didier) not found.
+  { url: "https://mdi.be/nos-biens/quatre-vents/", show: ["text", "raw"] },
+  { url: "https://mdi.be/nos-biens/", show: ["links", "cards", "raw"] },
+  { url: "https://mdi.be/", show: ["links"] },
 ];
 
 const clean = (html: string) =>
@@ -108,6 +111,13 @@ async function main() {
         const flat = p && Object.fromEntries(Object.entries(p).filter(([, v]) => v == null || typeof v !== "object").map(([k, v]) => [k, typeof v === "string" && v.length > 80 ? `${v.slice(0, 80)}…` : v]));
         console.log(`data: ${JSON.stringify(flat)}`);
         for (const [k, v] of Object.entries(p ?? {})) if (Array.isArray(v) && /picture/i.test(k)) console.log(`${k}: ${JSON.stringify(v.slice(0, 3))}`);
+      }
+      if (look.show.includes("raw")) {
+        const body = clean(html);
+        const start = Math.max(0, body.search(/<body\b/i));
+        for (let i = start; i < Math.min(body.length, start + 120_000); i += 4000) console.log(`raw ${i}: ${body.slice(i, i + 4000)}`);
+        console.log(`scripts: ${[...html.matchAll(/<script[^>]*src=["']([^"']+)/gi)].map((m) => m[1]).join(" ")}`);
+        console.log(`head: ${clean(html.slice(0, html.search(/<body\b/i))).slice(0, 6000)}`);
       }
       if (look.show.includes("text")) {
         const { listing } = extractListing(html, read.url);
