@@ -23,6 +23,17 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
+  // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
+  // Domestic listings: one whose agent we miss (Dirk Luyckx under "UW CONTACT") next to one we find.
+  { url: "https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805", needle: "Luyckx", show: ["markup", "text"] },
+  // Caenen's project page whose agent is read as the project's name ("Sint Paulus"); Git and Immotalenco listings
+  // that name no agent: do their pages show one?
+  { url: "https://www.caenen.be/nl/te-koop/project-oostende-sint-paulus-4435957.htm", needle: "helpt je graag", show: ["text"] },
+  { url: "https://www.git.be/fr/bien/a-louer/appartement/7500-tournai/7911924", needle: "Contact", show: ["text"] },
+  { url: "https://www.immotalenco.com/nl/te-koop?view=detail&id=5883", needle: "Contact", show: ["text"] },
+  // MDI: the agent ("Contactez Didier") and the sticker over the photo of a sold listing.
+  { url: "https://mdi.be/nos-biens/quatre-vents/", show: ["text"] },
+  // The sticker itself can be shown as base64: { url: "https://mdi.be/wp-content/uploads/2025/03/IMG_3008-600x400-1-300x200.png", show: ["image"] }.
   // Bienatoi (Quentin's test site since 2026-11-06): 12+ for sale and 5+ for rent; how are its menu and cards built?
   { url: "https://www.bienatoi.be/fr/2/chercher-bien/a-vendre", show: ["tail", "links"] },
   { url: "https://www.bienatoi.be/fr/List/InfiniteScroll?json=%7B%22SliderList%22%3Afalse,%22SliderMultiAgencies%22%3Afalse,%22IsProject%22%3Afalse,%22PageMaximum%22%3A0,%22FirstPage%22%3Atrue,%22CanGetNextPage%22%3Afalse,%22CMSListType%22%3A99,%22SortParameter%22%3A0,%22MaxItemsPerPage%22%3A5,%22PageNumber%22%3A0,%22EstateSearchParams%22%3A%5B%7B%22FieldName%22%3A%22StatusIDList%22,%22FieldValue%22%3A%5B1%5D%7D,%7B%22FieldName%22%3A%22ShowDetails%22,%22FieldValue%22%3Atrue%7D,%7B%22FieldName%22%3A%22ShowRepresentatives%22,%22FieldValue%22%3Atrue%7D,%7B%22FieldName%22%3A%22CanHaveChildren%22,%22FieldValue%22%3Afalse%7D%5D,%22CustomQuery%22%3A%22%5C%22StatusIDList%5C%22%3A%5B1%5D,%5C%22SubDetailIdList%5C%22%3A%5B57,1912,2056,2086,2087,2089,2090,2390,2391,1849,1850,1914,19%5D,%5C%22DisplayStatusIdList%5C%22%3A%5B2,3,4%5D,%5C%22PurposeIDList%5C%22%3A%5B1%5D,%5C%22PurposeStatusIDList%5C%22%3A%5B1,5,15%5D,%5C%22OrderByFields%5C%22%3A%5B%5C%22PurposeStatusID%5C%22,%20%5C%22PutOnlineDateTime%20DESC%5C%22%5D%22,%22jsonEstateParams%22%3Anull,%22BaseEstateID%22%3A0%7D", show: ["links", "cards"] },

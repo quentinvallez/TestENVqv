@@ -10,10 +10,12 @@ import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
 import { cardId, type ExtractedListing, extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
 import { cardStatuses, isArchiveCard, statedCount } from "../src/website/overview";
+import { aiAvailable } from "../src/ai/client";
+import { badgeFromImage } from "../src/website/ai";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
-// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01, bienatoi since 2026-11-06).
+// Only sites Quentin chose for testing (immo-zone since 2026-10-27; his 10 test agencies since 2026-10-28, immofrance, immotalenco, immodyck and century21-horizon since 2026-10-29, canius and habicom since 2026-10-31, urbainvastgoed since 2026-11-01, Whise sites domestic, palton, valorvastgoed, git, lacledesmaisons, bytheway, way-home, bdgimmo, geodeproperties and immosciara since 2026-11-01, immovl since 2026-11-01, mdi and bienatoi since 2026-11-06).
 const sites = [
   "https://www.immo-zone.be",
   "https://www.ngimmo.be",
@@ -44,6 +46,7 @@ const sites = [
   "https://www.geodeproperties.be/",
   "https://www.immosciara.be/",
   "https://www.immovl.be/",
+  "https://mdi.be/",
   "https://www.bienatoi.be/",
 ];
 /** Pages Quentin found missing or wrong, checked one by one. */
@@ -58,6 +61,7 @@ const checks: Record<string, string[]> = {
     "https://jurimex.be/nl/aanbod/4406798/kantoorruimte-te-huur-in-3600-genk",
   ],
   immobolle: ["https://www.immobolle.be/fr/page/10004/protection-juridique"],
+  domestic: ["https://www.domestic.be/nl/te-koop/huis/eengezinswoning/rijkevorsel-2310/7920805"],
   // Under-option cards without a link: does the page exist at the site's address template, and with any slug?
   bienatoi: [
     "https://www.bienatoi.be/fr/bien/a-vendre/maison/5100-dave/7703058",

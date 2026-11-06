@@ -138,6 +138,8 @@ export type WebsiteDiscovery = {
   listingShapes?: string[];
   /** Kinds of element the site's linked listing cards are drawn as ("a.estate-card"), to know its cards drawn without a link. */
   cardKinds?: string[];
+  /** Pictures seen on one listing card so far, with that card and its overview: on a second card, one may be a status sticker. */
+  singleImages?: Record<string, [string, string | null]>;
 };
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */

@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { cardUrl, type ExtractedListing, listingFromCard, listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { cardKinds, cardStatuses, type CardBadge, firstPage, linklessCards, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { badgeImageCandidates, cardKinds, cardStatuses, type CardBadge, firstPage, imageKey, type ImageBadges, linklessCards, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -48,6 +48,11 @@ export type DiscoveryHooks = {
    * without a link, under the address `cardUrl` gives them, with what their card shows.
    */
   found(urls: string[], root: string | null, badges?: Map<string, CardBadge>, cards?: Map<string, ExtractedListing>): Promise<{ newToOverview: number; newToSite: number }>;
+  /**
+   * What a picture repeated over the cards' photos says (a "VENDU!" sticker): a status, "none", or undefined when it
+   * can't be told now (no Claude, the picture didn't load), so it is asked again later.
+   */
+  readBadgeImage?(url: string): Promise<CardBadge | "none" | undefined>;
 };
 
 /** `badgeImages`: pictures read so far, kept from one search to the next. */
@@ -255,7 +260,7 @@ export async function continueDiscovery(
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
     // On a new-build overview, cards without a listing id below it are projects, read for their units.
     if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
-    const badges = item.root ? cardStatuses(page.html, page.url, cards) : undefined;
+    const badges = item.root ? await cardBadges(state, hooks, reader, deadline, item.root, page.html, page.url, cards) : undefined;
     // Listings on offer or under option the overview draws like its other cards but without a link (their page is
     // gone): each becomes a listing of its own, read from its card. Sold and rented ones stay out, as everywhere.
     const linkless = new Map<string, ExtractedListing>();
