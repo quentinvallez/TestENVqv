@@ -9,7 +9,7 @@
 import { openBrowser } from "../src/website/browser";
 import { continueDiscovery, newDiscovery, type DiscoveryHooks, type DiscoveryReader } from "../src/website/discover";
 import { cardId, type ExtractedListing, extractListing, isListingPage, isRemovedListingPage, looksLikeListingUrl, looksLikeOverviewUrl, pageLinks, pageText, sameSite, withoutVisitNumbers } from "../src/website/extract";
-import { cardStatuses, statedCount } from "../src/website/overview";
+import { cardStatuses, isArchiveCard, statedCount } from "../src/website/overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "../src/website/page-data";
 import { SiteReader } from "../src/website/reader";
 
@@ -123,10 +123,12 @@ async function probe(site: string) {
   const shownOn = new Map<string, Set<string>>();
   // Listings shown only as a card without a link, with what their card shows.
   const cardFacts = new Map<string, ExtractedListing>();
+  const linklessBadge = new Map<string, string>();
   const pagesOf = new Map<string, Map<string, string[]>>();
   const hooks: DiscoveryHooks = {
-    found: async (urls, root, _badges, cards) => {
+    found: async (urls, root, badges, cards) => {
       for (const [url, facts] of cards ?? []) cardFacts.set(url, facts);
+      for (const url of cards?.keys() ?? []) if (badges?.get(url)) linklessBadge.set(url, badges.get(url)!);
       const tag = root ?? "*";
       if (root) pagesOf.set(root, (pagesOf.get(root) ?? new Map()).set(lastUrl, urls));
       let newToOverview = 0;
@@ -182,6 +184,8 @@ async function probe(site: string) {
       const statuses = cardStatuses(html.get(page) ?? "", page, urls);
       for (const [url, badge] of statuses) cardBadge.set(url, badge);
       if (urls.length < 3) for (const url of urls) fewCards.push(`${url.replace(site, "")} ${statuses.get(url) ?? "on offer"}`);
+      for (const url of urls) if (linklessBadge.has(url)) statuses.set(url, linklessBadge.get(url) as never);
+      for (const [url, badge] of statuses) cardBadge.set(url, badge);
       return urls.map((url) => statuses.get(url) ?? "on offer");
     });
     console.log(`  ${o.url.replace(site, "") || "/"}  stated ${o.stated ?? "-"}  found ${o.found}  ${verdict}  via ${o.via}, ${o.pages} pages${o.complete ? "" : ", not complete"}  cards: ${tally(badges) || "-"}`);
@@ -204,6 +208,12 @@ async function probe(site: string) {
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
+  // A regression check for the rules on cards without a link and sold/rented overviews numbered like listings: the
+  // job fails on a site where either applies, so the run's job list shows where to look (Bienatoi expects both).
+  const linkless = [...cardFacts.keys()];
+  const archiveCards = [...new Set([...html.values()].flatMap((page) => pageLinks(page, site)).filter((url) => sameSite(url, site) && looksLikeListingUrl(url, site) && isArchiveCard(url)))];
+  console.log(`VERDICT cards without a link: ${linkless.length}${linkless.length ? ` (${linkless.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}; sold/rented overviews left out as cards: ${archiveCards.length}${archiveCards.length ? ` (${archiveCards.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}`);
+  if ((linkless.length || archiveCards.length) && !site.includes("bienatoi")) process.exitCode = 1;
   if (process.env.GITHUB_ACTIONS && fewCards.length) console.log(`::notice title=few cards::${[...new Set(fewCards)].join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=card statuses::${new URL(site).hostname} ${tally([...cardBadge.values()]) || "none"} (of ${shownOn.size})`);
 

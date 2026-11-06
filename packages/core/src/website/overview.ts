@@ -88,8 +88,12 @@ export function listingLinks(html: string, pageUrl: string, site: string): strin
   }
   // Cards whose addresses carry no id, recognised by how the page shows them.
   for (const url of repeatedCards(html, pageUrl, site)) if (!found.includes(url) && !looksLikeOverviewOnly(url)) found.push(url);
-  // An overview of what was sold or rented that the site's CMS numbers like a listing ("/fr/10002/biens/vendu-loue") is no card.
-  return found.filter((url) => !isArchiveUrl(`https://x.be/${safeDecode(new URL(url).pathname).split("/").filter(Boolean).at(-1) ?? ""}`));
+  return found.filter((url) => !isArchiveCard(url));
+}
+
+/** An overview of what was sold or rented that the site's CMS numbers like a listing ("/fr/10002/biens/vendu-loue"): no card. */
+export function isArchiveCard(url: string): boolean {
+  return isArchiveUrl(`https://x.be/${safeDecode(new URL(url).pathname).split("/").filter(Boolean).at(-1) ?? ""}`);
 }
 
 /** An address that is plainly an overview, not one property: "/te-koop", "/fr/biens", "/nl/aanbod/huizen". */
