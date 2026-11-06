@@ -111,6 +111,8 @@ export type WebsiteDiscovery = {
   keys?: Record<string, string>;
   /** Address templates of the listing cards on the overviews (cards at "/nl/te-koop/ronse/huis/woning/793" give one): a link of one of them is a listing, not an overview. */
   listingShapes?: string[];
+  /** Folders whose pages are the cards of the overviews, for sites whose listing addresses carry no number ("/pand/villa-in-het-groen"). */
+  listingFolders?: string[];
   /** Pictures seen on one listing card so far, with that card and its overview: on a second card, one may be a status sticker. */
   singleImages?: Record<string, [string, string | null]>;
 };

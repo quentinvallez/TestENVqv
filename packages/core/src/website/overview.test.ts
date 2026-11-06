@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followingPage } from "./discover";
-import { cardStatuses, firstPage, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
+import { cardStatuses, firstPage, folderOf, linksWithShapes, repeatedCards, formPage, guessedPages, listingLinks, nextPageLinks, pageNumber, statedPages, statedTotal, urlShape } from "./overview";
 
 const site = "https://www.immo-test.be";
 
@@ -211,5 +211,35 @@ describe("the status a card shows", () => {
     const urls = [1392, 1368].map((id) => `https://www.immotop.be/fr/a-louer?view=detail&id=${id}&page=2`);
     const statuses = cardStatuses(html, "https://www.immotop.be/fr/a-louer?page=2", urls);
     expect(urls.map((u) => statuses.get(u) ?? "active")).toEqual(["active", "active"]);
+  });
+});
+
+describe("listing addresses without a number", () => {
+  it("knows a folder that only holds listings", () => {
+    expect(folderOf(`${site}/pand/villa-in-het-groen`)).toBe("/pand/");
+    expect(folderOf(`${site}/nl/pand/villa-in-het-groen`)).toBe("/nl/pand/");
+    // The site's root, a language, or an overview that also holds town or type pages.
+    expect(folderOf(`${site}/villa-in-het-groen`)).toBeNull();
+    expect(folderOf(`${site}/nl/villa-in-het-groen`)).toBeNull();
+    expect(folderOf(`${site}/te-koop/villa-in-het-groen`)).toBeNull();
+    expect(folderOf(`${site}/vastgoed/gent`)).toBeNull();
+  });
+
+  it("finds a lone card on an overview's last page in the cards' folder", () => {
+    const html = `<html><body><header><a href="/pand/featured">Featured</a></header><main>
+      <h1>13 panden gevonden</h1>
+      <div class="card"><a href="/pand/kantoorruimte-te-huur-merelbeke"><img alt=""><h3>Kantoorruimte</h3><p>€ 1.250 / maand · 120 m²</p></a></div>
+      <p>Lees ook <a href="/pand/over-onze-werkwijze">hoe we werken</a>.</p>
+    </main></body></html>`;
+    expect(linksWithShapes(html, `${site}/te-huur?pagina=2`, site, [], ["/pand/"])).toEqual([`${site}/pand/kantoorruimte-te-huur-merelbeke`]);
+    expect(linksWithShapes(html, `${site}/te-huur?pagina=2`, site, [], [])).toEqual([]);
+  });
+
+  it("finds a project's units listed in a table", () => {
+    const html = `<html><body><main><table><tbody>
+      <tr><td><a href="/pand/hof-type-a">Woning type A</a></td><td>3</td><td>158 m²</td><td>€ 435.000</td></tr>
+      <tr><td><a href="/pand/hof-type-b">Woning type B</a></td><td>4</td><td>185 m²</td><td>€ 529.000</td></tr>
+    </tbody></table></main></body></html>`;
+    expect(linksWithShapes(html, `${site}/nieuwbouw/hof`, site, [], ["/pand/"])).toEqual([`${site}/pand/hof-type-a`, `${site}/pand/hof-type-b`]);
   });
 });

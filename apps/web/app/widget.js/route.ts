@@ -20,7 +20,8 @@
  * Without any placeholder, a listing page of the agency's website that the
  * listing import knows gets a floating "book a viewing" button instead, so the
  * agency only has to paste the script tag. Pages it doesn't know yet are read
- * in the background and have the button from the next visit.
+ * in the background and have the button from the next visit. On single-page
+ * sites the button follows the address as the visitor moves between pages.
  */
 const script = String.raw`(function () {
   var current = document.currentScript;
@@ -168,11 +169,20 @@ const script = String.raw`(function () {
   }
   // A listing page of the agency's site without a placeholder: we know it from
   // the listing import (or read it now, for the next visit) and offer booking.
+  function pageUrl() {
+    return location.href.split("#")[0];
+  }
+  var siteConfig = null;
+  var launchedFor = null;
   function bookingLauncher(config) {
+    siteConfig = config;
+    var page = (launchedFor = pageUrl());
     if (!config || !config.bookingLauncher || current.getAttribute("data-launcher") === "off" || document.querySelector("[data-viewing-widget]")) return valuationLauncher(config);
-    fetch(origin + "/api/widget/page?agency=" + encodeURIComponent(agency) + "&url=" + encodeURIComponent(location.href.split("#")[0]))
+    fetch(origin + "/api/widget/page?agency=" + encodeURIComponent(agency) + "&url=" + encodeURIComponent(page))
       .then(function (response) { return response.ok ? response.json() : {}; })
       .then(function (data) {
+        // The visitor moved on to another page while we asked (single-page sites).
+        if (page !== pageUrl()) return;
         if (!data.listingId || document.querySelector("[data-viewing-widget]")) return valuationLauncher(config);
         bookingPage = true;
         var agent = detectAgent(data.agents || [], document.createElement("div"));
@@ -183,7 +193,16 @@ const script = String.raw`(function () {
           src: origin + "/embed/" + data.listingId + "?lang=" + pageLang() + (agent ? "&agent=" + agent.id : ""),
         });
       })
-      .catch(function () { valuationLauncher(config); });
+      .catch(function () { if (page === pageUrl()) valuationLauncher(config); });
+  }
+  // Sites built as single-page apps (Next.js, Nuxt, React...) change the address
+  // without loading a new page: decide again which button the new page gets.
+  function followNavigation() {
+    if (!launchedFor || launchedFor === pageUrl()) return;
+    if (launcherHost) launcherHost.parentNode.removeChild(launcherHost);
+    launcherHost = null;
+    bookingPage = false;
+    bookingLauncher(siteConfig);
   }
   // Not on a page that already shows the valuation (or the booking) itself.
   function refreshLauncher() {
@@ -210,8 +229,9 @@ const script = String.raw`(function () {
     new MutationObserver(function () {
       if (pending) return;
       pending = true;
-      setTimeout(function () { pending = false; scan(); }, 200);
+      setTimeout(function () { pending = false; scan(); followNavigation(); }, 200);
     }).observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("popstate", function () { setTimeout(followNavigation, 200); });
   }
   // The script may run before the page body is parsed (async, or placed in <head>).
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);

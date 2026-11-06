@@ -435,15 +435,45 @@ const LISTING_FACTS = /€\s?\d|\d\s?€|\d\s?(?:m²|m2\b)|\b(?:slaapkamers?|slp
  * already seen with. An overview's last page can show one or two cards: too few to tell them by their markup, and an
  * older listing's short id ("/kopen/borgloon/huis/nieuwbouwwoning/3583") doesn't make an address look like a listing.
  */
-export function linksWithShapes(html: string, pageUrl: string, site: string, shapes: readonly string[]): string[] {
-  if (!shapes.length) return [];
+export function linksWithShapes(html: string, pageUrl: string, site: string, shapes: readonly string[], folders: readonly string[] = []): string[] {
+  if (!shapes.length && !folders.length) return [];
   const known = new Set(shapes);
+  const inFolder = new Set(folders);
+  const { doc, anchors, elements } = anchorsOf(html, pageUrl);
   const found = new Set<string>();
-  for (const a of anchorsOf(html, pageUrl).anchors) {
-    if (!sameSite(a.url, site) || a.around.some((e) => ["nav", "header", "footer", "aside"].includes(e.name)) || pageNumber(a.url)) continue;
-    if (a.url !== normalizeUrl(pageUrl) && known.has(urlShape(a.url))) found.add(a.url);
+  const byFolder = new Set<string>();
+  for (const a of anchors) {
+    if (!sameSite(a.url, site) || a.around.some((e) => ["nav", "header", "footer", "aside"].includes(e.name)) || pageNumber(a.url) || a.url === normalizeUrl(pageUrl)) continue;
+    if (known.has(urlShape(a.url))) found.add(a.url);
+    else if (inFolder.has(folderOf(a.url) ?? "")) byFolder.add(a.url);
+  }
+  // An address without a number says little on its own: in the cards' folder, it is a card when its card shows a
+  // price, an area or rooms, or the element just around it does (a table row, whose cells are the "card").
+  const mine = anchors.filter((a) => byFolder.has(a.url));
+  for (const [url, card] of cardMarkup(doc, anchors, byFolder, elements)) {
+    const around = mine.find((a) => a.url === url)!.around;
+    const at = around.findIndex((e) => doc.slice(e.start, e.end) === card);
+    const parent = at > 0 ? around[at - 1]! : null;
+    const alone = parent && !PAGE_PARTS.includes(parent.name) && !mine.some((a) => a.url !== url && a.at >= parent.start && a.at < parent.end);
+    if (LISTING_FACTS.test(cardText(card)) || (alone && LISTING_FACTS.test(cardText(doc.slice(parent.start, parent.end))))) found.add(url);
   }
   return [...found];
+}
+
+/**
+ * The folder a listing address sits in ("/pand/villa-in-het-groen" → "/pand/"), when that folder can only hold
+ * listings: not the site's root or a language, and not a folder that is an overview itself ("/te-koop/" also holds
+ * "/te-koop/gent"). Null otherwise.
+ */
+export function folderOf(url: string): string | null {
+  const segments = safeDecode(new URL(url).pathname).toLowerCase().split("/").filter(Boolean);
+  if (segments.length < 2 || new URL(url).search) return null;
+  const parent = segments.slice(0, -1);
+  if (parent.every((s) => LANGUAGE.test(s))) return null;
+  const folder = `/${parent.join("/")}/`;
+  // Overview words ("/te-koop/" also holds "/te-koop/gent"), and "/vastgoed/", "/immo/" that sites use for town pages.
+  if (/(te-koop|te-huur|kopen|huren|aanbod|nieuwbouw|projecten|projets|projects|neuf|new-build|verkocht|verhuurd|a-vendre|a-louer|acheter|louer|vendus?|for-sale|for-rent|to-rent|buy|rent|sold|properties|biens|panden|woningen|immo|vastgoed|immobilier)/.test(folder)) return null;
+  return folder;
 }
 
 /**

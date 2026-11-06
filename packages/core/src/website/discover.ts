@@ -1,6 +1,6 @@
 import type { WebsiteDiscovery, WebsiteOverview } from "@viewing/db/schema";
 import { listingKey, looksLikeListingUrl, looksLikeOverviewUrl, normalizeUrl, pageLinks, sameSite, sitemapEntries } from "./extract";
-import { badgeImageCandidates, cardStatuses, type CardBadge, firstPage, imageKey, type ImageBadges, statedPages, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
+import { badgeImageCandidates, cardStatuses, type CardBadge, firstPage, imageKey, type ImageBadges, statedPages, folderOf, formPage, guessedPages, isArchiveUrl, languageOf, listingLinks, linksWithShapes, nextPageLinks, pageNumber, pagingKey, statedTotal, urlShape } from "./overview";
 import { ROBOTS_BLOCKED, type ReadResult } from "./reader";
 import type { RobotsPolicy } from "./robots";
 
@@ -228,7 +228,13 @@ export async function continueDiscovery(
 
     if (item.project && item.root) {
       // A new-build project: the units it links below its own address, or the project itself when it has no page per unit.
-      const units = listingLinks(page.html, page.url, site).filter((url) => inLanguage(url) && pathOf(url).startsWith(`${pathOf(item.url)}/`));
+      let units = listingLinks(page.html, page.url, site).filter((url) => inLanguage(url) && pathOf(url).startsWith(`${pathOf(item.url)}/`));
+      // Units that live with the other listings ("/pand/residentie-lindehof-penthouse" on "/nieuwbouw/residentie-lindehof"):
+      // the cards on the project's page that follow the template or sit in the folder of the overviews' cards.
+      if (!units.length) {
+        const cards = [...new Set([...listingLinks(page.html, page.url, site), ...linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [], discovery.listingFolders ?? [])])];
+        units = cards.filter((url) => url !== item.url && inLanguage(url) && isListingShape(discovery, url));
+      }
       const fresh = await hooks.found(units.length ? units : [item.url], item.root, await cardBadges(state, hooks, reader, deadline, item.root, page.html, page.url, units));
       const o = overviews.find((x) => x.url === item.root);
       if (o) o.found += fresh.newToOverview;
@@ -249,7 +255,7 @@ export async function continueDiscovery(
     }
     if (item.root) {
       // Cards too few to tell by their markup (an overview's last page), known by the template of the cards seen before.
-      for (const url of linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [])) {
+      for (const url of linksWithShapes(page.html, page.url, site, discovery.listingShapes ?? [], discovery.listingFolders ?? [])) {
         if (cards.includes(url) || !inLanguage(url)) continue;
         cards.push(url);
         if (process.env.WEBSITE_DEBUG) console.log(`${process.env.GITHUB_ACTIONS ? "::notice title=by template::" : "  [template] "}${url} on ${page.url}`);
@@ -299,9 +305,19 @@ function rememberShapes(discovery: WebsiteDiscovery, cards: string[]) {
     if (shape.includes("#") && shapes.size < MAX_SHAPES) shapes.add(shape);
   }
   if (shapes.size) discovery.listingShapes = [...shapes];
+  // Addresses without a number ("/pand/villa-in-het-groen"): the folder that three or more cards of one page share.
+  const folders = new Set(discovery.listingFolders ?? []);
+  const perFolder = new Map<string, number>();
+  for (const url of cards) {
+    const folder = folderOf(url);
+    if (folder) perFolder.set(folder, (perFolder.get(folder) ?? 0) + 1);
+  }
+  for (const [folder, count] of perFolder) if (count >= 3 && folders.size < MAX_SHAPES) folders.add(folder);
+  if (folders.size) discovery.listingFolders = [...folders];
 }
 
-const isListingShape = (discovery: WebsiteDiscovery, url: string) => (discovery.listingShapes ?? []).includes(urlShape(url));
+const isListingShape = (discovery: WebsiteDiscovery, url: string) =>
+  (discovery.listingShapes ?? []).includes(urlShape(url)) || (discovery.listingFolders ?? []).includes(folderOf(url) ?? "");
 
 /** Each listing under the first address the search saw for it, also when the site links it under several. */
 function oneAddressPerListing(state: DiscoveryState, hooks: DiscoveryHooks): DiscoveryHooks {
