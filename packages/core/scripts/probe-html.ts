@@ -22,8 +22,8 @@ type Look = {
 
 // Only sites Quentin chose for testing (his 10 test agencies since 2026-10-28).
 const looks: Look[] = [
-  // Domestic for sale (Quentin's Whise test site): 24 cards shown, ~200 on offer; how do the rest load?
-  { url: "https://www.domestic.be/nl/te-koop", show: ["tail"] },
+  // Bienatoi (Quentin's test site since 2026-11-06): 12+ for sale and 5+ for rent; how are its menu and cards built?
+  { url: "https://www.bienatoi.be/", show: ["links", "tail"] },
 ];
 
 const clean = (html: string) =>
