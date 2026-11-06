@@ -60,19 +60,34 @@ export type DiscoveryState = { discovery: WebsiteDiscovery; overviews: WebsiteOv
 /** Pictures read per run at most: a site has a handful of stickers, energy labels and the like. */
 const MAX_BADGE_IMAGES = 12;
 
+/** Pictures seen on one card only so far, remembered for the rest of the search (a listing's photos fill most of it). */
+const MAX_SINGLE_IMAGES = 300;
+
 /**
  * The status badges of an overview page's cards: written on them, or drawn as a picture over their photos. A picture
- * on several cards that wasn't read yet is read first (by Claude, once per picture and site).
+ * on two or more cards (on this page, or one card here and another earlier in the search) that wasn't read yet is
+ * read first (by Claude, once per picture and site); the earlier card then gets its status too.
  */
-async function cardBadges(state: DiscoveryState, hooks: DiscoveryHooks, reader: DiscoveryReader, deadline: number, html: string, pageUrl: string, cards: string[]) {
+async function cardBadges(state: DiscoveryState, hooks: DiscoveryHooks, reader: DiscoveryReader, deadline: number, root: string | null, html: string, pageUrl: string, cards: string[]) {
   const known = (state.badgeImages ??= {});
   if (hooks.readBadgeImage && cards.length) {
+    const single = (state.discovery.singleImages ??= {});
     let asked = 0;
-    for (const url of badgeImageCandidates(html, pageUrl, cards, reader.site)) {
-      if (imageKey(url) in known || asked >= MAX_BADGE_IMAGES || !reader.robots.allowed(url) || !reader.fits(deadline)) continue;
+    for (const [url, onCards] of badgeImageCandidates(html, pageUrl, cards, reader.site)) {
+      const key = imageKey(url);
+      if (key in known) continue;
+      const earlier = single[key];
+      if (onCards.length < 2 && (!earlier || earlier[0] === onCards[0])) {
+        if (!earlier && Object.keys(single).length < MAX_SINGLE_IMAGES) single[key] = [onCards[0]!, root];
+        continue;
+      }
+      if (asked >= MAX_BADGE_IMAGES || !reader.robots.allowed(url) || !reader.fits(deadline)) continue;
       asked++;
       const answer = await hooks.readBadgeImage(url).catch(() => undefined);
-      if (answer) known[imageKey(url)] = answer;
+      if (!answer) continue;
+      known[key] = answer;
+      delete single[key];
+      if (earlier && answer !== "none" && !onCards.includes(earlier[0])) await hooks.found([earlier[0]], earlier[1], new Map([[earlier[0], answer]]));
     }
   }
   return cardStatuses(html, pageUrl, cards, known);
@@ -214,7 +229,7 @@ export async function continueDiscovery(
     if (item.project && item.root) {
       // A new-build project: the units it links below its own address, or the project itself when it has no page per unit.
       const units = listingLinks(page.html, page.url, site).filter((url) => inLanguage(url) && pathOf(url).startsWith(`${pathOf(item.url)}/`));
-      const fresh = await hooks.found(units.length ? units : [item.url], item.root, await cardBadges(state, hooks, reader, deadline, page.html, page.url, units));
+      const fresh = await hooks.found(units.length ? units : [item.url], item.root, await cardBadges(state, hooks, reader, deadline, item.root, page.html, page.url, units));
       const o = overviews.find((x) => x.url === item.root);
       if (o) o.found += fresh.newToOverview;
       settle(state, item.root);
@@ -244,7 +259,7 @@ export async function continueDiscovery(
     const projectsRoot = item.root && PROJECTS.test(pathOf(item.root)) ? item.root : null;
     // On a new-build overview, cards without a listing id below it are projects, read for their units.
     if (projectsRoot) cards = cards.filter((url) => looksLikeListingUrl(url, site) || !pathOf(url).startsWith(`${pathOf(projectsRoot)}/`));
-    const fresh = await hooks.found(cards, item.root, item.root ? await cardBadges(state, hooks, reader, deadline, page.html, page.url, cards) : undefined);
+    const fresh = await hooks.found(cards, item.root, item.root ? await cardBadges(state, hooks, reader, deadline, item.root, page.html, page.url, cards) : undefined);
     if (process.env.WEBSITE_DEBUG) console.log(`  [walk] ${page.url} root=${item.root ?? "-"} cards=${cards.length} new=${fresh.newToOverview}/${fresh.newToSite}`);
     if (item.root) walk(state, item, page.html, page.url, cards.length, fresh.newToOverview, fresh.newToSite, visited);
     const projects = projectsRoot ? queueProjects(state, projectsRoot, page.html, page.url, cards, visited, reader, inLanguage) : [];
@@ -431,7 +446,7 @@ async function renderShortOverviews(state: DiscoveryState, hooks: DiscoveryHooks
     }
     const language = state.discovery.language ?? null;
     const cards = listingLinks(html, o.url, reader.site).filter((url) => [null, language].includes(languageOf(url)));
-    const fresh = await hooks.found(cards, o.url, await cardBadges(state, hooks, reader, deadline, html, o.url, cards));
+    const fresh = await hooks.found(cards, o.url, await cardBadges(state, hooks, reader, deadline, o.url, html, o.url, cards));
     if (fresh.newToOverview > 0) {
       o.found += fresh.newToOverview;
       o.via = "browser";

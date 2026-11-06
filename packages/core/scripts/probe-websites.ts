@@ -202,6 +202,7 @@ async function probe(site: string) {
   const readUntil = Date.now() + minutes("PROBE_READ_MINUTES", 8);
   const boilerplate = await reader.siteBoilerplate();
   const outcome = new Map<string, { status: string; why: string; transaction?: string | null; price?: number | null; reference?: string | null }>();
+  const agentNames = new Map<string, number>();
   const readOne = async (url: string, shownOnOverview: boolean) => {
     const home = (address: string) => /^(\/[a-z]{2})?\/?$/i.test(new URL(address).pathname);
     let page = await reader.read(url);
@@ -225,6 +226,7 @@ async function probe(site: string) {
     if (!isListingPage(listing, page.html, shownOnOverview || (pageData != null && /\/\d{2,9}\/?$/.test(new URL(page.url).pathname)))) return outcome.set(url, { status: "not a listing", why: title });
     const hint = text.split("\n").find((l) => /\b(verkocht|vendu|sold|verhuurd|lou[ée]|rented|optie|option|compromis)\b/i.test(l));
     const status = listing.status && listing.status !== "active" ? listing.status : (cardBadge.get(url) ?? "active");
+    agentNames.set(listing.agentName ?? "(none)", (agentNames.get(listing.agentName ?? "(none)") ?? 0) + 1);
     return outcome.set(url, { status, transaction: listing.transaction, price: listing.price, reference: listing.reference, why: `${listing.reference ?? "-"} ${listing.street ?? ""} ${listing.city ?? ""} €${listing.price ?? "?"} ${listing.transaction ?? "?"} (${listing.agentName ?? "no agent"})${hint ? ` | "${short(hint, 80)}"` : ""}` });
   };
   const sitemapSample = sitemapOnly.slice(0, 40);
@@ -243,6 +245,10 @@ async function probe(site: string) {
     }
   }
   console.log(`read ${outcome.size} of ${shownOn.size} listing pages`);
+  // Which names the pages give as agent, to spot a street or a feature taken for a person.
+  const names = [...agentNames].sort((a, b) => b[1] - a[1]).map(([name, n]) => `${name}×${n}`).join(", ");
+  console.log(`agent names: ${names}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::notice title=agent names::${new URL(site).hostname} ${names.slice(0, 900)}`);
   const report = (label: string, urls: string[]) => {
     const read = urls.filter((url) => outcome.has(url));
     if (!read.length) return;

@@ -87,6 +87,29 @@ describe("searching a site for its listing pages", () => {
     expect(state.badgeImages).toEqual({ [`${site}/wp-content/uploads/2025/03/IMG_3008-600x400-1.png`]: "sold", [`${site}/wp-content/uploads/2025/03/IMG_2970-600x400-1.png`]: "under_offer" });
   });
 
+  it("reads a sticker shown on one card per page once it is on a second card, and gives the first card its status too", async () => {
+    const card = (slug: string, overlay = "") =>
+      `<div class="item"><a class="link" href="/nos-biens/${slug}/"><img src="/wp-content/uploads/${slug}.jpg">${overlay}<h3>${slug}</h3><p>210.000 €</p></a></div>`;
+    const sold = `<img src="/wp-content/uploads/vendu-300x200.png" alt="">`;
+    const { reader, hooks } = fakeSite({
+      "/": `<nav><a href="/a-vendre/">A vendre</a></nav>`,
+      "/a-vendre": `<main><div class="list">${card("a", sold)}${card("b")}${card("c")}</div><a href="/a-vendre/page/2/">2</a></main>`,
+      "/a-vendre/page/2": `<main><div class="list">${card("d")}${card("e", sold.replace("-300x200", ""))}${card("f")}</div></main>`,
+    });
+    const statuses = new Map<string, string>();
+    const found0 = hooks.found;
+    hooks.found = async (urls, root, badges) => {
+      for (const [url, badge] of badges ?? []) statuses.set(url.replace(site, ""), badge);
+      return found0(urls, root, badges);
+    };
+    let asked = 0;
+    hooks.readBadgeImage = async () => (asked++, "sold");
+    const state = newDiscovery(site);
+    await continueDiscovery(reader, state, hooks, Date.now() + 60_000);
+    expect(asked).toBe(1);
+    expect(Object.fromEntries(statuses)).toEqual({ "/nos-biens/e": "sold", "/nos-biens/a": "sold" });
+  });
+
   it("leaves cards on offer when the picture can't be read (no Claude)", async () => {
     const sticker = `<img src="/wp-content/uploads/vendu.png" alt="">`;
     const card = (slug: string, overlay = "") => `<div class="item"><a class="link" href="/nos-biens/${slug}/"><img src="/wp-content/uploads/${slug}.jpg">${overlay}<h3>${slug}</h3><p>210.000 €</p></a></div>`;

@@ -393,21 +393,24 @@ export const imageKey = (url: string) => url.replace(/[?#].*$/, "").replace(/-\d
 
 /**
  * Pictures that may be a status drawn as an image over the cards' photos (MDI lays a sticker "VENDU!", "OPTION" or
- * "LOUÉ!" over them, with no text, alt or class saying so): the same picture on two or more cards of the page, from
- * the site itself, not a vector icon or an energy label. A listing's own photos differ from card to card.
+ * "LOUÉ!" over them, with no text, alt or class saying so): pictures from the site itself in the cards, not a vector
+ * icon or an energy label, each with the cards that show it. A listing's own photos are on one card; a sticker on
+ * several, on this page or across the overview's pages.
  */
-export function badgeImageCandidates(html: string, pageUrl: string, cards: string[], site: string): string[] {
+export function badgeImageCandidates(html: string, pageUrl: string, cards: string[], site: string): Map<string, string[]> {
   const { doc, anchors, elements } = anchorsOf(html, pageUrl);
-  const seen = new Map<string, { url: string; cards: number }>();
-  for (const part of cardMarkup(doc, anchors, new Set(cards), elements).values()) {
+  const seen = new Map<string, { url: string; cards: string[] }>();
+  for (const [card, part] of cardMarkup(doc, anchors, new Set(cards), elements)) {
     const keys = new Map(imagesIn(part, pageUrl).map((url) => [imageKey(url), url]));
     for (const [key, url] of keys) {
       const path = new URL(url).pathname;
       if (!sameSite(url, site) || !/\.(png|jpe?g|gif|webp)$/i.test(path) || /(peb|epc|energ|icon|logo|picto|arrow|flag|placeholder)/i.test(path.split("/").pop()!)) continue;
-      seen.set(key, { url: seen.get(key)?.url ?? url, cards: (seen.get(key)?.cards ?? 0) + 1 });
+      const entry = seen.get(key) ?? { url, cards: [] };
+      entry.cards.push(card);
+      seen.set(key, entry);
     }
   }
-  return [...seen.values()].filter((x) => x.cards >= 2).map((x) => x.url);
+  return new Map([...seen.values()].map((x) => [x.url, x.cards]));
 }
 
 /**
