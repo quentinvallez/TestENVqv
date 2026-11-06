@@ -572,6 +572,7 @@ function titleTag(html: string): string | null {
 // A person's name of one to four words, the first a capitalised first name of three letters or more.
 const agentFirstName = /[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){0,3}/;
 const personName = /[A-ZÀ-Ý][a-zà-ÿ'’-]+(?:[ \t]+(?:van|de|der|den|le|la|du|des|von|d'|[A-ZÀ-Ý][a-zà-ÿ'’-]+)){1,3}/;
+const wholeName = new RegExp(`^${personName.source}$`);
 /** Words in company names, so "Immo Zone BIV 511 931" isn't taken for a person. */
 // Cookie banners name services as if they were people ("Facebook Pixel", "Google Analytics"); streets ("Rue des
 // Vétérinaires", "Augustin Delportestraat"), menus ("Notre Philosophie") and features ("Avec Jardin") aren't people either.
@@ -689,7 +690,9 @@ export function extractListing(html: string, pageUrl: string, boilerplate?: Set<
     const withPhone = new RegExp(`(tel\\.?|bel|gsm|contact\\w*|afspraak)?[ \\t:]*(${personName.source})[ \\t]*[,;:–-]?[ \\t]*(?:\\+32|0)[ \\t]?[1-9](?:[ \\t./-]?\\d){7,9}`, "gi");
     for (const match of textBlock.matchAll(withPhone)) {
       const name = match[2]!;
-      if (notAPerson.test(name)) continue;
+      // The pattern ignores case for "Tel."/"tel"; the name itself must be capitalised ("Contacteer ons zeker snel via 03…",
+      // "Neem contact op met Ferhat via 0478…" name no one).
+      if (notAPerson.test(name) || !wholeName.test(name)) continue;
       if (match[1] || contactNear(textBlock, name).agentEmail) {
         listing.agentName = name;
         break;
