@@ -208,12 +208,12 @@ async function probe(site: string) {
       console.log(`      other links on it: ${others.slice(0, 30).map((url) => `${url.replace(site, "")}${reader.robots.allowed(url) ? "" : " (robots.txt: no)"}`).join(" ")}`);
     }
   }
-  // A regression check for the rules on cards without a link and sold/rented overviews numbered like listings: the
-  // job fails on a site where either applies, so the run's job list shows where to look (Bienatoi expects both).
+  // What the rules on cards without a link and on sold/rented overviews numbered like listings did here, as a notice
+  // on the run (Bienatoi has both; Webulous sites such as lacledesmaisons have a "vendu---loue" overview).
   const linkless = [...cardFacts.keys()];
   const archiveCards = [...new Set([...html.values()].flatMap((page) => pageLinks(page, site)).filter((url) => sameSite(url, site) && looksLikeListingUrl(url, site) && isArchiveCard(url)))];
   console.log(`VERDICT cards without a link: ${linkless.length}${linkless.length ? ` (${linkless.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}; sold/rented overviews left out as cards: ${archiveCards.length}${archiveCards.length ? ` (${archiveCards.slice(0, 8).map((u) => u.replace(site, "")).join(" ")})` : ""}`);
-  if ((linkless.length || archiveCards.length) && !site.includes("bienatoi")) process.exitCode = 1;
+  if (linkless.length || archiveCards.length) console.log(`::notice::${new URL(site).host} cards without a link ${linkless.length}, sold/rented overviews left out ${archiveCards.length}`);
   if (process.env.GITHUB_ACTIONS && fewCards.length) console.log(`::notice title=few cards::${[...new Set(fewCards)].join(" | ")}`);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=card statuses::${new URL(site).hostname} ${tally([...cardBadge.values()]) || "none"} (of ${shownOn.size})`);
 
