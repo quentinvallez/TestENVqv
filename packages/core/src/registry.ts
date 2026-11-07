@@ -1,4 +1,4 @@
-import { listAgents } from "./tools/agents";
+import { createAgent, listAgents, updateAgent } from "./tools/agents";
 import { dashboardSummary, recentActivity } from "./tools/activity";
 import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
@@ -32,6 +32,8 @@ export const tools = {
   listContacts,
   listAppointments,
   listAgents,
+  createAgent,
+  updateAgent,
   listProposals,
   decideProposal,
   listInbox,

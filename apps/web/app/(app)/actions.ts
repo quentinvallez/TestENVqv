@@ -96,6 +96,31 @@ export async function disconnectCalendarAction(agentId: string, connectionId: st
   revalidatePath(`/agents/${agentId}`);
 }
 
+export type AgentFormState = { error?: string; saved?: boolean } | undefined;
+
+/** Adds an agent, or changes one when the form carries an agentId. Empty fields clear email and phone. */
+export async function saveAgentAction(_state: AgentFormState, form: FormData): Promise<AgentFormState> {
+  const text = (key: string) => (form.has(key) ? String(form.get(key) ?? "").trim() : undefined);
+  const agentId = text("agentId");
+  const name = text("name");
+  const email = text("email");
+  const phone = text("phone");
+  try {
+    const ctx = await getToolContext();
+    if (agentId) {
+      await runTool(tools.updateAgent, ctx, { agentId, ...(name && { name }), ...(email !== undefined && { email: email || null }), ...(phone !== undefined && { phone: phone || null }) });
+      revalidatePath(`/agents/${agentId}`);
+    } else {
+      await runTool(tools.createAgent, ctx, { name: name ?? "", email: email || null, phone: phone || null });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: message.startsWith("[") ? "Check the name and email address." : message || "Saving failed." };
+  }
+  revalidatePath("/agents");
+  return { saved: true };
+}
+
 export type WhatsAppState = { error?: string; saved?: boolean } | undefined;
 
 export async function connectWhatsAppAction(_state: WhatsAppState, form: FormData): Promise<WhatsAppState> {
