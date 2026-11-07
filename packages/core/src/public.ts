@@ -173,3 +173,10 @@ export async function occupantAgency(token: string) {
   if (!row || ["sold", "rented", "archived"].includes(row.status)) return null;
   return row;
 }
+
+/** A widget preview by the secret in its link, while it hasn't expired. */
+export async function previewByToken(token: string) {
+  if (!/^[\w-]{16,40}$/.test(token)) return null;
+  const [row] = await db.select().from(schema.widgetPreviews).where(eq(schema.widgetPreviews.token, token));
+  return row && row.expiresAt > new Date() ? row : null;
+}

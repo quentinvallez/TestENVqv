@@ -116,3 +116,59 @@ export async function openBrowser(reader: SiteReader): Promise<{ render: Rendere
     },
   };
 }
+
+/** Height of the picture of a page in the widget preview: the top of the page, where a visitor starts. */
+const SHOT_HEIGHT = 2400;
+
+/**
+ * Pictures of the agency's pages for the widget preview, for sites that don't let other pages show them in a frame.
+ * Unlike reading, the page loads with its images (it is meant to look like the site); its own pages still follow
+ * robots.txt and requests to private addresses are refused. Null per page when no browser can run here.
+ */
+export async function openScreenshotter(reader: SiteReader): Promise<{ shoot: (url: string, width?: number) => Promise<string | null>; close: () => Promise<void> } | null> {
+  const browser = await launch().catch((error) => {
+    console.error("No browser for pictures of websites", error);
+    return null;
+  });
+  if (!browser) return null;
+  const hosts = new Map<string, Promise<boolean>>();
+  const publicHost = (url: URL) => {
+    if (!hosts.has(url.host))
+      hosts.set(
+        url.host,
+        assertPublicUrl(url).then(
+          () => true,
+          () => false,
+        ),
+      );
+    return hosts.get(url.host)!;
+  };
+
+  const shoot = async (url: string, width = 1280) => {
+    const context = await browser.newContext({ userAgent: USER_AGENT, locale: "nl-BE", viewport: { width, height: 900 } });
+    try {
+      await context.route("**/*", async (route) => {
+        const target = new URL(route.request().url());
+        const ok =
+          (target.protocol === "https:" || target.protocol === "http:") &&
+          (!sameSite(target, reader.site) || route.request().resourceType() !== "document" || reader.robots.allowed(target.toString())) &&
+          (await publicHost(target));
+        await (ok ? route.continue() : route.abort());
+      });
+      const page = await context.newPage();
+      await reader.turn();
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => undefined);
+      const height = Math.min(SHOT_HEIGHT, await page.evaluate(() => document.documentElement.scrollHeight).catch(() => 900));
+      const picture = await page.screenshot({ type: "jpeg", quality: 70, clip: { x: 0, y: 0, width, height: Math.max(900, height) }, fullPage: true });
+      return picture.toString("base64");
+    } catch (error) {
+      console.error(`No picture of ${url}`, error);
+      return null;
+    } finally {
+      await context.close().catch(() => undefined);
+    }
+  };
+
+  return { shoot, close: () => browser.close().catch(() => undefined) };
+}

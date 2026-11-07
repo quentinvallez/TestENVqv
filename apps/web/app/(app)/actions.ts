@@ -1,6 +1,6 @@
 "use server";
 
-import { leadStages, runTool, tools } from "@viewing/core";
+import { leadStages, PreviewError, runTool, tools } from "@viewing/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getToolContext } from "@/lib/context";
@@ -258,4 +258,26 @@ export async function addOccupantAction(listingId: string, _state: OccupantState
 export async function updateOccupantAction(listingId: string, occupantId: string, change: { alerts?: boolean; newLink?: boolean; remove?: boolean }) {
   await runTool(tools.updateListingOccupant, await getToolContext(), { occupantId, ...change });
   revalidatePath(`/listings/${listingId}`);
+}
+
+export type PreviewState = { token?: string; error?: string } | undefined;
+
+/** A preview of our widget on a prospect agency's own listings, for sales. */
+export async function createPreviewAction(_state: PreviewState, form: FormData): Promise<PreviewState> {
+  const website = String(form.get("website") ?? "").trim();
+  if (!website) return { error: "Enter the agency's website." };
+  try {
+    const preview = await runTool(tools.createWidgetPreview, await getToolContext(), { website });
+    revalidatePath("/previews");
+    return { token: preview.token };
+  } catch (error) {
+    if (error instanceof PreviewError) return { error: error.message };
+    console.error("The preview failed", error);
+    return { error: "The website could not be read. Check the address and try again." };
+  }
+}
+
+export async function deletePreviewAction(previewId: string) {
+  await runTool(tools.deleteWidgetPreview, await getToolContext(), { previewId });
+  revalidatePath("/previews");
 }

@@ -375,6 +375,59 @@ export const websitePages = pgTable(
   (t) => [uniqueIndex().on(t.agencyId, t.url), index().on(t.listingId), index().on(t.agencyId, t.kind)],
 );
 
+/**
+ * The booking widget shown on a prospect agency's own listings, as a page of ours (never on their site): what we read
+ * from their site, and pictures of it when it can't be shown in a frame. Belongs to the agency that made it (ours,
+ * for sales); opened by anyone with its link until it expires.
+ */
+export const widgetPreviews = pgTable(
+  "widget_previews",
+  {
+    id: id("wpv"),
+    agencyId: agencyId(),
+    /** The secret part of the preview's link. */
+    token: text().notNull().unique(),
+    site: text().notNull(),
+    name: text(),
+    brandColor: text(),
+    language: text().$type<"nl" | "fr" | "en">().notNull().default("nl"),
+    homeFramable: boolean().notNull().default(false),
+    listingFramable: boolean().notNull().default(false),
+    listings: jsonb().$type<WidgetPreviewListing[]>().notNull().default([]),
+    /** JPEG pictures (base64) of the home page and the first listing, on a computer and a phone, when the site can't be framed. */
+    homeShot: text(),
+    listingShot: text(),
+    homeShotPhone: text(),
+    listingShotPhone: text(),
+    /** "back_office": made by the agency; "public": asked for on the preview form, with the prospect's email. */
+    source: text().$type<"back_office" | "public">().notNull().default("back_office"),
+    email: text(),
+    views: integer().notNull().default(0),
+    demoBookings: integer().notNull().default(0),
+    lastViewedAt: timestamp({ withTimezone: true }),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [index().on(t.agencyId, t.createdAt)],
+);
+
+export type WidgetPreviewListing = {
+  url: string;
+  title: string | null;
+  street: string | null;
+  houseNumber: string | null;
+  postcode: string | null;
+  city: string | null;
+  price: number | null;
+  transaction: "sale" | "rent" | null;
+  propertyType: string | null;
+  bedrooms: number | null;
+  livingArea: number | null;
+  photo: string | null;
+  agentName: string | null;
+  status: "active" | "under_offer";
+};
+
 export const contacts = pgTable(
   "contacts",
   {

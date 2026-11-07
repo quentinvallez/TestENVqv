@@ -44,7 +44,13 @@ export async function assertPublicUrl(url: URL) {
   if (addresses.some((a) => privateAddress(a.address))) throw new FetchError("This address is not a public website");
 }
 
-export type FetchedPage = { url: string; status: number; html: string };
+export type FetchedPage = {
+  url: string;
+  status: number;
+  html: string;
+  /** What the page says about being shown inside another site (X-Frame-Options, Content-Security-Policy), for the widget preview. */
+  framing?: { xFrameOptions: string | null; contentSecurityPolicy: string | null };
+};
 
 /**
  * GET a page of the agency's site. Redirects are followed by hand (at most
@@ -92,7 +98,8 @@ export async function fetchSitePage(
       throw new FetchError(`Not a web page (${type || "unknown type"})`, response.status);
     }
     const html = await readCapped(response);
-    return { url: url.toString(), status: response.status, html };
+    const framing = { xFrameOptions: response.headers.get("x-frame-options"), contentSecurityPolicy: response.headers.get("content-security-policy") };
+    return { url: url.toString(), status: response.status, html, framing };
   }
   throw new FetchError("Too many redirects");
 }
