@@ -9,7 +9,7 @@ import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
 import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/oauth";
 import { defineTool, type ToolContext } from "../tool";
-import { parseGmailForwardingConfirmation, portalDomains, storeGmailForwarding } from "./portal-forwarding";
+import { checkSender, forwardingCheckToken, markForwardingCheck, parseGmailForwardingConfirmation, portalDomains, storeGmailForwarding } from "./portal-forwarding";
 
 /** An address at immoweb.be, zimmo.be or immovlan.be (or a subdomain). */
 const fromPortal = (address: string | null) => Boolean(address && portalDomains.some((d) => new RegExp(`[@.]${d.replace(".", "\\.")}$`, "i").test(address)));
@@ -195,6 +195,10 @@ export const receiveEmail = defineTool({
       }
       return { kind: "portal_lead" as const, portal, ...result };
     }
+
+    // Our forwarding test, forwarded back by an agent's Outlook rule (not sent straight to us).
+    const checkToken = input.from.email !== checkSender() ? forwardingCheckToken(input) : null;
+    if (checkToken && (await markForwardingCheck(ctx, checkToken))) return { kind: "ignored" as const, reason: "forwarding_check" };
 
     // Gmail asks to confirm forwarding by mailing the address itself: keep the code for Settings, it isn't a client.
     const gmailConfirmation = parseGmailForwardingConfirmation(input);

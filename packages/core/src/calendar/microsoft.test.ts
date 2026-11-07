@@ -40,6 +40,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     if (url.endsWith("/me/events") && init.method === "POST") return json({ id: "AAMk-event-1" }, 201);
     if (url.includes("/me/events/")) return new Response(null, { status: init.method === "DELETE" ? 204 : 200 });
     if (url.endsWith("/me/sendMail")) return new Response(null, { status: 202 });
+    if (url.startsWith("https://api.eu.mailgun.net/")) return json({ id: "<mg-1>", message: "Queued" });
     if (url.endsWith("/mailFolders/inbox/messageRules") && (init.method ?? "GET") === "GET") return json({ value: rules });
     if (url.endsWith("/mailFolders/inbox/messageRules") && init.method === "POST") {
       rules.push({ id: "rule-1", displayName: (body as { displayName: string }).displayName });
@@ -132,7 +133,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     expect(first).toMatchObject({ ruleId: "rule-1", updated: false });
     const created = calls.find((c) => c.method === "POST" && c.url.endsWith("/messageRules"))!;
     expect(created.body).toMatchObject({
-      conditions: { senderContains: ["immoweb.be", "zimmo.be", "immovlan.be"] },
+      conditions: { senderContains: ["immoweb.be", "zimmo.be", "immovlan.be", "forwarding-check@mail.example.be"] },
       actions: { forwardTo: [{ emailAddress: { address: first.forwardTo } }] },
     });
     expect(first.forwardTo).toMatch(/@mail\.example\.be$/);
@@ -140,8 +141,34 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     expect(again).toMatchObject({ ruleId: "rule-1", updated: true });
     expect(calls.at(-1)!.method).toBe("PATCH");
     const status = await runTool(tools.portalLeadsStatus, ctx, {});
-    expect(status.mailboxes[0]).toMatchObject({ canForward: true, forwarding: { ruleId: "rule-1" } });
+    expect(status.mailboxes[0]).toMatchObject({ canForward: true, forwarding: { ruleId: "rule-1" }, forwardingState: "untested" });
     await runTool(tools.removePortalForwarding, ctx, { agentId });
     expect(calls.at(-1)!.method).toBe("DELETE");
+  });
+
+  it("checks that the rule really forwards, with a test email that has to come back", async () => {
+    stub();
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    vi.stubEnv("MAILGUN_API_KEY", "key");
+    const setup = await runTool(tools.setupPortalForwarding, ctx, { agentId });
+    const test = calls.findLast((c) => c.url.startsWith("https://api.eu.mailgun.net/"))!;
+    const form = new URLSearchParams(String(test.body));
+    expect(form.get("from")).toContain("forwarding-check@mail.example.be");
+    expect(form.get("to")).toBe("quentin@agency.be");
+    expect(form.get("subject")).toBe(`Forwarding check ${setup.check!.token}`);
+    expect((await runTool(tools.portalLeadsStatus, ctx, {})).mailboxes[0]!.forwardingState).toBe("checking");
+
+    // Sent straight to us (not through the rule) proves nothing.
+    const direct = await runTool(tools.receiveEmail, ctx, { from: { name: null, email: "forwarding-check@mail.example.be" }, subject: form.get("subject")!, text: "", useAi: false });
+    expect((await runTool(tools.portalLeadsStatus, ctx, {})).mailboxes[0]!.forwardingState).toBe("checking");
+    void direct;
+    const forwarded = await runTool(tools.receiveEmail, ctx, {
+      from: { name: "Quentin", email: "quentin@agency.be" },
+      subject: `FW: ${form.get("subject")}`,
+      text: "Van: Planner <forwarding-check@mail.example.be>\n...",
+      useAi: false,
+    });
+    expect(forwarded).toMatchObject({ kind: "ignored", reason: "forwarding_check" });
+    expect((await runTool(tools.portalLeadsStatus, ctx, {})).mailboxes[0]!.forwardingState).toBe("working");
   });
 });

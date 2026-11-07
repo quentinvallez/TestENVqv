@@ -9,6 +9,21 @@ import { CopyAddressForm, ForwardingButton } from "./forwarding-button";
 const portalName = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
 const RECENT = 14 * 24 * 3600 * 1000;
 
+const dotColor: Record<string, string> = {
+  working: "var(--success)",
+  checking: "var(--warning)",
+  blocked: "var(--danger)",
+  untested: "var(--success)",
+  none: "var(--line-strong)",
+};
+
+function stateText(state: string | null, since: string) {
+  if (state === "working") return `Forwarding works: our test email came back. Rule active since ${formatRelative(new Date(since))}.`;
+  if (state === "checking") return "Rule created. Checking that Outlook really forwards: refresh in a few minutes.";
+  if (state === "blocked") return "Rule created, but our test email never came back: forwarding is blocked.";
+  return `Forwarding portal emails since ${formatRelative(new Date(since))}.`;
+}
+
 /** Settings → Portal leads: both ways to get Immoweb, Zimmo and Immovlan leads in, and whether they arrive. */
 export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: boolean }) {
   const status = await runTool(tools.portalLeadsStatus, ctx, {});
@@ -91,7 +106,7 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
             {status.mailboxes.map((m) => (
               <li key={`${m.agentId}-${m.provider}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-2">
-                  <StatusDot color={m.forwarding ? "var(--success)" : "var(--line-strong)"} className="mt-1.5" />
+                  <StatusDot color={dotColor[m.forwardingState ?? "none"]!} className="mt-1.5" />
                   <div className="min-w-0">
                     <div className="truncate">
                       {m.agentName} <span className="text-muted">· {m.accountEmail}</span>
@@ -102,14 +117,22 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
                         : !m.active
                           ? "Outlook connection expired."
                           : m.forwarding
-                            ? `Forwarding portal emails since ${formatRelative(new Date(m.forwarding.createdAt))}.`
+                            ? stateText(m.forwardingState, m.forwarding.createdAt)
                             : m.canForward
                               ? "Not forwarding yet."
                               : "Connect Outlook again to allow us to create the rule."}
                     </div>
+                    {m.forwardingState === "blocked" && (
+                      <div className="mt-1.5 max-w-xl text-[12px] text-muted">
+                        Microsoft 365 blocks forwarding to outside addresses unless an admin allows it. Your IT admin turns it on once at security.microsoft.com → Policies &amp; rules → Threat policies → Anti-spam → Anti-spam outbound policy (Default) → Forwarding rules: <i>On</i>, then click Test again. Also check that the test email didn&apos;t land in Junk. Or use option 1, which needs no mailbox settings.
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="flex shrink-0 gap-1.5 sm:flex-col sm:items-end">
+                  {m.provider === "microsoft" && m.canForward && address && m.forwarding && m.forwardingState !== "working" && m.forwardingState !== "checking" && (
+                    <ForwardingButton action={portalForwardingAction.bind(null, m.agentId, false)} label="Test again" variant="primary" />
+                  )}
                   {m.provider === "microsoft" && m.canForward && address && (
                     <ForwardingButton
                       action={portalForwardingAction.bind(null, m.agentId, Boolean(m.forwarding))}

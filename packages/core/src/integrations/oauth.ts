@@ -64,6 +64,24 @@ export function authorizeUrl(provider: OAuthProvider, options: { redirectUri: st
   return url.toString();
 }
 
+/**
+ * Microsoft 365 organisations that only let an admin approve apps: the admin
+ * opens this link once and approves for the whole company. Personal accounts
+ * never need it. Comes back to the callback with admin_consent=True.
+ */
+export function adminConsentUrl(options: { redirectUri: string }) {
+  const c = config.microsoft;
+  const url = new URL("https://login.microsoftonline.com/organizations/v2.0/adminconsent");
+  const scopes = [...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules, "User.Read"].map((s) => `https://graph.microsoft.com/${s}`);
+  url.search = new URLSearchParams({ client_id: c.clientId() ?? "", scope: scopes.join(" "), redirect_uri: options.redirectUri, state: "admin_consent" }).toString();
+  return url.toString();
+}
+
+/** Microsoft's answer when the organisation requires an admin to approve the app first. */
+export function needsAdminConsent(error: string | null, description: string | null) {
+  return error === "consent_required" || /AADSTS(90094|90095|65001)/.test(description ?? "");
+}
+
 type TokenResponse = { access_token: string; refresh_token?: string; expires_in: number; scope?: string; id_token?: string; error?: string; error_description?: string };
 
 async function tokenRequest(provider: OAuthProvider, params: Record<string, string>): Promise<TokenResponse> {

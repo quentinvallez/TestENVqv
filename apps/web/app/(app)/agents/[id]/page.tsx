@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { runTool, tools } from "@viewing/core";
+import { adminConsentUrl, runTool, tools } from "@viewing/core";
+import { headers } from "next/headers";
 import { CalendarPlus } from "lucide-react";
 import { Avatar, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
@@ -8,12 +9,20 @@ import { cn } from "@/lib/cn";
 import { disconnectCalendarAction, saveAgentAction, saveAvailabilityAction } from "../../actions";
 import { AgentEmail } from "../agent-forms";
 import { AvailabilityForm } from "./availability-form";
+import { CopyText } from "../../settings/channels";
 
 const connectNotice: Record<string, string> = {
   ok: "Connected.",
   denied: "Access was not granted.",
   failed: "Connecting failed. Try again, and allow calendar access.",
 };
+
+/** The admin approval link for organisations that don't let staff approve apps themselves. */
+async function adminLink() {
+  const h = await headers();
+  const origin = process.env.APP_URL ?? `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
+  return adminConsentUrl({ redirectUri: new URL("/api/calendar/microsoft/callback", origin).toString() });
+}
 
 export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ connect?: string }> }) {
   const { id } = await params;
@@ -58,6 +67,15 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 <CalendarPlus className="size-4 text-muted" />
                 Calendar and mailbox
               </div>
+              {connect === "admin" && (
+                <div className="mt-2 rounded-md border border-line p-2.5 text-[12px]">
+                  <p className="font-medium text-danger">Your company needs an admin to approve the planner first.</p>
+                  <p className="mt-1 text-muted">Send this link to your Microsoft 365 administrator. They approve once for everyone, then click Connect Outlook again.</p>
+                  <div className="mt-2">
+                    <CopyText text={await adminLink()} />
+                  </div>
+                </div>
+              )}
               {connectNotice[connect ?? ""] && <p className={cn("mt-2 text-[12px]", connect === "ok" ? "text-success" : "text-danger")}>{connectNotice[connect!]}</p>}
               {connections.length === 0 && (
                 <p className="mt-1 flex items-center gap-1.5 text-muted">
