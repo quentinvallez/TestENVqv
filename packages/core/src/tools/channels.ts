@@ -1,13 +1,21 @@
 import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
-import { inboundAddress } from "../channels";
+import { emailAgent, inboundAddress } from "../channels";
+import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { parsePortalEmail } from "../channels/portals";
 import { platformWhatsapp } from "../channels/whatsapp";
 import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
 import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/oauth";
-import { defineTool } from "../tool";
+import { defineTool, type ToolContext } from "../tool";
+import { parseGmailForwardingConfirmation, portalDomains, storeGmailForwarding } from "./portal-forwarding";
+
+/** The original sender of a forwarded mail ("Van: Immoweb <noreply@immoweb.be>" in the first lines), if any. */
+function forwardedSender(text: string): string | null {
+  const line = text.slice(0, 2000).match(/^\s*(?:from|van|de|von)\s*:\s*(.+)$/im)?.[1];
+  return line?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() ?? null;
+}
 import { findOrCreateContact, receiveMessage } from "./conversations";
 
 const { agents, agencySettings, calendarConnections, leads, listings, messages } = schema;
@@ -21,6 +29,30 @@ const visitNote = {
   fr: (portal: string, where: string) => `Demande via ${portal} : souhaite visiter ${where} (sans message).`,
   en: (portal: string, where: string) => `Request via ${portal}: would like a viewing of ${where} (no message).`,
 };
+
+/** With portals sending leads straight to us, the agent still gets each one in their own mailbox (Settings → Portal leads). */
+async function copyLeadToAgent(
+  ctx: ToolContext,
+  lead: { agentId: string | null; portal: string; where: string; name: string; email?: string | null; phone?: string | null; message?: string | null; conversationId: string },
+) {
+  if (!lead.agentId) return;
+  const [settings] = await ctx.db.select({ automations: agencySettings.automations }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  if (!automationSettings(settings?.automations).portalLeadCopies) return;
+  const { absoluteUrl } = await import("../planner/agent");
+  const sent = await emailAgent(ctx, {
+    agentId: lead.agentId,
+    subject: `${lead.portal}: ${lead.name} · ${lead.where}`,
+    text: [
+      `${lead.name} contacted you via ${lead.portal} about ${lead.where}.`,
+      [lead.email && `Email: ${lead.email}`, lead.phone && `Phone: ${lead.phone}`].filter(Boolean).join("\n"),
+      lead.message ? `Message:\n${lead.message}` : "",
+      `Open in the inbox: ${absoluteUrl(`/inbox?c=${lead.conversationId}`)}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  });
+  await recordEvent(ctx, { type: "agent.lead_copied", subjectType: "conversation", subjectId: lead.conversationId, data: { agentId: lead.agentId, delivery: sent.delivery } });
+}
 
 export const receivePortalLead = defineTool({
   name: "portal_leads_receive",
@@ -120,6 +152,7 @@ export const receivePortalLead = defineTool({
       metadata: { portal: input.portal, portalRef: input.portalRef ?? null, leadId: lead!.id },
       useAi: input.useAi,
     });
+    if (!("duplicate" in received && received.duplicate)) await copyLeadToAgent(ctx, { agentId: lead!.agentId, portal: portalNames[input.portal], where, name, email: input.email, phone: input.phone, message: input.message, conversationId: received.conversationId });
     return { leadId: lead!.id, contactId: contact.id, listingId: listing?.id ?? null, newLead: !existing, ...received };
   },
 });
@@ -148,6 +181,16 @@ export const receiveEmail = defineTool({
       const result = await receivePortalLead.run(ctx, { portal, ...lead, externalId: input.messageId ?? undefined, useAi: input.useAi });
       return { kind: "portal_lead" as const, portal, ...result };
     }
+
+    // Gmail asks to confirm forwarding by mailing the address itself: keep the code for Settings, it isn't a client.
+    const gmailConfirmation = parseGmailForwardingConfirmation(input);
+    if (gmailConfirmation) {
+      await storeGmailForwarding(ctx, gmailConfirmation);
+      return { kind: "ignored" as const, reason: "gmail_forwarding_confirmation" };
+    }
+    // The forwarding rule sends everything from the portals: invoices, newsletters and statistics are not clients.
+    const fromPortal = (address: string | null) => Boolean(address && portalDomains.some((d) => new RegExp(`[@.]${d.replace(".", "\\.")}$`, "i").test(address)));
+    if (fromPortal(input.from.email) || fromPortal(forwardedSender(input.text))) return { kind: "ignored" as const, reason: "portal_not_a_lead" };
 
     // Mail from the agency's own agents (out-of-office replies, internal forwards) is not a client message.
     const [fromAgent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.email, input.from.email)));

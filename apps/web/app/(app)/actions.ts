@@ -150,6 +150,7 @@ export async function updateAutomationsAction(change: {
   sendRemindersAutomatically?: boolean;
   sendOccupantAlertsAutomatically?: boolean;
   agentAlerts?: boolean;
+  portalLeadCopies?: boolean;
   replyToPortalLeadsAutomatically?: boolean;
 }) {
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
@@ -283,4 +284,20 @@ export async function addOccupantAction(listingId: string, _state: OccupantState
 export async function updateOccupantAction(listingId: string, occupantId: string, change: { alerts?: boolean; newLink?: boolean; remove?: boolean }) {
   await runTool(tools.updateListingOccupant, await getToolContext(), { occupantId, ...change });
   revalidatePath(`/listings/${listingId}`);
+}
+
+export type ForwardingState = { error?: string; done?: boolean } | undefined;
+
+/** One click in Settings → Portal leads: the rule in the agent's Outlook, created or removed. */
+export async function portalForwardingAction(agentId: string, remove: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  try {
+    const ctx = await getToolContext();
+    if (remove) await runTool(tools.removePortalForwarding, ctx, { agentId });
+    else await runTool(tools.setupPortalForwarding, ctx, { agentId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: /^(Connect|The inbox)/.test(message) ? message : "Outlook refused the rule. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
 }

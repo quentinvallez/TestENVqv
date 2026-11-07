@@ -34,7 +34,12 @@ Test: in Settings → Channels, copy the inbox address and send it an email from
 
 ## 2. Portal leads (Immoweb, Zimmo, Immovlan)
 
-Immoweb, Zimmo and Immovlan email each lead to the address the agency gave them. The agency adds a forwarding rule in its own mailbox: mails from `immoweb.be`, `zimmo.be` and `immovlan.be` → forward to the inbox address. Each lead becomes:
+Immoweb, Zimmo and Immovlan email each lead to the address the agency gave them. Settings → Portal leads offers two ways to get those emails to the inbox address:
+
+1. **Forward from the mailbox.** Agents who connected Outlook press *Set up forwarding*: we create an inbox rule (Microsoft Graph, `MailboxSettings.ReadWrite`; no access to messages) forwarding mail from `immoweb.be`, `zimmo.be` and `immovlan.be`. Microsoft 365 tenants often block external auto-forwarding; their admin allows it in Defender → Anti-spam → Outbound policy. Gmail users add a filter themselves; the confirmation code Gmail mails to the inbox address is shown in Settings.
+2. **Portals send to us directly.** The agency sets the inbox address as the lead email in its portal accounts, and can switch on a copy of each lead to the listing's agent.
+
+Other mail from the portals (invoices, newsletters) is ignored. Each lead becomes:
 
 - a contact (matched on email or phone if they're already known),
 - a lead with source Immoweb/Zimmo for the listing, matched on the portal code (Listings → Immoweb ID) or the agency's reference, assigned to that listing's agent,

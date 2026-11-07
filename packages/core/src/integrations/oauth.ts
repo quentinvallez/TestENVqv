@@ -25,6 +25,8 @@ const config = {
       base: ["openid", "email"],
       calendar: ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.freebusy"],
       mail: ["https://www.googleapis.com/auth/gmail.send"],
+      // Gmail's forwarding settings need a restricted scope (security audit), so Gmail users set the filter themselves.
+      rules: [] as string[],
     },
   },
   microsoft: {
@@ -36,6 +38,8 @@ const config = {
       base: ["openid", "email", "offline_access", "User.Read"],
       calendar: ["Calendars.ReadWrite"],
       mail: ["Mail.Send"],
+      // Only to create the inbox rule that forwards portal leads to the agency's inbox address. Gives no access to messages.
+      rules: ["MailboxSettings.ReadWrite"],
     },
   },
 } as const;
@@ -47,7 +51,7 @@ export function oauthConfigured(provider: OAuthProvider) {
 export function authorizeUrl(provider: OAuthProvider, options: { redirectUri: string; state: string; loginHint?: string }) {
   const c = config[provider];
   const url = new URL(c.authorize);
-  const scopes = [...c.scopes.base, ...c.scopes.calendar, ...c.scopes.mail];
+  const scopes = [...c.scopes.base, ...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules];
   url.search = new URLSearchParams({
     client_id: c.clientId() ?? "",
     redirect_uri: options.redirectUri,
@@ -96,14 +100,17 @@ export function emailFromIdToken(idToken: string | undefined): string | null {
 }
 
 /** Which of our capabilities the granted scopes cover. */
-export function grantedCapabilities(provider: OAuthProvider, scope: string | undefined): ("calendar" | "mail")[] {
+export type Capability = "calendar" | "mail" | "rules";
+
+export function grantedCapabilities(provider: OAuthProvider, scope: string | undefined): Capability[] {
   const granted = new Set((scope ?? "").split(" ").map((s) => s.toLowerCase()));
   const c = config[provider].scopes;
   // Microsoft returns scopes with the Graph prefix, e.g. https://graph.microsoft.com/Mail.Send.
   const has = (s: string) => granted.has(s.toLowerCase()) || granted.has(`https://graph.microsoft.com/${s}`.toLowerCase());
-  const result: ("calendar" | "mail")[] = [];
+  const result: Capability[] = [];
   if (c.calendar.every(has)) result.push("calendar");
   if (c.mail.every(has)) result.push("mail");
+  if (c.rules.length && c.rules.every(has)) result.push("rules");
   return result;
 }
 

@@ -41,6 +41,7 @@ export const updateAutomationSettings = defineTool({
     sendRemindersAutomatically: z.boolean().optional(),
     sendOccupantAlertsAutomatically: z.boolean().optional(),
     agentAlerts: z.boolean().optional(),
+    portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
     replyToPortalLeadsAutomatically: z.boolean().optional(),
   }),
   run: async (ctx, input) => {

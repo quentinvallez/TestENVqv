@@ -8,6 +8,7 @@ import { formatRelative } from "@/lib/format";
 import { automationRuleLabel } from "@/lib/labels";
 import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, updateAutomationsAction } from "../actions";
 import { CopyText, WhatsAppForm } from "./channels";
+import { PortalLeads } from "./portal-leads";
 
 const capabilities = [
   ["Handle cancellations and reschedules from replies", "suggest"],
@@ -98,7 +99,7 @@ export default async function SettingsPage() {
                   <>
                     <p className="mt-1 font-mono text-[12px] break-all">{channels.inboundAddress}</p>
                     <p className="mt-1 text-[12px] text-muted">
-                      Client replies come back here automatically. Forward your Immoweb, Zimmo and Immovlan lead emails to it (a forwarding rule in your mailbox) and each one becomes a lead for the listing&apos;s agent with a draft reply.
+                      Client replies come back here automatically. Immoweb, Zimmo and Immovlan leads sent here become leads for the listing&apos;s agent; see Portal leads below.
                       {channels.portalLeads > 0 && ` ${channels.portalLeads} portal leads so far.`}
                     </p>
                   </>
@@ -145,6 +146,8 @@ export default async function SettingsPage() {
               </div>
             </Panel>
           </section>
+
+          <PortalLeads ctx={ctx} copies={automations.portalLeadCopies} />
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-medium">

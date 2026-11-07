@@ -175,6 +175,47 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(fetchMock.mock.calls.slice(afterBooking).some((c) => ((c as unknown as [string, RequestInit])[1].body as URLSearchParams).get("subject")?.startsWith("Bezoek geannuleerd"))).toBe(false);
   });
 
+  it("keeps Gmail's forwarding code for Settings and ignores other portal mail", async () => {
+    const gmail = await runTool(tools.receiveEmail, ctx, {
+      from: { name: "Gmail Team", email: "forwarding-noreply@google.com" },
+      subject: "(#140253455) Gmail Forwarding Confirmation - Receive Mail from sofie.peeters@gmail.com",
+      text: "Confirmation code: 140253455\n\nTo allow this, click: https://mail-settings.google.com/mail/vf-%5BANGjdJ8x%5D-abc\n",
+      useAi: false,
+    });
+    expect(gmail).toMatchObject({ kind: "ignored", reason: "gmail_forwarding_confirmation" });
+    const status = await runTool(tools.portalLeadsStatus, ctx, {});
+    expect(status.gmailForwarding).toMatchObject({ code: "140253455", account: "sofie.peeters@gmail.com" });
+    expect(status.gmailForwarding!.link).toMatch(/^https:\/\/mail-settings\.google\.com\/mail\/vf-/);
+    expect(status.portals.find((p) => p.portal === "immoweb")!.count).toBeGreaterThan(0);
+
+    const invoice = await runTool(tools.receiveEmail, ctx, { from: { name: "Immoweb", email: "facturation@immoweb.be" }, subject: "Uw factuur", text: "Bedrag: 120 EUR", useAi: false });
+    expect(invoice).toMatchObject({ kind: "ignored", reason: "portal_not_a_lead" });
+    const forwarded = await runTool(tools.receiveEmail, ctx, {
+      from: { name: "Sofie", email: "sofie.peeters@outlook.com" },
+      subject: "FW: Uw maandoverzicht",
+      text: "Van: Zimmo <news@zimmo.be>\nOnderwerp: Uw maandoverzicht\n\nUw zoekertjes kregen 120 views.",
+      useAi: false,
+    });
+    expect(forwarded).toMatchObject({ kind: "ignored", reason: "portal_not_a_lead" });
+  });
+
+  it("emails a copy of a portal lead to the listing's agent when the agency asks for it", async () => {
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const lead = (id: string) => ({ ...immowebLead(id), text: immowebLead(id).text.replace(/ruben\.vos/g, `copy-${id.length}`).replace("Ruben Vos", "Lotte Claes") });
+    await runTool(tools.receiveEmail, ctx, lead("<copy-off@immoweb.be>"));
+    const subjects = () => fetchMock.mock.calls.map((c) => ((c as unknown as [string, RequestInit])[1].body as URLSearchParams).get("subject"));
+    expect(subjects().some((s) => s?.startsWith("Immoweb: Lotte Claes"))).toBe(false);
+    await runTool(tools.updateAutomationSettings, ctx, { portalLeadCopies: true });
+    await runTool(tools.receiveEmail, ctx, lead("<copy-on-1@immoweb.be>"));
+    const copy = fetchMock.mock.calls.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("subject")?.startsWith("Immoweb: Lotte Claes"));
+    expect(copy!.get("to")).toContain("sofie@demo-agency.be");
+    expect(copy!.get("text")).toContain("/inbox?c=");
+    await runTool(tools.updateAutomationSettings, ctx, { portalLeadCopies: false });
+  });
+
   it("ignores mail from the agency's own agents", async () => {
     const result = await runTool(tools.receiveEmail, ctx, { from: { name: "Sofie", email: "sofie@demo-agency.be" }, subject: "Afwezig", text: "Ik ben afwezig.", useAi: false });
     expect(result).toMatchObject({ kind: "ignored", reason: "from_agent" });

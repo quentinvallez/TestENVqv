@@ -46,7 +46,7 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - Email goes from the agent's connected Gmail/Outlook (send-only scopes) or the agency's inbox address via Mailgun EU, always with Reply-To the inbox address. We never read mailboxes.
 - WhatsApp outside the 24-hour window needs a template (`whatsappTemplate`); names and texts are in docs/setup-channels.md.
 - Webhooks (`app/api/channels/*`) verify signatures, resolve the agency through `@viewing/core/inbound`, then call tools with `inboundContext(agencyId, …)`. Inbound handling deduplicates on the provider's message id.
-- Portal leads (Immoweb, Zimmo, Immovlan) arrive as forwarded emails, parsed by `channels/portals.ts` (pure, tested), and go through `portal_leads_receive`.
+- Portal leads (Immoweb, Zimmo, Immovlan) arrive as forwarded emails, parsed by `channels/portals.ts` (pure, tested), and go through `portal_leads_receive`. Settings → Portal leads (`tools/portal-forwarding.ts`): one-click Outlook inbox rule (`MailboxSettings.ReadWrite`, rules only), Gmail confirmation code shown, or portals sending straight to us with `automations.portalLeadCopies` emailing the agent. Non-lead portal mail is ignored.
 - Tokens (OAuth, WhatsApp) are encrypted with `CALENDAR_TOKEN_KEY` (`crypto.ts`). Calendar events never invite the client.
 
 ## Website widget
