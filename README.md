@@ -50,6 +50,10 @@ Sign up, then click **Load demo data** on the dashboard.
 - Every outbound message goes through `sendMessage` (`packages/core/src/channels`): the agent's Gmail or Outlook, the agency's inbox address via Mailgun EU, or WhatsApp Cloud API. Without a provider it is stored as "simulated" and shown as not delivered.
 - Client replies, WhatsApp messages and Immoweb/Zimmo/Immovlan lead emails come in through `/api/channels/*` and land in the inbox with a planner draft. Setup: [docs/setup-channels.md](docs/setup-channels.md).
 
+## Widget previews for prospects
+
+**Widget previews** in the back office (`/previews`) reads a prospect agency's website (home page and a few listings, as its robots.txt allows) and makes a link (`/preview/<token>`, 30 days) that shows our booking widget on their own listings, in their colour. Their site is shown in a frame when it allows that, otherwise as a picture taken with the website browser. Nothing is put on their site, nothing is saved as an agency or listing, and booking in a preview books and sends nothing. The list shows how often each link was opened and whether someone tried booking. Agencies can also ask for one themselves at `/preview` (website + email) when `PREVIEW_AGENCY_ID` names the workspace those previews belong to.
+
 ## Automatic jobs
 
 `packages/core/src/automations` runs on a schedule for every agency: a reminder the evening before each viewing, viewings marked done an hour after they end, a follow-up draft the next day, a draft with new times when an agent marks a no-show, and a check-in when a lead hasn't answered for a few days. Each job happens once per subject (`automation_runs`), so running them often is harmless. Everything is a draft in the inbox, except reminders when the agency turns on "Send reminders automatically" in Settings.

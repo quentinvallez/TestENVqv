@@ -7,7 +7,7 @@ const chromium = ["../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@
 const config: NextConfig = {
   transpilePackages: ["@viewing/core", "@viewing/db"],
   serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
-  outputFileTracingIncludes: { "/listings/website": chromium, "/api/cron/website": chromium },
+  outputFileTracingIncludes: { "/listings/website": chromium, "/api/cron/website": chromium, "/previews": chromium, "/preview": chromium },
   images: { remotePatterns: [{ protocol: "https", hostname: "images.unsplash.com" }] },
 };
 

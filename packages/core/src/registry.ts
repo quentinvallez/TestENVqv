@@ -14,6 +14,7 @@ import { findMatchingClients, recommendForContact, similarListings, suggestListi
 import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
+import { createWidgetPreview, deleteWidgetPreview, listWidgetPreviews, noteWidgetPreview } from "./tools/previews";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
 import { addListingOccupant, getOccupantPage, listListingOccupants, reportOccupantProblem, requestViewing, setListingAccess, setOccupantAvailability, updateListingOccupant } from "./tools/occupants";
 import type { Tool } from "./tool";
@@ -93,6 +94,10 @@ export const tools = {
   importWebsiteListings,
   importWebsitePage,
   websiteImportStatus,
+  createWidgetPreview,
+  listWidgetPreviews,
+  noteWidgetPreview,
+  deleteWidgetPreview,
 };
 
 /** Tools by their public name, as agents and proposals refer to them. */

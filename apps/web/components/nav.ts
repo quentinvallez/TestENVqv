@@ -10,6 +10,7 @@ import {
   UserRound,
   Users,
   CalendarCheck,
+  ScanEye,
   type LucideIcon,
 } from "lucide-react";
 
@@ -37,6 +38,7 @@ export const navSections: { title?: string; items: NavItem[] }[] = [
     title: "Tools",
     items: [
       { href: "/widget", label: "Website & widget", icon: Code2 },
+      { href: "/previews", label: "Widget previews", icon: ScanEye },
       { href: "/reports", label: "Reports", icon: BarChart3, soon: true },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
