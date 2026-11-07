@@ -1,0 +1,1 @@
+ALTER TABLE "widget_previews" ADD COLUMN "shot_error" text;

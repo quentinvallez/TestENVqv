@@ -50,6 +50,7 @@ export default async function PreviewsPage() {
                         {host(p.site)} · {p.listingCount} listings · {p.source === "public" ? `form${p.email ? `, ${p.email}` : ""}` : "made here"}
                         {p.demoBookings ? ` · tried booking ${p.demoBookings}×` : ""}
                       </p>
+                      {p.shotError && <p className="mt-1 truncate text-[11px] text-danger">No picture: {p.shotError}</p>}
                       <div className="mt-2 flex items-center gap-2">
                         <Link href={`/preview/${p.token}?own=1`} target="_blank">
                           <Button size="sm">
@@ -96,7 +97,10 @@ export default async function PreviewsPage() {
                             </p>
                           </td>
                           <td className="px-3 py-2.5 text-muted">{p.source === "public" ? (p.email ?? "Preview form") : "Made here"}</td>
-                          <td className="px-3 py-2.5 text-muted">{p.pictures ? "Picture of the site" : "The live site"}</td>
+                          <td className="px-3 py-2.5 text-muted">
+                            {p.framed ? "The live site" : p.pictures ? "Picture of the site" : "Rebuilt page"}
+                            {p.shotError && <p className="max-w-[220px] truncate text-[11px] text-danger" title={p.shotError}>No picture: {p.shotError}</p>}
+                          </td>
                           <td className="px-3 py-2.5">
                             {p.views ? `${p.views}×, last ${formatRelative(p.lastViewedAt ?? p.createdAt, now)}` : <span className="text-muted">Not yet</span>}
                             {p.demoBookings > 0 && <p className="text-[12px] text-muted">Tried booking {p.demoBookings}×</p>}

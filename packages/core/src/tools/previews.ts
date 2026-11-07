@@ -61,11 +61,12 @@ export const createWidgetPreview = defineTool({
     if (!read.listings.length) throw new PreviewError("We read the website but found no listing on offer to show the widget on.");
 
     // Sites that keep themselves out of frames are shown as a picture instead.
-    const shots: { homeShot?: string | null; listingShot?: string | null; homeShotPhone?: string | null; listingShotPhone?: string | null } = {};
+    const shots: { homeShot?: string | null; listingShot?: string | null; homeShotPhone?: string | null; listingShotPhone?: string | null; shotError?: string } = {};
     if (!read.homeFramable || !read.listingFramable) {
       const reader = await SiteReader.open(read.site);
       const camera = await openScreenshotter(reader);
-      if (camera) {
+      if ("error" in camera) shots.shotError = camera.error;
+      else {
         try {
           if (!read.listingFramable) {
             shots.listingShot = await camera.shoot(read.listings[0]!.url);
@@ -78,6 +79,7 @@ export const createWidgetPreview = defineTool({
         } finally {
           await camera.close();
         }
+        if (camera.errors.length) shots.shotError = camera.errors.join(" · ").slice(0, 1000);
       }
     }
 
@@ -103,7 +105,7 @@ export const createWidgetPreview = defineTool({
       type: "preview.created",
       subjectType: "widget_preview",
       subjectId: row!.id,
-      data: { site: read.site, source: input.source, listings: read.listings.length, framed: read.homeFramable && read.listingFramable, pictures: Boolean(shots.homeShot || shots.listingShot) },
+      data: { site: read.site, source: input.source, listings: read.listings.length, framed: read.homeFramable && read.listingFramable, pictures: Boolean(shots.homeShot || shots.listingShot), pictureError: shots.shotError ?? null },
     });
     return { ...row!, reused: false, listings: read.listings.length };
   },
@@ -128,6 +130,8 @@ export const listWidgetPreviews = defineTool({
         demoBookings: widgetPreviews.demoBookings,
         listingCount: sql<number>`jsonb_array_length(${widgetPreviews.listings})::int`,
         pictures: sql<boolean>`(${widgetPreviews.homeShot} is not null or ${widgetPreviews.listingShot} is not null)`,
+        framed: sql<boolean>`(${widgetPreviews.homeFramable} and ${widgetPreviews.listingFramable})`,
+        shotError: widgetPreviews.shotError,
         lastViewedAt: widgetPreviews.lastViewedAt,
         expiresAt: widgetPreviews.expiresAt,
         createdAt: widgetPreviews.createdAt,

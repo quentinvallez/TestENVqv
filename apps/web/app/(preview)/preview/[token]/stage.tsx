@@ -41,6 +41,7 @@ const text = {
     phone: "Telefoon",
     underOffer: "Onder optie",
     perMonth: "/maand",
+    sketch: "Vereenvoudigde weergave van jullie website: de site laat zich niet in een ander venster tonen. Live staat de knop op jullie eigen pagina.",
   },
   fr: {
     preview: "Aperçu",
@@ -57,6 +58,7 @@ const text = {
     phone: "Téléphone",
     underOffer: "Sous option",
     perMonth: "/mois",
+    sketch: "Vue simplifiée de votre site : il ne peut pas être affiché dans une autre fenêtre. En ligne, le bouton apparaît sur votre propre page.",
   },
   en: {
     preview: "Preview",
@@ -73,6 +75,7 @@ const text = {
     phone: "Phone",
     underOffer: "Under option",
     perMonth: "/month",
+    sketch: "Simplified view of your website: it doesn't allow being shown inside another page. Live, the button sits on your own page.",
   },
 } satisfies Record<WidgetLang, unknown>;
 
@@ -108,8 +111,8 @@ export function PreviewStage({
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = text[lang];
-  // Only the first listing has a picture: a site that can't be framed offers just that one.
-  const listings = listingFramable ? all : all.slice(0, 1);
+  // Only the first listing has a picture; the others show as a page rebuilt from what we read.
+  const listings = all;
   const [view, setView] = useState<"home" | number>(listings.length ? 0 : "home");
   const [device, setDevice] = useState<"desktop" | "phone">("desktop");
   const [panel, setPanel] = useState(false);
@@ -118,7 +121,7 @@ export function PreviewStage({
   const listing = typeof view === "number" ? listings[view] : undefined;
   const host = new URL(site).hostname.replace(/^www\./, "");
   const framed = listing ? listingFramable : homeFramable;
-  const shot = listing ? (listingShot ? "listing" : null) : homeShot ? "home" : null;
+  const shot = listing ? (listingShot && view === 0 ? "listing" : null) : homeShot ? "home" : null;
   const pageUrl = listing?.url ?? site;
   const valuation = valuationText[lang];
 
@@ -194,11 +197,7 @@ export function PreviewStage({
               <p className="bg-white px-4 py-3 text-center text-[12px] text-[#6b6b6b]">{t.picture}</p>
             </div>
           ) : (
-            <div className="flex size-full items-center justify-center p-6 text-center text-muted">
-              <a href={pageUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                {pageUrl}
-              </a>
-            </div>
+            <Sketch name={name} colour={colour} lang={lang} listing={listing} listings={listings} site={site} onOpen={go} />
           )}
 
           {/* Our widget, on top of their page. */}
@@ -303,6 +302,74 @@ export function PreviewStage({
         </div>
       </main>
     </>
+  );
+}
+
+/**
+ * The agency's page rebuilt from what we read, for sites that refuse frames when no picture could be taken: their
+ * name, colour, photo, address, price and agent, so the widget always has a page to sit on.
+ */
+function Sketch({
+  name,
+  colour,
+  lang,
+  listing,
+  listings,
+  site,
+  onOpen,
+}: {
+  name: string;
+  colour: string;
+  lang: WidgetLang;
+  listing: Listing | undefined;
+  listings: Listing[];
+  site: string;
+  onOpen: (index: number) => void;
+}) {
+  const t = text[lang];
+  const facts = (l: Listing) => [[l.postcode, l.city].filter(Boolean).join(" "), money(l.price, lang) && `${money(l.price, lang)}${l.transaction === "rent" ? t.perMonth : ""}`].filter(Boolean).join(" · ");
+  return (
+    <div className="size-full overflow-y-auto bg-white text-[#1d1d1f]" style={{ colorScheme: "light" }}>
+      <div className="flex h-14 items-center justify-between px-5 text-white" style={{ background: colour }}>
+        <span className="truncate text-[16px] font-semibold">{name}</span>
+        <a href={listing?.url ?? site} target="_blank" rel="noreferrer" className="text-[12px] text-white/80 underline underline-offset-2">
+          {new URL(site).hostname.replace(/^www\./, "")}
+        </a>
+      </div>
+      {listing ? (
+        <div className="mx-auto max-w-[880px] px-5 py-6 pb-48">
+          {listing.photo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={listing.photo} alt="" referrerPolicy="no-referrer" className="aspect-[16/9] w-full rounded-lg bg-[#f4f4f5] object-cover" />
+          )}
+          <h1 className="mt-5 text-[24px] leading-tight font-semibold">{listing.title ?? place(listing)}</h1>
+          <p className="mt-1 text-[15px] text-[#6b6b6b]">{[place(listing) !== listing.title ? place(listing) : null, facts(listing)].filter(Boolean).join(" · ")}</p>
+          {listing.status === "under_offer" && <p className="mt-2 inline-block rounded-full border border-[#dcdcdc] px-2.5 py-0.5 text-[12px]">{t.underOffer}</p>}
+          {listing.agentName && <p className="mt-6 text-[14px] text-[#6b6b6b]">{listing.agentName}</p>}
+          <p className="mt-8 text-[12px] text-[#a1a1a1]">{t.sketch}</p>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-[960px] px-5 py-8 pb-40">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {listings.map((l, i) => (
+              <button key={l.url} type="button" onClick={() => onOpen(i)} className="overflow-hidden rounded-lg border border-[#ebebeb] text-left">
+                {l.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={l.photo} alt="" referrerPolicy="no-referrer" className="aspect-[4/3] w-full bg-[#f4f4f5] object-cover" />
+                ) : (
+                  <div className="aspect-[4/3] w-full bg-[#f4f4f5]" />
+                )}
+                <div className="p-3">
+                  <p className="truncate font-medium">{l.title ?? place(l)}</p>
+                  <p className="truncate text-[12px] text-[#6b6b6b]">{facts(l)}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="mt-8 text-[12px] text-[#a1a1a1]">{t.sketch}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

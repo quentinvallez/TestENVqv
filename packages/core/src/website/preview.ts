@@ -15,6 +15,7 @@ import type { FetchedPage } from "./fetch";
 import { brandColor, siteBuilder, type SiteBuilder } from "./look";
 import { listingLinks } from "./overview";
 import { listingFromFlightData, listingFromPageData, pageDataUrl, withPageData } from "./page-data";
+import { continueDiscovery, newDiscovery, type DiscoveryReader } from "./discover";
 import { SiteReader } from "./reader";
 
 /*
@@ -77,17 +78,21 @@ export function allowsFraming(framing: FetchedPage["framing"]): boolean {
   return sources.some((s) => s === "*" || s === "https:");
 }
 
+/** Words a title starts with that aren't a name ("Home | Immodyck"). */
+const GENERIC_TITLE = /^(home|homepage|home page|welkom|welcome|bienvenue|accueil|startpagina|start|index)$/i;
+
 /** The agency's name: what the site calls itself for sharing, else the title of its home page without the slogan. */
 export function siteName(html: string): string | null {
   const shared = metaContent(html, "og:site_name") ?? metaContent(html, "application-name");
-  if (shared?.trim()) return decodeEntities(shared).trim().slice(0, 80);
+  if (shared?.trim() && !GENERIC_TITLE.test(decodeEntities(shared).trim())) return decodeEntities(shared).trim().slice(0, 80);
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
   if (!title) return null;
-  const first = decodeEntities(title)
+  const parts = decodeEntities(title)
     .replace(/\s+/g, " ")
-    .split(/\s+[|·•–—-]\s+/)[0]!
-    .trim();
-  return first ? first.slice(0, 80) : null;
+    .split(/\s+[|·•–—-]\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part && !GENERIC_TITLE.test(part));
+  return parts[0] ? parts[0].slice(0, 80) : null;
 }
 
 /** The language the page is written in, for the widget's texts. */
@@ -137,9 +142,10 @@ export function previewListing(url: string, listing: ExtractedListing): PreviewL
   };
 }
 
-/** Listings with an address and a photo first, then those on offer before those under option, then for sale before to rent. */
+/** Listings with an address and a photo first, then those on offer before those under option, then homes before garages, land and shops, then for sale before to rent. */
 export function rankPreviewListings(listings: PreviewListing[]): PreviewListing[] {
-  const score = (l: PreviewListing) => (l.street ? 8 : 0) + (l.photo ? 4 : 0) + (l.status === "active" ? 2 : 0) + (l.transaction !== "rent" ? 1 : 0);
+  const home = (l: PreviewListing) => !["garage", "land", "commercial", "office"].includes(l.propertyType ?? "");
+  const score = (l: PreviewListing) => (l.street ? 16 : 0) + (l.photo ? 8 : 0) + (l.status === "active" ? 4 : 0) + (home(l) ? 2 : 0) + (l.transaction !== "rent" ? 1 : 0);
   return [...listings].sort((a, b) => score(b) - score(a));
 }
 
@@ -149,6 +155,42 @@ export function previewSiteFromInput(input: string): string | null {
   if (!trimmed) return null;
   const url = normalizeUrl(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
   return url ? new URL(url).origin + "/" : null;
+}
+
+/** At most this long for the import's search when the home page and its overviews show no listing links. */
+const SEARCH_MS = 20_000;
+
+/** Listing pages the import's search finds first, leaving out those an overview card marks as sold or rented. */
+async function searchListings(reader: SiteReader, site: string, deadline: number): Promise<string[]> {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const enough = () => found.length >= MAX_LISTING_READS;
+  const search: DiscoveryReader = {
+    site,
+    robots: reader.robots,
+    read: (url) => reader.read(url),
+    fits: (until) => !enough() && reader.fits(until),
+  };
+  await continueDiscovery(
+    search,
+    newDiscovery(site),
+    {
+      found: async (urls, _root, badges) => {
+        let fresh = 0;
+        for (const url of urls) {
+          if (seen.has(url)) continue;
+          seen.add(url);
+          fresh++;
+          const badge = badges?.get(url);
+          if (badge !== "sold" && badge !== "rented") found.push(url);
+        }
+        return { newToOverview: fresh, newToSite: fresh };
+      },
+    },
+    deadline,
+    null,
+  ).catch((error) => console.error(`The search for listings on ${site} failed`, error));
+  return found;
 }
 
 export class PreviewError extends Error {
@@ -178,6 +220,11 @@ export async function readPreviewSite(site: string, deadline: number): Promise<P
     const page = await reader.read(overview);
     if (!("html" in page) || page.status >= 400) continue;
     for (const url of listingLinks(page.html, page.url, base)) if (!candidates.includes(url)) candidates.push(url);
+  }
+  // Sites whose links the quick look misses (data files, page numbers, forms, sitemaps): the import's own search,
+  // stopped as soon as it has a few listing pages that aren't marked sold or rented on their cards.
+  if (candidates.length < PREVIEW_LISTINGS && reader.fits(deadline)) {
+    for (const url of await searchListings(reader, base, Math.min(deadline, Date.now() + SEARCH_MS))) if (!candidates.includes(url)) candidates.push(url);
   }
   // Addresses that plainly look like one listing first.
   candidates.sort((a, b) => Number(looksLikeListingUrl(b, base)) - Number(looksLikeListingUrl(a, base)));

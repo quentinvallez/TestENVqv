@@ -406,6 +406,8 @@ export const widgetPreviews = pgTable(
     listingShot: text(),
     homeShotPhone: text(),
     listingShotPhone: text(),
+    /** Why the pictures couldn't be taken, when they were needed (shown in the back office). */
+    shotError: text(),
     /** "back_office": made by the agency; "public": asked for on the preview form, with the prospect's email. */
     source: text().$type<"back_office" | "public">().notNull().default("back_office"),
     email: text(),

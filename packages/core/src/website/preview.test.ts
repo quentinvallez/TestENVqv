@@ -21,6 +21,9 @@ describe("widget preview", () => {
     expect(siteName(`<title>Lindeveld Vastgoed | Uw makelaar in Gent</title>`)).toBe("Lindeveld Vastgoed");
     expect(siteName(`<title>Trevi - Vastgoed</title>`)).toBe("Trevi");
     expect(siteName(`<p>no title</p>`)).toBeNull();
+    // A title that starts with the page's name, not the agency's.
+    expect(siteName(`<title>Home | Immodyck</title>`)).toBe("Immodyck");
+    expect(siteName(`<meta property="og:site_name" content="Home"><title>Welkom - Immo Dyck</title>`)).toBe("Immo Dyck");
     expect(pageLanguage(`<html lang="fr-BE">`)).toBe("fr");
     expect(pageLanguage(`<html class="x" lang="nl">`)).toBe("nl");
     expect(pageLanguage(`<html>`)).toBe("nl");
@@ -49,6 +52,9 @@ describe("widget preview", () => {
     const option = previewListing("https://x.be/3", listing({ street: "Molenstraat", status: "under_offer", photos: ["https://x.be/c.jpg"] }))!;
     expect(full.photo).toBe("https://x.be/b.jpg");
     expect(rankPreviewListings([plain, option, full]).map((l) => l.url)).toEqual(["https://x.be/2", "https://x.be/3", "https://x.be/1"]);
+    // A garage box is a poor example of a viewing: homes go first.
+    const garage = previewListing("https://x.be/4", listing({ street: "Jan Welterslaan", propertyType: "garage", photos: ["https://x.be/d.jpg"] }))!;
+    expect(rankPreviewListings([garage, full]).map((l) => l.url)).toEqual(["https://x.be/2", "https://x.be/4"]);
   });
 
   it("takes a typed address as the site's root", () => {
