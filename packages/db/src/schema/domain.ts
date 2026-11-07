@@ -50,6 +50,8 @@ export type ChannelSettings = {
   whatsapp?: { phoneNumberId: string; displayNumber: string; accessToken: string };
   /** The last Gmail forwarding confirmation that reached the inbox address, so the agency can confirm forwarding without reading our mail. */
   gmailForwarding?: { code: string; link: string | null; account: string | null; receivedAt: string };
+  /** Where the copy of a portal lead goes when the listing's agent has no email (or no listing was matched), e.g. info@agency.be. */
+  leadCopyAddress?: string;
 };
 
 /** Outcome of the last import of listings from the agency's website. */
@@ -137,7 +139,7 @@ export type AutomationSettings = {
   nudgeAfterDays?: number;
   /** Email the agent when a client books, moves or cancels a viewing or valuation visit. */
   agentAlerts?: boolean;
-  /** Email each portal lead to the listing's agent, for agencies whose portals send leads straight to the inbox address. */
+  /** Forward each portal email that the portals sent straight to the inbox address to the listing's agent (or channels.leadCopyAddress). On unless turned off. */
   portalLeadCopies?: boolean;
 };
 

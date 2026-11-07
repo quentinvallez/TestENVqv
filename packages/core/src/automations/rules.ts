@@ -26,7 +26,7 @@ export const defaultAutomationSettings: Required<AutomationSettings> = {
   nudges: true,
   nudgeAfterDays: 3,
   agentAlerts: true,
-  portalLeadCopies: false,
+  portalLeadCopies: true,
 };
 
 export function automationSettings(stored: AutomationSettings | null | undefined): Required<AutomationSettings> {

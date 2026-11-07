@@ -199,21 +199,37 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(forwarded).toMatchObject({ kind: "ignored", reason: "portal_not_a_lead" });
   });
 
-  it("emails a copy of a portal lead to the listing's agent when the agency asks for it", async () => {
+  it("forwards the original portal email to the listing's agent when the portal sent it to us directly", async () => {
     vi.stubEnv("MAILGUN_API_KEY", "key-test");
     vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    const lead = (id: string) => ({ ...immowebLead(id), text: immowebLead(id).text.replace(/ruben\.vos/g, `copy-${id.length}`).replace("Ruben Vos", "Lotte Claes") });
-    await runTool(tools.receiveEmail, ctx, lead("<copy-off@immoweb.be>"));
-    const subjects = () => fetchMock.mock.calls.map((c) => ((c as unknown as [string, RequestInit])[1].body as URLSearchParams).get("subject"));
-    expect(subjects().some((s) => s?.startsWith("Immoweb: Lotte Claes"))).toBe(false);
-    await runTool(tools.updateAutomationSettings, ctx, { portalLeadCopies: true });
-    await runTool(tools.receiveEmail, ctx, lead("<copy-on-1@immoweb.be>"));
-    const copy = fetchMock.mock.calls.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("subject")?.startsWith("Immoweb: Lotte Claes"));
-    expect(copy!.get("to")).toContain("sofie@demo-agency.be");
-    expect(copy!.get("text")).toContain("/inbox?c=");
+    const forms = () => fetchMock.mock.calls.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams);
+    const lead = (id: string, from = { name: "Immoweb", email: "noreply@immoweb.be" }) => ({
+      ...immowebLead(id),
+      from,
+      subject: "Nieuwe aanvraag voor uw zoekertje",
+      text: immowebLead(id).text.replace(/ruben\.vos/g, `lotte${id.length}`).replace("Ruben Vos", "Lotte Claes"),
+    });
+
+    await runTool(tools.receiveEmail, ctx, lead("<copy-1@immoweb.be>"));
+    const copy = forms().find((f) => f.get("subject") === "Fwd: Nieuwe aanvraag voor uw zoekertje")!;
+    expect(copy.get("to")).toContain("sofie@demo-agency.be");
+    expect(copy.get("h:Reply-To")).toMatch(/^lotte\d+@example\.be$/);
+    expect(copy.get("text")).toContain("Kan ik dit appartement bezoeken?");
+    expect(copy.get("text")).toContain("/inbox?c=");
+
+    // Forwarded by the agent's own mailbox: they already have it, no copy.
+    const before = forms().length;
+    await runTool(tools.receiveEmail, ctx, { ...lead("<copy-22@immoweb.be>"), from: { name: "Sofie", email: "sofie.peeters@outlook.com" } });
+    expect(forms().slice(before).some((f) => f.get("subject")?.startsWith("Fwd:"))).toBe(false);
+
+    // Turned off: no copy either.
     await runTool(tools.updateAutomationSettings, ctx, { portalLeadCopies: false });
+    const off = forms().length;
+    await runTool(tools.receiveEmail, ctx, lead("<copy-333@immoweb.be>"));
+    expect(forms().slice(off).some((f) => f.get("subject")?.startsWith("Fwd:"))).toBe(false);
+    await runTool(tools.updateAutomationSettings, ctx, { portalLeadCopies: true });
   });
 
   it("ignores mail from the agency's own agents", async () => {

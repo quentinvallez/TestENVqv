@@ -2,9 +2,9 @@ import { runTool, tools, type ToolContext } from "@viewing/core";
 import { Inbox } from "lucide-react";
 import { Button, Panel, StatusDot } from "@/components/ui";
 import { formatRelative } from "@/lib/format";
-import { portalForwardingAction, updateAutomationsAction } from "../actions";
+import { leadCopyAddressAction, portalForwardingAction, updateAutomationsAction } from "../actions";
 import { CopyText } from "./channels";
-import { ForwardingButton } from "./forwarding-button";
+import { CopyAddressForm, ForwardingButton } from "./forwarding-button";
 
 const portalName = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
 const RECENT = 14 * 24 * 3600 * 1000;
@@ -44,8 +44,40 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
         </div>
 
         <div className="px-4 py-3">
-          <div className="font-medium">Option 1 · Forward from your mailbox</div>
-          <p className="mt-0.5 max-w-xl text-muted">Leads keep arriving in your own mailbox, and a rule forwards a copy to us. With Outlook connected, we create that rule for you in one click.</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 font-medium">
+                Option 1 · Let the portals send leads to us
+                <span className="rounded-full border border-line px-1.5 text-[11px] font-normal text-muted">Recommended</span>
+              </div>
+              <p className="mt-0.5 max-w-xl text-muted">
+                In your Immoweb, Zimmo and Immovlan accounts, set the email address that receives contact requests to your inbox address above. Nothing to set up in your mailbox: we forward each original portal email to the listing&apos;s agent, so nobody misses a lead, and replying to it goes straight to the client.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-muted">Forward each portal email to the agent:</span>
+                <span className="flex items-center gap-1.5">
+                  <StatusDot color={copies ? "var(--success)" : "var(--line-strong)"} />
+                  {copies ? "On" : "Off"}
+                </span>
+              </div>
+            </div>
+            <form action={updateAutomationsAction.bind(null, { portalLeadCopies: !copies })} className="shrink-0">
+              <Button type="submit">{copies ? "Turn off" : "Turn on"}</Button>
+            </form>
+          </div>
+          {copies && (
+            <div className="mt-3">
+              <div className="text-muted">When the agent has no email address, or the listing isn&apos;t recognised, send it to:</div>
+              <div className="mt-1">
+                <CopyAddressForm action={leadCopyAddressAction} value={status.leadCopyAddress} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 py-3">
+          <div className="font-medium">Option 2 · Forward from your mailbox</div>
+          <p className="mt-0.5 max-w-xl text-muted">If you prefer to keep the portals writing to your own mailbox: a rule forwards a copy to us. With Outlook connected, we create that rule in one click. With a Gmail filter, turn off the forwarding to agents above, or they get each lead twice.</p>
           <ul className="mt-3 flex flex-col gap-3">
             {status.mailboxes.length === 0 && (
               <li className="text-muted">
@@ -133,24 +165,6 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
           </details>
         </div>
 
-        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="font-medium">Option 2 · Let the portals send leads to us</div>
-            <p className="mt-0.5 max-w-xl text-muted">
-              In your Immoweb, Zimmo and Immovlan accounts, set the email address for leads to your inbox address. Nothing depends on your mailbox, but the portal emails no longer reach it, so we can send each lead on to the listing&apos;s agent.
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-muted">Copy of each lead to the agent:</span>
-              <span className="flex items-center gap-1.5">
-                <StatusDot color={copies ? "var(--success)" : "var(--line-strong)"} />
-                {copies ? "On" : "Off"}
-              </span>
-            </div>
-          </div>
-          <form action={updateAutomationsAction.bind(null, { portalLeadCopies: !copies })} className="shrink-0">
-            <Button type="submit">{copies ? "Turn off" : "Turn on"}</Button>
-          </form>
-        </div>
       </Panel>
     </section>
   );

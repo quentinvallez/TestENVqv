@@ -11,6 +11,9 @@ import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/
 import { defineTool, type ToolContext } from "../tool";
 import { parseGmailForwardingConfirmation, portalDomains, storeGmailForwarding } from "./portal-forwarding";
 
+/** An address at immoweb.be, zimmo.be or immovlan.be (or a subdomain). */
+const fromPortal = (address: string | null) => Boolean(address && portalDomains.some((d) => new RegExp(`[@.]${d.replace(".", "\\.")}$`, "i").test(address)));
+
 /** The original sender of a forwarded mail ("Van: Immoweb <noreply@immoweb.be>" in the first lines), if any. */
 function forwardedSender(text: string): string | null {
   const line = text.slice(0, 2000).match(/^\s*(?:from|van|de|von)\s*:\s*(.+)$/im)?.[1];
@@ -30,28 +33,35 @@ const visitNote = {
   en: (portal: string, where: string) => `Request via ${portal}: would like a viewing of ${where} (no message).`,
 };
 
-/** With portals sending leads straight to us, the agent still gets each one in their own mailbox (Settings → Portal leads). */
-async function copyLeadToAgent(
+/**
+ * When the portals send leads straight to the inbox address, the agency still
+ * gets each portal email: the original, forwarded to the listing's agent (or
+ * the agency's copy address when no agent is known), with Reply-To the client.
+ */
+async function forwardLeadCopy(
   ctx: ToolContext,
-  lead: { agentId: string | null; portal: string; where: string; name: string; email?: string | null; phone?: string | null; message?: string | null; conversationId: string },
+  lead: { agentId: string | null; conversationId: string; clientEmail: string | null },
+  original: { subject: string; text: string; from: { name: string | null; email: string } },
 ) {
-  if (!lead.agentId) return;
-  const [settings] = await ctx.db.select({ automations: agencySettings.automations }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
-  if (!automationSettings(settings?.automations).portalLeadCopies) return;
+  const [settings] = await ctx.db.select({ automations: agencySettings.automations, channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  if (!automationSettings(settings?.automations).portalLeadCopies) return null;
+  const [agent] = lead.agentId ? await ctx.db.select({ email: agents.email }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, lead.agentId))) : [];
+  const to = agent?.email ?? settings?.channels.leadCopyAddress ?? null;
+  if (!to) return null;
   const { absoluteUrl } = await import("../planner/agent");
   const sent = await emailAgent(ctx, {
-    agentId: lead.agentId,
-    subject: `${lead.portal}: ${lead.name} · ${lead.where}`,
+    agentId: agent?.email ? lead.agentId : null,
+    to,
+    replyTo: lead.clientEmail,
+    subject: /^(fwd?|tr|doorst)\s*:/i.test(original.subject) ? original.subject : `Fwd: ${original.subject}`,
     text: [
-      `${lead.name} contacted you via ${lead.portal} about ${lead.where}.`,
-      [lead.email && `Email: ${lead.email}`, lead.phone && `Phone: ${lead.phone}`].filter(Boolean).join("\n"),
-      lead.message ? `Message:\n${lead.message}` : "",
-      `Open in the inbox: ${absoluteUrl(`/inbox?c=${lead.conversationId}`)}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
+      `Lead added to your planner: ${absoluteUrl(`/inbox?c=${lead.conversationId}`)}`,
+      `---------- Forwarded message ----------\nFrom: ${original.from.name ? `${original.from.name} <${original.from.email}>` : original.from.email}\nSubject: ${original.subject}`,
+      original.text.trim(),
+    ].join("\n\n"),
   });
-  await recordEvent(ctx, { type: "agent.lead_copied", subjectType: "conversation", subjectId: lead.conversationId, data: { agentId: lead.agentId, delivery: sent.delivery } });
+  await recordEvent(ctx, { type: "portal_lead.copied", subjectType: "conversation", subjectId: lead.conversationId, data: { to, delivery: sent.delivery } });
+  return sent;
 }
 
 export const receivePortalLead = defineTool({
@@ -152,8 +162,7 @@ export const receivePortalLead = defineTool({
       metadata: { portal: input.portal, portalRef: input.portalRef ?? null, leadId: lead!.id },
       useAi: input.useAi,
     });
-    if (!("duplicate" in received && received.duplicate)) await copyLeadToAgent(ctx, { agentId: lead!.agentId, portal: portalNames[input.portal], where, name, email: input.email, phone: input.phone, message: input.message, conversationId: received.conversationId });
-    return { leadId: lead!.id, contactId: contact.id, listingId: listing?.id ?? null, newLead: !existing, ...received };
+    return { leadId: lead!.id, contactId: contact.id, listingId: listing?.id ?? null, agentId: lead!.agentId, newLead: !existing, ...received };
   },
 });
 
@@ -179,6 +188,11 @@ export const receiveEmail = defineTool({
     if (portalLead) {
       const { portal, ...lead } = portalLead;
       const result = await receivePortalLead.run(ctx, { portal, ...lead, externalId: input.messageId ?? undefined, useAi: input.useAi });
+      // Sent straight by the portal (not forwarded by the agency's own mailbox, which already has it): send the agency its copy.
+      const direct = fromPortal(input.from.email);
+      if (direct && !("duplicate" in result && result.duplicate)) {
+        await forwardLeadCopy(ctx, { agentId: result.agentId, conversationId: result.conversationId, clientEmail: lead.email }, { subject: input.subject, text: input.text, from: input.from });
+      }
       return { kind: "portal_lead" as const, portal, ...result };
     }
 
@@ -189,7 +203,6 @@ export const receiveEmail = defineTool({
       return { kind: "ignored" as const, reason: "gmail_forwarding_confirmation" };
     }
     // The forwarding rule sends everything from the portals: invoices, newsletters and statistics are not clients.
-    const fromPortal = (address: string | null) => Boolean(address && portalDomains.some((d) => new RegExp(`[@.]${d.replace(".", "\\.")}$`, "i").test(address)));
     if (fromPortal(input.from.email) || fromPortal(forwardedSender(input.text))) return { kind: "ignored" as const, reason: "portal_not_a_lead" };
 
     // Mail from the agency's own agents (out-of-office replies, internal forwards) is not a client message.

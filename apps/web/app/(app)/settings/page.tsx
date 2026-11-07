@@ -205,7 +205,7 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
-            <p className="mb-2 text-muted">These jobs run on their own every day. Except reminders you allow below, everything they write waits in the inbox for your approval.</p>
+            <p className="mb-2 text-muted">These jobs run on their own. Reminders, booking confirmations and alerts to occupants can go out without approval as set below; everything else waits in the inbox for your approval.</p>
             <Panel className="divide-y divide-line">
               {jobs.map((job) => (
                 <div key={job.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
@@ -257,6 +257,21 @@ export default async function SettingsPage() {
                   </form>
                 </div>
               ))}
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium">Confirmation after a booking</div>
+                  <p className="mt-0.5 max-w-xl text-muted">
+                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. Fixed text in their language, no AI.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-muted">Sending:</span>
+                    <Pill>{automations.sendBookingConfirmationsAutomatically ? "Automatically" : "After your approval"}</Pill>
+                  </div>
+                </div>
+                <form action={updateAutomationsAction.bind(null, { sendBookingConfirmationsAutomatically: !automations.sendBookingConfirmationsAutomatically })} className="shrink-0">
+                  <Button type="submit">{automations.sendBookingConfirmationsAutomatically ? "Ask me first instead" : "Send automatically"}</Button>
+                </form>
+              </div>
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="font-medium">Alerts to owners and tenants</div>

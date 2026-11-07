@@ -152,6 +152,7 @@ export async function updateAutomationsAction(change: {
   agentAlerts?: boolean;
   portalLeadCopies?: boolean;
   replyToPortalLeadsAutomatically?: boolean;
+  sendBookingConfirmationsAutomatically?: boolean;
 }) {
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
   revalidatePath("/settings");
@@ -297,6 +298,16 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return { error: /^(Connect|The inbox)/.test(message) ? message : "Outlook refused the rule. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
+
+export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
+  try {
+    await runTool(tools.setLeadCopyAddress, await getToolContext(), { address: String(form.get("address") ?? "") });
+  } catch {
+    return { error: "That doesn't look like an email address." };
   }
   revalidatePath("/settings");
   return { done: true };

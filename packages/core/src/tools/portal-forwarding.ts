@@ -56,6 +56,7 @@ export const portalLeadsStatus = defineTool({
         return { portal, count: row?.count ?? 0, lastAt: row?.lastAt ? new Date(row.lastAt) : null };
       }),
       gmailForwarding: settings?.channels.gmailForwarding ?? null,
+      leadCopyAddress: settings?.channels.leadCopyAddress ?? null,
       mailboxes: connections.map((c) => ({
         agentId: c.agentId,
         agentName: c.agentName,
@@ -162,3 +163,19 @@ export async function storeGmailForwarding(ctx: ToolContext, confirmation: NonNu
   await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, channels }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { channels } });
   await recordEvent(ctx, { type: "portal_forwarding.gmail_confirmation", subjectType: "agency", subjectId: ctx.agencyId, data: { account: confirmation.account } });
 }
+
+export const setLeadCopyAddress = defineTool({
+  name: "portal_leads_set_copy_address",
+  description:
+    "Set the agency address (e.g. info@agency.be) that gets the copy of a portal lead when the listing's agent has no email or no listing was matched. Empty clears it.",
+  mutates: true,
+  input: z.object({ address: z.string().trim().toLowerCase().email().or(z.literal("")) }),
+  run: async (ctx, input) => {
+    const [row] = await ctx.db.select({ channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+    const { leadCopyAddress: _old, ...rest } = row?.channels ?? {};
+    const channels = input.address ? { ...rest, leadCopyAddress: input.address } : rest;
+    await ctx.db.insert(agencySettings).values({ agencyId: ctx.agencyId, channels }).onConflictDoUpdate({ target: agencySettings.agencyId, set: { channels } });
+    await recordEvent(ctx, { type: "settings.lead_copy_address_updated", subjectType: "agency", subjectId: ctx.agencyId, data: { address: input.address || null } });
+    return { leadCopyAddress: input.address || null };
+  },
+});
