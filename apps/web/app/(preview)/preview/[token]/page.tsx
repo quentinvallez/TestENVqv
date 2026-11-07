@@ -34,7 +34,9 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
     qualificationQuestions[transaction].map((q) => ({ id: q.id, question: q.question[lang], options: q.options.map((o) => ({ id: o.id, label: o.label[lang] })) }));
 
   return (
-    <PreviewStage
+    <>
+      {/* Why the pictures are missing, for support (also shown in the back office). */}
+      <PreviewStage
       lang={lang}
       token={token}
       site={preview.site}
@@ -47,6 +49,7 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
       listings={preview.listings.map((l) => ({ ...l, questions: questions(l.transaction ?? "sale") }))}
       days={days}
       action={demoBookingAction.bind(null, token, lang)}
-    />
+      />
+    </>
   );
 }

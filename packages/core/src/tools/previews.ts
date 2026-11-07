@@ -3,9 +3,7 @@ import { and, desc, eq, gt, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { recordEvent } from "../events";
 import { defineTool } from "../tool";
-import { openScreenshotter } from "../website/browser";
 import { PreviewError, previewSiteFromInput, readPreviewSite } from "../website/preview";
-import { SiteReader } from "../website/reader";
 
 /*
  * Widget previews for agencies that aren't clients yet: our booking widget on
@@ -20,10 +18,11 @@ const DAY = 24 * 3600 * 1000;
 const LIFETIME = 30 * DAY;
 /** Previews asked for on the public form, per hour, for the whole platform agency. */
 const PUBLIC_PER_HOUR = 20;
-/** Time to read the site; the pictures, when needed, get what is left of the function's minute. */
-const READ_MS = 35_000;
-/** The phone the pictures are taken on, as wide as the back office checks (iPhone 14). */
-const PHONE_WIDTH = 390;
+/**
+ * Time to read the site. A preview is a sales demo, so it stays cheap: a handful of plain page reads, no browser.
+ * A site that keeps itself out of frames is shown as a page rebuilt from what we read.
+ */
+const READ_MS = 15_000;
 
 const newToken = () => randomBytes(18).toString("base64url");
 
@@ -60,27 +59,6 @@ export const createWidgetPreview = defineTool({
     const read = await readPreviewSite(site, started + READ_MS);
     if (!read.listings.length) throw new PreviewError("We read the website but found no listing on offer to show the widget on.");
 
-    // Sites that keep themselves out of frames are shown as a picture instead.
-    const shots: { homeShot?: string | null; listingShot?: string | null; homeShotPhone?: string | null; listingShotPhone?: string | null } = {};
-    if (!read.homeFramable || !read.listingFramable) {
-      const reader = await SiteReader.open(read.site);
-      const camera = await openScreenshotter(reader);
-      if (camera) {
-        try {
-          if (!read.listingFramable) {
-            shots.listingShot = await camera.shoot(read.listings[0]!.url);
-            shots.listingShotPhone = await camera.shoot(read.listings[0]!.url, PHONE_WIDTH);
-          }
-          if (!read.homeFramable) {
-            shots.homeShot = await camera.shoot(read.site);
-            shots.homeShotPhone = await camera.shoot(read.site, PHONE_WIDTH);
-          }
-        } finally {
-          await camera.close();
-        }
-      }
-    }
-
     const [row] = await ctx.db
       .insert(widgetPreviews)
       .values({
@@ -93,7 +71,6 @@ export const createWidgetPreview = defineTool({
         homeFramable: read.homeFramable,
         listingFramable: read.listingFramable,
         listings: read.listings,
-        ...shots,
         source: input.source,
         email: input.email ?? null,
         expiresAt: new Date(Date.now() + LIFETIME),
@@ -103,7 +80,7 @@ export const createWidgetPreview = defineTool({
       type: "preview.created",
       subjectType: "widget_preview",
       subjectId: row!.id,
-      data: { site: read.site, source: input.source, listings: read.listings.length, framed: read.homeFramable && read.listingFramable, pictures: Boolean(shots.homeShot || shots.listingShot) },
+      data: { site: read.site, source: input.source, listings: read.listings.length, framed: read.homeFramable && read.listingFramable },
     });
     return { ...row!, reused: false, listings: read.listings.length };
   },
@@ -128,6 +105,7 @@ export const listWidgetPreviews = defineTool({
         demoBookings: widgetPreviews.demoBookings,
         listingCount: sql<number>`jsonb_array_length(${widgetPreviews.listings})::int`,
         pictures: sql<boolean>`(${widgetPreviews.homeShot} is not null or ${widgetPreviews.listingShot} is not null)`,
+        framed: sql<boolean>`(${widgetPreviews.homeFramable} and ${widgetPreviews.listingFramable})`,
         lastViewedAt: widgetPreviews.lastViewedAt,
         expiresAt: widgetPreviews.expiresAt,
         createdAt: widgetPreviews.createdAt,

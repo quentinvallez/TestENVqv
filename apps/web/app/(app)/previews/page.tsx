@@ -8,8 +8,8 @@ import { formatDateTime, formatRelative } from "@/lib/format";
 import { createPreviewAction, deletePreviewAction } from "../actions";
 import { PreviewForm } from "./preview-form";
 
-// Reading a site and taking pictures of it can take most of a minute.
-export const maxDuration = 90;
+// Reading a site for a preview takes up to about 15 seconds.
+export const maxDuration = 30;
 
 export default async function PreviewsPage() {
   const ctx = await getToolContext();
@@ -96,7 +96,9 @@ export default async function PreviewsPage() {
                             </p>
                           </td>
                           <td className="px-3 py-2.5 text-muted">{p.source === "public" ? (p.email ?? "Preview form") : "Made here"}</td>
-                          <td className="px-3 py-2.5 text-muted">{p.pictures ? "Picture of the site" : "The live site"}</td>
+                          <td className="px-3 py-2.5 text-muted">
+                            {p.framed ? "The live site" : p.pictures ? "Picture of the site" : "Rebuilt page"}
+                          </td>
                           <td className="px-3 py-2.5">
                             {p.views ? `${p.views}×, last ${formatRelative(p.lastViewedAt ?? p.createdAt, now)}` : <span className="text-muted">Not yet</span>}
                             {p.demoBookings > 0 && <p className="text-[12px] text-muted">Tried booking {p.demoBookings}×</p>}

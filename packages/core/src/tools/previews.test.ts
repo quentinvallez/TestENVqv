@@ -14,8 +14,6 @@ vi.mock("../website/fetch", () => ({
     return page ? { url, ...page } : { url, status: 404, html: "Not found" };
   },
 }));
-// No browser in tests: a site that can't be framed simply has no picture.
-vi.mock("../website/browser", () => ({ openScreenshotter: async () => null, openBrowser: async () => null }));
 
 const listingPage = (o: { title: string; price: string; address: string; agent: string; status?: string }) => `<html><head><meta property="og:image" content="https://www.immo-prospect.be/foto/1.jpg"></head><body>
 <h1>${o.title}</h1>${o.status ? `<p class="status">${o.status}</p>` : ""}

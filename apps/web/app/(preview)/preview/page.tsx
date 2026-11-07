@@ -5,7 +5,7 @@ import { RequestForm } from "./request-form";
 
 export const dynamic = "force-dynamic";
 // Reading a site and taking pictures of it can take most of a minute.
-export const maxDuration = 90;
+export const maxDuration = 30;
 
 const text = {
   nl: { title: "Zie de planner op je eigen website", intro: "Vul de website van je kantoor in. We tonen onze planner op je eigen panden, in je eigen kleur. Er wordt niets op je site geplaatst." },
