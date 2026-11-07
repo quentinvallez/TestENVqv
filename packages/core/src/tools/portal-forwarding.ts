@@ -1,6 +1,8 @@
 import { and, desc, eq, inArray, schema, sql } from "@viewing/db";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { inboundAddress } from "../channels";
+import { mailDomain, mailgunConfigured, newMessageId, sendWithMailgun } from "../channels/email";
 import { recordEvent } from "../events";
 import { authorizedFetch, oauthConfigured } from "../integrations/oauth";
 import { defineTool, type ToolContext } from "../tool";
@@ -18,8 +20,36 @@ const { agencySettings, agents, calendarConnections, leads } = schema;
 export const portalDomains = ["immoweb.be", "zimmo.be", "immovlan.be"] as const;
 export const PORTAL_RULE_NAME = "Portal leads → planner";
 
-type PortalRule = { ruleId: string; forwardTo: string; createdAt: string };
+/*
+ * Microsoft 365 blocks automatic forwarding outside the company unless an admin
+ * allows it, and then the rule exists but nothing arrives. So after creating
+ * the rule we mail the agent a test from our own check address (which the rule
+ * also forwards). If it comes back to the inbox address, forwarding works; if
+ * it hasn't after CHECK_WAIT_MS, it is blocked.
+ */
+export const CHECK_WAIT_MS = 15 * 60 * 1000;
+export const checkSender = () => {
+  const domain = mailDomain();
+  return domain ? `forwarding-check@${domain}` : null;
+};
+const checkSubject = (token: string) => `Forwarding check ${token}`;
+/** The token of our test email, in a forward of it (any client's "FW:"/"TR:" prefix). */
+export const forwardingCheckToken = (email: { subject: string; text: string }) =>
+  `${email.subject}\n${email.text}`.match(/Forwarding check ([0-9a-f]{12})\b/)?.[1] ?? null;
+
+type ForwardingCheck = { token: string; sentAt: string; receivedAt?: string; error?: string };
+type PortalRule = { ruleId: string; forwardTo: string; createdAt: string; check?: ForwardingCheck };
 const ruleOf = (syncState: Record<string, unknown>) => (syncState.portalRule as PortalRule | undefined) ?? null;
+
+export type ForwardingState = "working" | "checking" | "blocked" | "untested";
+/** Pure, for tests: what the last check says about the rule. */
+export function forwardingState(rule: PortalRule | null, now = new Date()): ForwardingState | null {
+  if (!rule) return null;
+  const check = rule.check;
+  if (!check || check.error) return "untested";
+  if (check.receivedAt) return "working";
+  return now.getTime() - new Date(check.sentAt).getTime() < CHECK_WAIT_MS ? "checking" : "blocked";
+}
 
 export const portalLeadsStatus = defineTool({
   name: "portal_leads_status",
@@ -65,6 +95,7 @@ export const portalLeadsStatus = defineTool({
         active: c.status === "active",
         canForward: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
         forwarding: ruleOf(c.syncState),
+        forwardingState: forwardingState(ruleOf(c.syncState)),
       })),
       outlookAvailable: oauthConfigured("microsoft"),
     };
@@ -99,7 +130,8 @@ export const setupPortalForwarding = defineTool({
       displayName: PORTAL_RULE_NAME,
       sequence: 1,
       isEnabled: true,
-      conditions: { senderContains: [...portalDomains] },
+      // Our check address too, so the test email after setup shows whether forwarding really works.
+      conditions: { senderContains: [...portalDomains, ...(checkSender() ? [checkSender()!] : [])] },
       // Forward (not redirect): the agent keeps the lead in their own inbox too.
       actions: { forwardTo: [{ emailAddress: { address: forwardTo } }], stopProcessingRules: false },
     };
@@ -108,7 +140,12 @@ export const setupPortalForwarding = defineTool({
     const saved = (await (
       await authorizedFetch(ctx, connection, mine ? `${graphRules}/${mine.id}` : graphRules, { method: mine ? "PATCH" : "POST", body: JSON.stringify(rule) })
     ).json()) as { id: string };
-    const portalRule: PortalRule = { ruleId: saved.id ?? mine!.id, forwardTo, createdAt: new Date().toISOString() };
+    const portalRule: PortalRule = {
+      ruleId: saved.id ?? mine!.id,
+      forwardTo,
+      createdAt: ruleOf(connection.syncState)?.createdAt ?? new Date().toISOString(),
+      check: await sendForwardingCheck(connection.accountEmail),
+    };
     await ctx.db
       .update(calendarConnections)
       .set({ syncState: { ...connection.syncState, portalRule } })
@@ -119,9 +156,49 @@ export const setupPortalForwarding = defineTool({
       subjectId: input.agentId,
       data: { accountEmail: connection.accountEmail, forwardTo },
     });
-    return { ruleId: portalRule.ruleId, accountEmail: connection.accountEmail, forwardTo, updated: Boolean(mine) };
+    return { ruleId: portalRule.ruleId, accountEmail: connection.accountEmail, forwardTo, updated: Boolean(mine), check: portalRule.check };
   },
 });
+
+/** Mails the agent's own mailbox a test the rule should forward back to us. Never fails the setup. */
+async function sendForwardingCheck(accountEmail: string | null): Promise<ForwardingCheck | undefined> {
+  const from = checkSender();
+  if (!accountEmail || !from || !mailgunConfigured()) return undefined;
+  const check: ForwardingCheck = { token: randomBytes(6).toString("hex"), sentAt: new Date().toISOString() };
+  try {
+    await sendWithMailgun({
+      from: { name: "Planner", address: from },
+      to: { address: accountEmail },
+      subject: checkSubject(check.token),
+      text: [
+        "This email checks that leads from Immoweb, Zimmo and Immovlan reach your planner.",
+        "Your Outlook rule forwards it to us automatically. You don't need to do anything, and you can delete it.",
+        "",
+        "Deze e-mail controleert of leads van Immoweb, Zimmo en Immovlan in uw planner aankomen. U hoeft niets te doen.",
+        "Cet e-mail vérifie que les demandes d'Immoweb, Zimmo et Immovlan arrivent dans votre planning. Aucune action n'est requise.",
+      ].join("\n"),
+      messageId: newMessageId(),
+    });
+  } catch (error) {
+    check.error = error instanceof Error ? error.message.slice(0, 200) : String(error);
+  }
+  return check;
+}
+
+/** Our test email came back through an agent's rule: forwarding works for that mailbox. */
+export async function markForwardingCheck(ctx: ToolContext, token: string) {
+  const rows = await ctx.db
+    .select({ id: calendarConnections.id, agentId: calendarConnections.agentId, syncState: calendarConnections.syncState })
+    .from(calendarConnections)
+    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.provider, "microsoft")));
+  const row = rows.find((r) => ruleOf(r.syncState)?.check?.token === token);
+  const rule = row && ruleOf(row.syncState);
+  if (!row || !rule?.check) return false;
+  const portalRule: PortalRule = { ...rule, check: { ...rule.check, receivedAt: new Date().toISOString() } };
+  await ctx.db.update(calendarConnections).set({ syncState: { ...row.syncState, portalRule } }).where(eq(calendarConnections.id, row.id));
+  await recordEvent(ctx, { type: "portal_forwarding.verified", subjectType: "agent", subjectId: row.agentId, data: {} });
+  return true;
+}
 
 export const removePortalForwarding = defineTool({
   name: "portal_forwarding_remove",
