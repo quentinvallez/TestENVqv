@@ -602,8 +602,22 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       summary: `Confirm ${name}'s new viewing time`,
     };
   }
-  const proposal = plan ? await propose(ctx, thread, plan, lang, note, options.useAi ?? true) : null;
-  return { conversationId: conversation.id, proposalId: proposal?.id ?? null };
+  // A confirmation of what the client just did goes out on its own (fixed text) unless the agency approves them first.
+  const confirm = action.kind !== "cancelled" && plan ? await confirmationsAutomatic(ctx) : false;
+  const proposal = plan
+    ? await propose(ctx, thread, confirm ? { ...plan, messageKind: "booking_confirmation" } : plan, lang, confirm ? `${note} Confirmation sent on its own (Settings → Automations).` : note, options.useAi ?? true, { fixedText: confirm })
+    : null;
+  if (proposal && confirm) {
+    const decided = await decideProposal.run({ ...ctx, actor: { type: "agent", id: "planner" } }, { proposalId: proposal.id, decision: "approved" });
+    return { conversationId: conversation.id, proposalId: proposal.id, confirmed: decided.status };
+  }
+  return { conversationId: conversation.id, proposalId: proposal?.id ?? null, confirmed: null };
+}
+
+/** Booking and move confirmations to clients go out automatically unless autonomy.booking_confirmations is "suggest". */
+export async function confirmationsAutomatic(ctx: ToolContext) {
+  const [settings] = await ctx.db.select({ autonomy: agencySettings.autonomy }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  return settings?.autonomy.booking_confirmations !== "suggest";
 }
 
 /**

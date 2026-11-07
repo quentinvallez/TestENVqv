@@ -23,6 +23,7 @@ export const getAutomationSettings = defineTool({
       sendRemindersAutomatically: row?.autonomy.reminders === "act",
       sendOccupantAlertsAutomatically: row?.autonomy.occupant_alerts !== "suggest",
       replyToPortalLeadsAutomatically: row?.autonomy.portal_replies === "act",
+      sendBookingConfirmationsAutomatically: row?.autonomy.booking_confirmations !== "suggest",
     };
   },
 });
@@ -41,10 +42,12 @@ export const updateAutomationSettings = defineTool({
     sendRemindersAutomatically: z.boolean().optional(),
     sendOccupantAlertsAutomatically: z.boolean().optional(),
     agentAlerts: z.boolean().optional(),
+    portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
     replyToPortalLeadsAutomatically: z.boolean().optional(),
+    sendBookingConfirmationsAutomatically: z.boolean().optional().describe("Confirm a booking or move the client made on the website on their own (fixed text) instead of waiting for approval"),
   }),
   run: async (ctx, input) => {
-    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, replyToPortalLeadsAutomatically, ...jobs } = input;
+    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, replyToPortalLeadsAutomatically, sendBookingConfirmationsAutomatically, ...jobs } = input;
     const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const automations = { ...row?.automations, ...jobs };
     const level = (on: boolean) => (on ? ("act" as const) : ("suggest" as const));
@@ -53,6 +56,7 @@ export const updateAutomationSettings = defineTool({
       ...(sendRemindersAutomatically !== undefined && { reminders: level(sendRemindersAutomatically) }),
       ...(sendOccupantAlertsAutomatically !== undefined && { occupant_alerts: level(sendOccupantAlertsAutomatically) }),
       ...(replyToPortalLeadsAutomatically !== undefined && { portal_replies: level(replyToPortalLeadsAutomatically) }),
+      ...(sendBookingConfirmationsAutomatically !== undefined && { booking_confirmations: level(sendBookingConfirmationsAutomatically) }),
     };
     await ctx.db
       .insert(agencySettings)
@@ -64,6 +68,7 @@ export const updateAutomationSettings = defineTool({
       sendRemindersAutomatically: autonomy.reminders === "act",
       sendOccupantAlertsAutomatically: autonomy.occupant_alerts !== "suggest",
       replyToPortalLeadsAutomatically: autonomy.portal_replies === "act",
+      sendBookingConfirmationsAutomatically: autonomy.booking_confirmations !== "suggest",
     };
   },
 });

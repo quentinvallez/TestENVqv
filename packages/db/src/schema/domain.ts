@@ -48,6 +48,10 @@ export type WidgetSettings = {
  */
 export type ChannelSettings = {
   whatsapp?: { phoneNumberId: string; displayNumber: string; accessToken: string };
+  /** The last Gmail forwarding confirmation that reached the inbox address, so the agency can confirm forwarding without reading our mail. */
+  gmailForwarding?: { code: string; link: string | null; account: string | null; receivedAt: string };
+  /** Where the copy of a portal lead goes when the listing's agent has no email (or no listing was matched), e.g. info@agency.be. */
+  leadCopyAddress?: string;
 };
 
 /** Outcome of the last import of listings from the agency's website. */
@@ -135,6 +139,8 @@ export type AutomationSettings = {
   nudgeAfterDays?: number;
   /** Email the agent when a client books, moves or cancels a viewing or valuation visit. */
   agentAlerts?: boolean;
+  /** Forward each portal email that the portals sent straight to the inbox address to the listing's agent (or channels.leadCopyAddress). On unless turned off. */
+  portalLeadCopies?: boolean;
 };
 
 /**
@@ -229,8 +235,9 @@ export const calendarConnections = pgTable(
     accountEmail: text().notNull(),
     // Encrypted at rest by the integration layer, never stored in plain text.
     credentials: text().notNull(),
-    // What the agent allowed: "calendar" (busy times, viewings in their agenda) and "mail" (send from their mailbox).
-    scopes: jsonb().$type<("calendar" | "mail")[]>().notNull().default(["calendar"]),
+    // What the agent allowed: "calendar" (busy times, viewings in their agenda), "mail" (send from their mailbox)
+    // and "rules" (Outlook only: create the mail rule that forwards portal leads; no access to their mail).
+    scopes: jsonb().$type<("calendar" | "mail" | "rules")[]>().notNull().default(["calendar"]),
     syncState: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     status: text().$type<"active" | "expired" | "revoked">().notNull().default("active"),
     ...timestamps,

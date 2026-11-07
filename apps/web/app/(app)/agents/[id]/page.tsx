@@ -5,7 +5,8 @@ import { Avatar, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { formatDay, formatTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { disconnectCalendarAction, saveAvailabilityAction } from "../../actions";
+import { disconnectCalendarAction, saveAgentAction, saveAvailabilityAction } from "../../actions";
+import { AgentEmail } from "../agent-forms";
 import { AvailabilityForm } from "./availability-form";
 
 const connectNotice: Record<string, string> = {
@@ -36,7 +37,9 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               <Avatar name={agent.name} color={agent.color} size={36} />
               <div>
                 <h1 className="text-[18px] font-semibold tracking-tight">{agent.name}</h1>
-                <p className="text-muted">{agent.email}</p>
+                <div className="text-muted">
+                  <AgentEmail agentId={agent.id} email={agent.email} action={saveAgentAction} />
+                </div>
               </div>
             </div>
             <h2 className="mb-1 font-medium">Working hours for viewings</h2>
@@ -79,7 +82,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 ))}
               </ul>
               <div className="mt-3 flex flex-wrap gap-2">
-                {(["google", "microsoft"] as const)
+                {(["microsoft", "google"] as const)
                   .filter((p) => !connections.some((c) => c.provider === p && c.status === "active"))
                   .map((p) =>
                     available[p] ? (

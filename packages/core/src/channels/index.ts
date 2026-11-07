@@ -267,7 +267,16 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
   return { messageId: message!.id, conversationId: conversation.id, delivery, transport, ...(error && { error }) };
 }
 
-export type AgentEmail = { agentId: string; subject: string; text: string };
+export type AgentEmail = {
+  /** The agent to write to; null with `to` for the agency's own address. */
+  agentId: string | null;
+  /** Overrides the agent's address. */
+  to?: string;
+  /** E.g. the client, so the agent can answer a forwarded lead directly. */
+  replyTo?: string | null;
+  subject: string;
+  text: string;
+};
 
 /**
  * An internal email to one of the agency's agents, e.g. "new viewing booked".
@@ -276,15 +285,17 @@ export type AgentEmail = { agentId: string; subject: string; text: string };
  * themselves. Without either it is not sent and says "simulated".
  */
 export async function emailAgent(ctx: ToolContext, input: AgentEmail): Promise<{ delivery: Delivery; transport: Transport; to: string | null; error?: string }> {
-  const [agent] = await ctx.db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, ctx.agencyId), eq(schema.agents.id, input.agentId)));
-  if (!agent?.email) return { delivery: "failed", transport: "none", to: null, error: "no_email" };
+  const [agent] = input.agentId ? await ctx.db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, ctx.agencyId), eq(schema.agents.id, input.agentId))) : [];
+  const address = input.to ?? agent?.email;
+  if (!address) return { delivery: "failed", transport: "none", to: null, error: "no_email" };
   const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, ctx.agencyId), columns: { name: true } });
   const from = await inboundAddress(ctx);
-  const mailbox = mailgunConfigured() && from ? null : await agentMailbox(ctx, agent.id);
-  if (!mailbox && !(mailgunConfigured() && from)) return { delivery: "simulated", transport: "none", to: agent.email };
+  const mailbox = mailgunConfigured() && from ? null : await agentMailbox(ctx, agent?.id ?? null);
+  if (!mailbox && !(mailgunConfigured() && from)) return { delivery: "simulated", transport: "none", to: address };
   const email: OutgoingEmail = {
     from: { name: agency?.name ?? "", address: mailbox ? mailbox.accountEmail : from! },
-    to: { name: agent.name, address: agent.email },
+    to: { name: agent?.name, address },
+    ...(input.replyTo && { replyTo: input.replyTo }),
     subject: input.subject,
     text: input.text,
     messageId: newMessageId(),
@@ -300,15 +311,20 @@ export async function emailAgent(ctx: ToolContext, input: AgentEmail): Promise<{
       await authorizedFetch(ctx, mailbox, "https://graph.microsoft.com/v1.0/me/sendMail", {
         method: "POST",
         body: JSON.stringify({
-          message: { subject: input.subject, body: { contentType: "Text", content: input.text }, toRecipients: [{ emailAddress: { address: agent.email, name: agent.name } }] },
+          message: {
+            subject: input.subject,
+            body: { contentType: "Text", content: input.text },
+            toRecipients: [{ emailAddress: { address, name: agent?.name } }],
+            replyTo: input.replyTo ? [{ emailAddress: { address: input.replyTo } }] : [],
+          },
           saveToSentItems: false,
         }),
       });
     } else {
       await sendWithMailgun(email);
     }
-    return { delivery: "sent", transport, to: agent.email };
+    return { delivery: "sent", transport, to: address };
   } catch (e) {
-    return { delivery: "failed", transport, to: agent.email, error: e instanceof Error ? e.message : String(e) };
+    return { delivery: "failed", transport, to: address, error: e instanceof Error ? e.message : String(e) };
   }
 }
