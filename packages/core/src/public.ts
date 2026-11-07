@@ -1,6 +1,7 @@
-import { and, db, eq, inArray, schema } from "@viewing/db";
+import { and, db, eq, getTableColumns, inArray, schema, sql } from "@viewing/db";
 import type { ToolContext } from "./tool";
 import { looksLikeListingUrl, normalizeUrl, sameSite } from "./website/extract";
+import { previewPageHtml } from "./website/preview";
 
 /*
  * Lookups for pages anyone can open without logging in: the booking page of a
@@ -177,6 +178,30 @@ export async function occupantAgency(token: string) {
 /** A widget preview by the secret in its link, while it hasn't expired. */
 export async function previewByToken(token: string) {
   if (!/^[\w-]{16,40}$/.test(token)) return null;
-  const [row] = await db.select().from(schema.widgetPreviews).where(eq(schema.widgetPreviews.token, token));
+  const { pages, ...columns } = getTableColumns(schema.widgetPreviews);
+  const [row] = await db
+    .select({
+      ...columns,
+      // Which of their pages were kept, without loading them.
+      ownPages: sql<{ home: boolean; listings: boolean[] } | null>`case when ${pages} is null then null else jsonb_build_object(
+        'home', ${pages}->>'home' is not null,
+        'listings', (select coalesce(jsonb_agg(page <> 'null'::jsonb), '[]'::jsonb) from jsonb_array_elements(${pages}->'listings') page)) end`,
+    })
+    .from(schema.widgetPreviews)
+    .where(eq(schema.widgetPreviews.token, token));
   return row && row.expiresAt > new Date() ? row : null;
+}
+
+/** One of the agency's pages kept with a preview ("home" or a listing's position), ready to show in its sandbox. */
+export async function previewPage(token: string, which: string): Promise<string | null> {
+  if (!/^[\w-]{16,40}$/.test(token)) return null;
+  const [row] = await db
+    .select({ site: schema.widgetPreviews.site, listings: schema.widgetPreviews.listings, pages: schema.widgetPreviews.pages, expiresAt: schema.widgetPreviews.expiresAt })
+    .from(schema.widgetPreviews)
+    .where(eq(schema.widgetPreviews.token, token));
+  if (!row?.pages || row.expiresAt <= new Date()) return null;
+  const index = which === "home" ? -1 : /^\d{1,2}$/.test(which) ? Number(which) : NaN;
+  const html = index === -1 ? row.pages.home : row.pages.listings[index];
+  const url = index === -1 ? row.site : row.listings[index]?.url;
+  return html && url ? previewPageHtml(html, url) : null;
 }

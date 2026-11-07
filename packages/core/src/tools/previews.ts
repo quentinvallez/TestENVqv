@@ -71,6 +71,8 @@ export const createWidgetPreview = defineTool({
         homeFramable: read.homeFramable,
         listingFramable: read.listingFramable,
         listings: read.listings,
+        // Their own pages are only needed where the site can't be framed.
+        pages: read.homeFramable && read.listingFramable ? null : read.pages,
         source: input.source,
         email: input.email ?? null,
         expiresAt: new Date(Date.now() + LIFETIME),

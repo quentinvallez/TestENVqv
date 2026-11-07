@@ -35,7 +35,6 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
 
   return (
     <>
-      {/* Why the pictures are missing, for support (also shown in the back office). */}
       <PreviewStage
       lang={lang}
       token={token}
@@ -46,6 +45,7 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
       listingFramable={preview.listingFramable}
       homeShot={Boolean(preview.homeShot)}
       listingShot={Boolean(preview.listingShot)}
+      ownPages={preview.ownPages ?? { home: false, listings: [] }}
       listings={preview.listings.map((l) => ({ ...l, questions: questions(l.transaction ?? "sale") }))}
       days={days}
       action={demoBookingAction.bind(null, token, lang)}

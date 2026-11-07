@@ -406,6 +406,11 @@ export const widgetPreviews = pgTable(
     listingShot: text(),
     homeShotPhone: text(),
     listingShotPhone: text(),
+    /**
+     * The HTML of the pages we read (home, and each listing in the order of `listings`), shown back with their own
+     * styles and images when the site keeps itself out of frames. Never loaded with the preview itself.
+     */
+    pages: jsonb().$type<{ home: string | null; listings: (string | null)[] }>(),
     /** "back_office": made by the agency; "public": asked for on the preview form, with the prospect's email. */
     source: text().$type<"back_office" | "public">().notNull().default("back_office"),
     email: text(),

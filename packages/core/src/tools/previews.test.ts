@@ -1,6 +1,6 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { previewByToken, publicContext } from "../public";
+import { previewByToken, previewPage, publicContext } from "../public";
 import { tools } from "../registry";
 import { runTool, type ToolContext } from "../tool";
 import { crawlPace } from "../website/reader";
@@ -59,6 +59,11 @@ describe.skipIf(!process.env.DATABASE_URL)("widget previews", () => {
     expect(preview!.listings).toEqual([
       expect.objectContaining({ url: houseUrl, street: "Statiestraat", houseNumber: "10", city: "Berchem", price: 495000, agentName: "Sofie Peeters", photo: "https://www.immo-prospect.be/foto/1.jpg", status: "active" }),
     ]);
+    // The home page refuses frames: its HTML is kept and shown back with its own look; the framable listing isn't needed.
+    expect(preview!.ownPages).toEqual({ home: true, listings: [true] });
+    expect(await previewPage(made.token, "home")).toContain(`<base href="${home}/">`);
+    expect(await previewPage(made.token, "0")).toContain("Statiestraat 10");
+    expect(await previewPage(made.token, "5")).toBeNull();
     const listings = await db.select().from(schema.listings).where(eq(schema.listings.agencyId, agencyId));
     expect(listings).toHaveLength(0);
     const [event] = await db.select().from(schema.events).where(and(eq(schema.events.agencyId, agencyId), eq(schema.events.type, "preview.created")));
