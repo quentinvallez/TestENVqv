@@ -8,6 +8,7 @@ import { formatRelative } from "@/lib/format";
 import { automationRuleLabel } from "@/lib/labels";
 import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, updateAutomationsAction } from "../actions";
 import { CopyText, WhatsAppForm } from "./channels";
+import { PortalLeads } from "./portal-leads";
 
 const capabilities = [
   ["Handle cancellations and reschedules from replies", "suggest"],
@@ -98,7 +99,7 @@ export default async function SettingsPage() {
                   <>
                     <p className="mt-1 font-mono text-[12px] break-all">{channels.inboundAddress}</p>
                     <p className="mt-1 text-[12px] text-muted">
-                      Client replies come back here automatically. Forward your Immoweb, Zimmo and Immovlan lead emails to it (a forwarding rule in your mailbox) and each one becomes a lead for the listing&apos;s agent with a draft reply.
+                      Client replies come back here automatically. Immoweb, Zimmo and Immovlan leads sent here become leads for the listing&apos;s agent; see Portal leads below.
                       {channels.portalLeads > 0 && ` ${channels.portalLeads} portal leads so far.`}
                     </p>
                   </>
@@ -145,6 +146,8 @@ export default async function SettingsPage() {
               </div>
             </Panel>
           </section>
+
+          <PortalLeads ctx={ctx} copies={automations.portalLeadCopies} />
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-medium">
@@ -202,7 +205,7 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
-            <p className="mb-2 text-muted">These jobs run on their own every day. Except reminders you allow below, everything they write waits in the inbox for your approval.</p>
+            <p className="mb-2 text-muted">These jobs run on their own. Reminders, booking confirmations and alerts to occupants can go out without approval as set below; everything else waits in the inbox for your approval.</p>
             <Panel className="divide-y divide-line">
               {jobs.map((job) => (
                 <div key={job.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
@@ -254,6 +257,21 @@ export default async function SettingsPage() {
                   </form>
                 </div>
               ))}
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium">Confirmation after a booking</div>
+                  <p className="mt-0.5 max-w-xl text-muted">
+                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. Fixed text in their language, no AI.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-muted">Sending:</span>
+                    <Pill>{automations.sendBookingConfirmationsAutomatically ? "Automatically" : "After your approval"}</Pill>
+                  </div>
+                </div>
+                <form action={updateAutomationsAction.bind(null, { sendBookingConfirmationsAutomatically: !automations.sendBookingConfirmationsAutomatically })} className="shrink-0">
+                  <Button type="submit">{automations.sendBookingConfirmationsAutomatically ? "Ask me first instead" : "Send automatically"}</Button>
+                </form>
+              </div>
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="font-medium">Alerts to owners and tenants</div>

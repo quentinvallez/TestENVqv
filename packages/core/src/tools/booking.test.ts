@@ -73,7 +73,7 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     expect(full?.draft?.input.cancelAppointmentId).toBeUndefined();
   });
 
-  it("puts a website booking and a move in the inbox as drafts, without sending anything", async () => {
+  it("confirms a website booking on its own, and drafts the confirmation of a move when the agency approves them first", async () => {
     const clientCtx: ToolContext = { ...ctx, actor: { type: "contact", id: null } };
     const { slots } = await runTool(tools.availableSlots, ctx, { listingId });
     const booked = await runTool(tools.bookViewing, clientCtx, {
@@ -85,17 +85,25 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     const { items } = await runTool(tools.listInbox, ctx, { folder: "viewing_request" });
     const conversation = items.find((c) => c.contact?.email === "wout@example.com")!;
     expect(conversation.category).toBe("booking");
-    expect(conversation.channel).toBe("whatsapp"); // opted in, so the confirmation goes by WhatsApp
+    expect(conversation.channel).toBe("whatsapp"); // opted in, so the note sits on WhatsApp
     const full = await runTool(tools.getConversation, ctx, { conversationId: conversation.id });
-    expect(String(full!.draft!.input.body)).toContain("Wanneer:");
-    expect(String(full!.draft!.input.body)).toContain(`/a/${booked.manageToken}`);
-    expect(full!.messages.filter((m) => m.direction === "outbound")).toHaveLength(0);
+    expect(full!.draft).toBeNull();
+    // Outside WhatsApp's 24-hour window without a template, the confirmation goes by email; stored as simulated while email isn't connected.
+    const [contact] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, conversation.contactId!));
+    const sent = await db.query.messages.findMany({
+      where: (m, { and, eq, inArray }) => and(eq(m.direction, "outbound"), inArray(m.conversationId, db.select({ id: schema.conversations.id }).from(schema.conversations).where(eq(schema.conversations.contactId, contact!.id)))),
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body).toContain("Wanneer:");
+    expect(sent[0]!.body).toContain(`/a/${booked.manageToken}`);
+    expect(sent[0]!).toMatchObject({ delivery: "simulated", metadata: { kind: "booking_confirmation" } });
 
+    await runTool(tools.updateAutomationSettings, ctx, { sendBookingConfirmationsAutomatically: false });
     await runTool(tools.rescheduleAppointment, clientCtx, { appointmentId: booked.appointmentId, startsAt: slots[16]!.start });
     const moved = await runTool(tools.getConversation, ctx, { conversationId: conversation.id });
     expect(moved!.category).toBe("reschedule");
     expect(moved!.draft!.summary).toContain("new viewing time");
-    expect(moved!.messages.filter((m) => m.direction === "outbound")).toHaveLength(0);
+    await runTool(tools.updateAutomationSettings, ctx, { sendBookingConfirmationsAutomatically: true });
   });
 
   it("books with the agent named on the website when one is given", async () => {

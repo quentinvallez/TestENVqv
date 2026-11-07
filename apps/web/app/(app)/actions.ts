@@ -96,6 +96,31 @@ export async function disconnectCalendarAction(agentId: string, connectionId: st
   revalidatePath(`/agents/${agentId}`);
 }
 
+export type AgentFormState = { error?: string; saved?: boolean } | undefined;
+
+/** Adds an agent, or changes one when the form carries an agentId. Empty fields clear email and phone. */
+export async function saveAgentAction(_state: AgentFormState, form: FormData): Promise<AgentFormState> {
+  const text = (key: string) => (form.has(key) ? String(form.get(key) ?? "").trim() : undefined);
+  const agentId = text("agentId");
+  const name = text("name");
+  const email = text("email");
+  const phone = text("phone");
+  try {
+    const ctx = await getToolContext();
+    if (agentId) {
+      await runTool(tools.updateAgent, ctx, { agentId, ...(name && { name }), ...(email !== undefined && { email: email || null }), ...(phone !== undefined && { phone: phone || null }) });
+      revalidatePath(`/agents/${agentId}`);
+    } else {
+      await runTool(tools.createAgent, ctx, { name: name ?? "", email: email || null, phone: phone || null });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: message.startsWith("[") ? "Check the name and email address." : message || "Saving failed." };
+  }
+  revalidatePath("/agents");
+  return { saved: true };
+}
+
 export type WhatsAppState = { error?: string; saved?: boolean } | undefined;
 
 export async function connectWhatsAppAction(_state: WhatsAppState, form: FormData): Promise<WhatsAppState> {
@@ -125,7 +150,9 @@ export async function updateAutomationsAction(change: {
   sendRemindersAutomatically?: boolean;
   sendOccupantAlertsAutomatically?: boolean;
   agentAlerts?: boolean;
+  portalLeadCopies?: boolean;
   replyToPortalLeadsAutomatically?: boolean;
+  sendBookingConfirmationsAutomatically?: boolean;
 }) {
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
   revalidatePath("/settings");
@@ -258,4 +285,30 @@ export async function addOccupantAction(listingId: string, _state: OccupantState
 export async function updateOccupantAction(listingId: string, occupantId: string, change: { alerts?: boolean; newLink?: boolean; remove?: boolean }) {
   await runTool(tools.updateListingOccupant, await getToolContext(), { occupantId, ...change });
   revalidatePath(`/listings/${listingId}`);
+}
+
+export type ForwardingState = { error?: string; done?: boolean } | undefined;
+
+/** One click in Settings → Portal leads: the rule in the agent's Outlook, created or removed. */
+export async function portalForwardingAction(agentId: string, remove: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  try {
+    const ctx = await getToolContext();
+    if (remove) await runTool(tools.removePortalForwarding, ctx, { agentId });
+    else await runTool(tools.setupPortalForwarding, ctx, { agentId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: /^(Connect|The inbox)/.test(message) ? message : "Outlook refused the rule. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
+
+export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
+  try {
+    await runTool(tools.setLeadCopyAddress, await getToolContext(), { address: String(form.get("address") ?? "") });
+  } catch {
+    return { error: "That doesn't look like an email address." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
 }

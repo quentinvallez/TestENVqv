@@ -11,6 +11,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
   const ctx: ToolContext = { db, agencyId, actor: { type: "user", id: null } };
   let agentId: string;
   const calls: { url: string; method: string; body: unknown; auth: string | null }[] = [];
+  const rules: { id: string; displayName: string }[] = [];
 
   const idToken = (claims: object) => `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.y`;
   function graph(url: string, init: RequestInit = {}) {
@@ -39,6 +40,12 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     if (url.endsWith("/me/events") && init.method === "POST") return json({ id: "AAMk-event-1" }, 201);
     if (url.includes("/me/events/")) return new Response(null, { status: init.method === "DELETE" ? 204 : 200 });
     if (url.endsWith("/me/sendMail")) return new Response(null, { status: 202 });
+    if (url.endsWith("/mailFolders/inbox/messageRules") && (init.method ?? "GET") === "GET") return json({ value: rules });
+    if (url.endsWith("/mailFolders/inbox/messageRules") && init.method === "POST") {
+      rules.push({ id: "rule-1", displayName: (body as { displayName: string }).displayName });
+      return json({ id: "rule-1" }, 201);
+    }
+    if (url.includes("/mailFolders/inbox/messageRules/")) return init.method === "DELETE" ? new Response(null, { status: 204 }) : json({ id: url.split("/").pop() });
     return json({ error: "unexpected" }, 500);
   }
 
@@ -114,5 +121,27 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     const [row] = await db.select().from(schema.calendarConnections).where(and(eq(schema.calendarConnections.agentId, agentId)));
     const { decrypt } = await import("../crypto");
     expect(JSON.parse(decrypt(row!.credentials)).refreshToken).toBe("refresh-2");
+  });
+
+  it("creates the portal-lead forwarding rule once, and repairs it instead of adding a second", async () => {
+    stub();
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    await expect(runTool(tools.setupPortalForwarding, ctx, { agentId })).rejects.toThrow(/Connect Outlook again/);
+    await db.update(schema.calendarConnections).set({ scopes: ["calendar", "mail", "rules"] }).where(eq(schema.calendarConnections.agentId, agentId));
+    const first = await runTool(tools.setupPortalForwarding, ctx, { agentId });
+    expect(first).toMatchObject({ ruleId: "rule-1", updated: false });
+    const created = calls.find((c) => c.method === "POST" && c.url.endsWith("/messageRules"))!;
+    expect(created.body).toMatchObject({
+      conditions: { senderContains: ["immoweb.be", "zimmo.be", "immovlan.be"] },
+      actions: { forwardTo: [{ emailAddress: { address: first.forwardTo } }] },
+    });
+    expect(first.forwardTo).toMatch(/@mail\.example\.be$/);
+    const again = await runTool(tools.setupPortalForwarding, ctx, { agentId });
+    expect(again).toMatchObject({ ruleId: "rule-1", updated: true });
+    expect(calls.at(-1)!.method).toBe("PATCH");
+    const status = await runTool(tools.portalLeadsStatus, ctx, {});
+    expect(status.mailboxes[0]).toMatchObject({ canForward: true, forwarding: { ruleId: "rule-1" } });
+    await runTool(tools.removePortalForwarding, ctx, { agentId });
+    expect(calls.at(-1)!.method).toBe("DELETE");
   });
 });
