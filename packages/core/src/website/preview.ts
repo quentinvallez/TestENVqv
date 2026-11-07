@@ -55,6 +55,8 @@ export type PreviewSite = {
   homeFramable: boolean;
   listingFramable: boolean;
   listings: PreviewListing[];
+  /** The HTML of the home page and of each listing (same order as `listings`), to show their own page back. */
+  pages: { home: string | null; listings: (string | null)[] };
 };
 
 /** How many listings a preview offers to switch between. */
@@ -204,6 +206,36 @@ async function searchListings(reader: SiteReader, site: string, deadline: number
   return found;
 }
 
+/** A page's HTML is kept for the preview up to this size; bigger ones show as the rebuilt page. */
+const MAX_PAGE_HTML = 1_500_000;
+const keptPage = (html: string | undefined) => (html && html.length <= MAX_PAGE_HTML && /<(html|body|head)\b/i.test(html) ? html : null);
+
+/** What the copy of the page does inside the preview, before any of the site's own scripts. */
+const PREVIEW_PAGE_SCRIPT = `(function(){
+function memory(){var d={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v)},removeItem:function(k){delete d[k]},clear:function(){d={}},key:function(i){return Object.keys(d)[i]||null},get length(){return Object.keys(d).length}}}
+["localStorage","sessionStorage"].forEach(function(n){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:memory(),configurable:true})}catch(e2){}}});
+var replace=history.replaceState;history.pushState=history.replaceState=function(s,t){try{return replace.call(history,s,t)}catch(e){}};history.back=history.forward=history.go=function(){};
+try{document.cookie}catch(e){try{Object.defineProperty(document,"cookie",{get:function(){return""},set:function(){},configurable:true})}catch(e2){}}
+document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(!a)return;e.preventDefault();e.stopPropagation();parent.postMessage({viewingPreview:"link",href:a.href},"*")},true);
+document.addEventListener("submit",function(e){e.preventDefault();e.stopPropagation()},true);
+})();`;
+
+/**
+ * The agency's own page as the preview shows it when its site keeps itself out of frames: the HTML we read, with its
+ * addresses resolved against its own site (so styles, images and scripts load from there, in the visitor's browser),
+ * without its meta refresh or meta security policy, and with links reported to the preview instead of followed.
+ * It is served in a sandbox without our origin, so its scripts never reach our pages or cookies.
+ */
+export function previewPageHtml(html: string, pageUrl: string): string {
+  const base = `<base href="${pageUrl.replace(/"/g, "&quot;")}"><script>${PREVIEW_PAGE_SCRIPT}</script>`;
+  const cleaned = html
+    .replace(/<base\b[^>]*>/gi, "")
+    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?(refresh|content-security-policy)\b[^>]*>/gi, "");
+  if (/<head\b[^>]*>/i.test(cleaned)) return cleaned.replace(/<head\b[^>]*>/i, (head) => head + base);
+  if (/<html\b[^>]*>/i.test(cleaned)) return cleaned.replace(/<html\b[^>]*>/i, (tag) => `${tag}<head>${base}</head>`);
+  return `<!doctype html><head>${base}</head>${cleaned}`;
+}
+
 export class PreviewError extends Error {
   constructor(message: string) {
     super(message);
@@ -241,6 +273,7 @@ export async function readPreviewSite(site: string, deadline: number): Promise<P
   candidates.sort((a, b) => Number(looksLikeListingUrl(b, base)) - Number(looksLikeListingUrl(a, base)));
 
   const found: PreviewListing[] = [];
+  const html = new Map<string, string>();
   let listingFramable = allowsFraming(home.framing);
   let reads = 0;
   for (const url of candidates) {
@@ -258,7 +291,9 @@ export async function readPreviewSite(site: string, deadline: number): Promise<P
     if (!shown) continue;
     if (!found.length) listingFramable = allowsFraming(page.framing);
     found.push(shown);
+    html.set(shown.url, page.html);
   }
+  const listings = rankPreviewListings(found);
 
   return {
     site: base,
@@ -268,6 +303,7 @@ export async function readPreviewSite(site: string, deadline: number): Promise<P
     language: pageLanguage(home.html),
     homeFramable: allowsFraming(home.framing),
     listingFramable,
-    listings: rankPreviewListings(found),
+    listings,
+    pages: { home: keptPage(home.html), listings: listings.map((l) => keptPage(html.get(l.url))) },
   };
 }

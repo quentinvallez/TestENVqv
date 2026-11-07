@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoSlots } from "../planner/demo-slots";
 import { emptyListing } from "./extract";
-import { allowsFraming, pageLanguage, previewCandidates, previewListing, previewSiteFromInput, rankPreviewListings, siteName } from "./preview";
+import { allowsFraming, pageLanguage, previewCandidates, previewListing, previewPageHtml, previewSiteFromInput, rankPreviewListings, siteName } from "./preview";
 
 describe("widget preview", () => {
   it("knows which sites can be shown in a frame", () => {
@@ -59,6 +59,19 @@ describe("widget preview", () => {
     // A garage box is a poor example of a viewing: homes go first.
     const garage = previewListing("https://x.be/4", listing({ street: "Jan Welterslaan", propertyType: "garage", photos: ["https://x.be/d.jpg"] }))!;
     expect(rankPreviewListings([garage, full]).map((l) => l.url)).toEqual(["https://x.be/2", "https://x.be/4"]);
+  });
+
+  it("shows the agency's own page back with its own styles and images, links reported to the preview", () => {
+    const page = previewPageHtml(
+      `<html><head><base href="/oud/"><meta http-equiv="refresh" content="0;url=/elders"><meta http-equiv="Content-Security-Policy" content="default-src 'self'"><link rel="stylesheet" href="/css/site.css"></head><body><img src="foto.jpg"></body></html>`,
+      "https://www.immo-test.be/te-koop/gent/4493114",
+    );
+    expect(page).toContain(`<head><base href="https://www.immo-test.be/te-koop/gent/4493114"><script>`);
+    expect(page).not.toContain("/oud/");
+    expect(page).not.toMatch(/http-equiv/i);
+    expect(page).toContain(`viewingPreview:"link"`);
+    expect(page).toContain(`<link rel="stylesheet" href="/css/site.css">`);
+    expect(previewPageHtml(`<body>x</body>`, "https://x.be/")).toMatch(/^<!doctype html><head><base href="https:\/\/x.be\/">/);
   });
 
   it("takes a typed address as the site's root", () => {

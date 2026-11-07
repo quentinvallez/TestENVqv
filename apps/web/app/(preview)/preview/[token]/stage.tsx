@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, House, Monitor, Smartphone, X } from "lucide-react";
 import type { WidgetState } from "@/app/(public)/actions";
@@ -93,6 +93,7 @@ export function PreviewStage({
   listingFramable,
   homeShot,
   listingShot,
+  ownPages,
   listings: all,
   days,
   action,
@@ -106,12 +107,13 @@ export function PreviewStage({
   listingFramable: boolean;
   homeShot: boolean;
   listingShot: boolean;
+  /** Whether we kept their pages' HTML, shown with their own look when the site can't be framed. */
+  ownPages: { home: boolean; listings: boolean[] };
   listings: Listing[];
   days: SlotDay[];
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = text[lang];
-  // Only the first listing has a picture; the others show as a page rebuilt from what we read.
   const listings = all;
   const [view, setView] = useState<"home" | number>(listings.length ? 0 : "home");
   const [device, setDevice] = useState<"desktop" | "phone">("desktop");
@@ -130,6 +132,28 @@ export function PreviewStage({
     setPanel(false);
     setGreeting(true);
   };
+
+  // A click on a link in their page (shown from our copy) opens that listing or the home page in the preview.
+  useEffect(() => {
+    const same = (a: string, b: string) => {
+      try {
+        const x = new URL(a);
+        const y = new URL(b);
+        return x.host.replace(/^www\./, "") === y.host.replace(/^www\./, "") && x.pathname.replace(/\/$/, "") === y.pathname.replace(/\/$/, "");
+      } catch {
+        return false;
+      }
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { viewingPreview?: string; href?: string } | null;
+      if (data?.viewingPreview !== "link" || typeof data.href !== "string") return;
+      const at = listings.findIndex((l) => same(l.url, data.href!));
+      if (at >= 0) go(at);
+      else if (same(site, data.href)) go("home");
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [listings, site]);
 
   return (
     <>
@@ -183,6 +207,15 @@ export function PreviewStage({
               title={name}
               className="size-full border-0"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              referrerPolicy="no-referrer"
+            />
+          ) : (listing ? ownPages.listings[view as number] : ownPages.home) ? (
+            <iframe
+              key={`own-${view}`}
+              src={`/preview/site/${token}/${view}`}
+              title={name}
+              className="size-full border-0"
+              sandbox="allow-scripts allow-popups"
               referrerPolicy="no-referrer"
             />
           ) : shot ? (
