@@ -308,3 +308,29 @@ export async function deletePreviewAction(previewId: string) {
   await runTool(tools.deleteWidgetPreview, await getToolContext(), { previewId });
   revalidatePath("/previews");
 }
+
+export type ForwardingState = { error?: string; done?: boolean } | undefined;
+
+/** One click in Settings → Portal leads: the rule in the agent's Outlook, created or removed. */
+export async function portalForwardingAction(agentId: string, remove: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  try {
+    const ctx = await getToolContext();
+    if (remove) await runTool(tools.removePortalForwarding, ctx, { agentId });
+    else await runTool(tools.setupPortalForwarding, ctx, { agentId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: /^(Connect|The inbox)/.test(message) ? message : "Outlook refused the rule. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
+
+export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
+  try {
+    await runTool(tools.setLeadCopyAddress, await getToolContext(), { address: String(form.get("address") ?? "") });
+  } catch {
+    return { error: "That doesn't look like an email address." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
