@@ -125,19 +125,12 @@ const SHOT_HEIGHT = 2400;
  * Unlike reading, the page loads with its images (it is meant to look like the site); its own pages still follow
  * robots.txt and requests to private addresses are refused. Null per page when no browser can run here.
  */
-export async function openScreenshotter(
-  reader: SiteReader,
-): Promise<{ shoot: (url: string, width?: number) => Promise<string | null>; close: () => Promise<void>; errors: string[] } | { error: string }> {
-  const errors: string[] = [];
-  let browser: Browser | null;
-  try {
-    browser = await launch();
-  } catch (error) {
+export async function openScreenshotter(reader: SiteReader): Promise<{ shoot: (url: string, width?: number) => Promise<string | null>; close: () => Promise<void> } | null> {
+  const browser = await launch().catch((error) => {
     console.error("No browser for pictures of websites", error);
-    return { error: `The browser could not start: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500) };
-  }
-  if (!browser) return { error: "No browser here (WEBSITE_BROWSER=off, or CHROMIUM_PATH unset outside Vercel)" };
-  const open = browser;
+    return null;
+  });
+  if (!browser) return null;
   const hosts = new Map<string, Promise<boolean>>();
   const publicHost = (url: URL) => {
     if (!hosts.has(url.host))
@@ -152,7 +145,7 @@ export async function openScreenshotter(
   };
 
   const shoot = async (url: string, width = 1280) => {
-    const context = await open.newContext({ userAgent: USER_AGENT, locale: "nl-BE", viewport: { width, height: 900 } });
+    const context = await browser.newContext({ userAgent: USER_AGENT, locale: "nl-BE", viewport: { width, height: 900 } });
     try {
       await context.route("**/*", async (route) => {
         const target = new URL(route.request().url());
@@ -171,12 +164,11 @@ export async function openScreenshotter(
       return picture.toString("base64");
     } catch (error) {
       console.error(`No picture of ${url}`, error);
-      errors.push(`${new URL(url).pathname}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`.slice(0, 300));
       return null;
     } finally {
       await context.close().catch(() => undefined);
     }
   };
 
-  return { shoot, errors, close: () => open.close().catch(() => undefined) };
+  return { shoot, close: () => browser.close().catch(() => undefined) };
 }

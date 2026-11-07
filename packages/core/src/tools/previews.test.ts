@@ -14,8 +14,6 @@ vi.mock("../website/fetch", () => ({
     return page ? { url, ...page } : { url, status: 404, html: "Not found" };
   },
 }));
-// No browser in tests: a site that can't be framed simply has no picture.
-vi.mock("../website/browser", () => ({ openScreenshotter: async () => ({ error: "No browser here" }), openBrowser: async () => null }));
 
 const listingPage = (o: { title: string; price: string; address: string; agent: string; status?: string }) => `<html><head><meta property="og:image" content="https://www.immo-prospect.be/foto/1.jpg"></head><body>
 <h1>${o.title}</h1>${o.status ? `<p class="status">${o.status}</p>` : ""}
@@ -56,7 +54,7 @@ describe.skipIf(!process.env.DATABASE_URL)("widget previews", () => {
     const made = await runTool(tools.createWidgetPreview, ctx, { website: "www.immo-prospect.be/aanbod" });
     expect(made.listings).toBe(1);
     const preview = await previewByToken(made.token);
-    expect(preview).toMatchObject({ agencyId, name: "Immo Prospect", brandColor: "#0a6e4f", language: "nl", homeFramable: false, listingFramable: true, homeShot: null, shotError: "No browser here", source: "back_office" });
+    expect(preview).toMatchObject({ agencyId, name: "Immo Prospect", brandColor: "#0a6e4f", language: "nl", homeFramable: false, listingFramable: true, homeShot: null, source: "back_office" });
     // Only what can be booked: the sold flat is left out.
     expect(preview!.listings).toEqual([
       expect.objectContaining({ url: houseUrl, street: "Statiestraat", houseNumber: "10", city: "Berchem", price: 495000, agentName: "Sofie Peeters", photo: "https://www.immo-prospect.be/foto/1.jpg", status: "active" }),

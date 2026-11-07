@@ -51,7 +51,7 @@ export type PreviewSite = {
   brandColor: string | null;
   siteBuilder: SiteBuilder | null;
   language: "nl" | "fr" | "en";
-  /** Whether the site lets another page show it in a frame; otherwise the preview shows a picture of it. */
+  /** Whether the site lets another page show it in a frame; otherwise the preview shows a page rebuilt from what we read. */
   homeFramable: boolean;
   listingFramable: boolean;
   listings: PreviewListing[];
@@ -81,8 +81,14 @@ export function allowsFraming(framing: FetchedPage["framing"]): boolean {
 /** Words a title starts with that aren't a name ("Home | Immodyck"). */
 const GENERIC_TITLE = /^(home|homepage|home page|welkom|welcome|bienvenue|accueil|startpagina|start|index)$/i;
 
-/** The agency's name: what the site calls itself for sharing, else the title of its home page without the slogan. */
-export function siteName(html: string): string | null {
+/** Letters only, to compare a title's part with the site's address ("Immo Zone" and immo-zone.be). */
+const compact = (text: string) => text.toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+
+/**
+ * The agency's name: what the site calls itself for sharing, else the part of its home page's title that matches
+ * its address ("Thuis in uw regio - Immozone" on immo-zone.be), else the title's first part without the slogan.
+ */
+export function siteName(html: string, site?: string): string | null {
   const shared = metaContent(html, "og:site_name") ?? metaContent(html, "application-name");
   if (shared?.trim() && !GENERIC_TITLE.test(decodeEntities(shared).trim())) return decodeEntities(shared).trim().slice(0, 80);
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
@@ -92,7 +98,10 @@ export function siteName(html: string): string | null {
     .split(/\s+[|·•–—-]\s+/)
     .map((part) => part.trim())
     .filter((part) => part && !GENERIC_TITLE.test(part));
-  return parts[0] ? parts[0].slice(0, 80) : null;
+  const host = site ? compact(new URL(site).hostname.replace(/^www\./, "").split(".")[0] ?? "") : "";
+  const named = host.length >= 3 ? parts.find((part) => compact(part).length >= 3 && (host.includes(compact(part)) || compact(part).includes(host))) : undefined;
+  const name = named ?? parts[0];
+  return name ? name.slice(0, 80) : null;
 }
 
 /** The language the page is written in, for the widget's texts. */
@@ -121,6 +130,8 @@ export function previewCandidates(html: string, pageUrl: string, site: string): 
 
 /** A listing read from its page as the preview shows it; null when it isn't one that can be booked. */
 export function previewListing(url: string, listing: ExtractedListing): PreviewListing | null {
+  // A sentence read as the street ("Op wandelafstand van het centrum, …") would make the widget ask about it.
+  if (listing.street && (listing.street.length > 40 || listing.street.split(/\s+/).length > 5 || /[,.!?]/.test(listing.street))) listing = { ...listing, street: null, houseNumber: null };
   const status = listing.status ?? "active";
   if (status !== "active" && status !== "under_offer") return null;
   if (!listing.street && !listing.city && !listing.title) return null;
@@ -158,7 +169,7 @@ export function previewSiteFromInput(input: string): string | null {
 }
 
 /** At most this long for the import's search when the home page and its overviews show no listing links. */
-const SEARCH_MS = 20_000;
+const SEARCH_MS = 8_000;
 
 /** Listing pages the import's search finds first, leaving out those an overview card marks as sold or rented. */
 async function searchListings(reader: SiteReader, site: string, deadline: number): Promise<string[]> {
@@ -251,7 +262,7 @@ export async function readPreviewSite(site: string, deadline: number): Promise<P
 
   return {
     site: base,
-    name: siteName(home.html),
+    name: siteName(home.html, base),
     brandColor: brandColor(home.html),
     siteBuilder: siteBuilder(home.html),
     language: pageLanguage(home.html),

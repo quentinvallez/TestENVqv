@@ -24,6 +24,9 @@ describe("widget preview", () => {
     // A title that starts with the page's name, not the agency's.
     expect(siteName(`<title>Home | Immodyck</title>`)).toBe("Immodyck");
     expect(siteName(`<meta property="og:site_name" content="Home"><title>Welkom - Immo Dyck</title>`)).toBe("Immo Dyck");
+    // The part of the title that matches the site's address is the name, wherever it stands.
+    expect(siteName(`<title>Thuis in uw regio - Immozone</title>`, "https://www.immo-zone.be/")).toBe("Immozone");
+    expect(siteName(`<title>Lindeveld Vastgoed | Uw makelaar in Gent</title>`, "https://lindeveld.be/")).toBe("Lindeveld Vastgoed");
     expect(pageLanguage(`<html lang="fr-BE">`)).toBe("fr");
     expect(pageLanguage(`<html class="x" lang="nl">`)).toBe("nl");
     expect(pageLanguage(`<html>`)).toBe("nl");
@@ -50,6 +53,7 @@ describe("widget preview", () => {
     const plain = previewListing("https://x.be/1", listing({ city: "Gent" }))!;
     const full = previewListing("https://x.be/2", listing({ street: "Kerkstraat", photos: ["http://x.be/a.jpg", "https://x.be/b.jpg"] }))!;
     const option = previewListing("https://x.be/3", listing({ street: "Molenstraat", status: "under_offer", photos: ["https://x.be/c.jpg"] }))!;
+    expect(previewListing("https://x.be/5", listing({ street: "Op wandelafstand van het centrum, met station", city: "Temse" }))).toMatchObject({ street: null, city: "Temse" });
     expect(full.photo).toBe("https://x.be/b.jpg");
     expect(rankPreviewListings([plain, option, full]).map((l) => l.url)).toEqual(["https://x.be/2", "https://x.be/3", "https://x.be/1"]);
     // A garage box is a poor example of a viewing: homes go first.

@@ -36,7 +36,6 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
   return (
     <>
       {/* Why the pictures are missing, for support (also shown in the back office). */}
-      {preview.shotError && <meta name="preview-picture-error" content={preview.shotError} />}
       <PreviewStage
       lang={lang}
       token={token}

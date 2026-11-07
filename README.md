@@ -52,7 +52,7 @@ Sign up, then click **Load demo data** on the dashboard.
 
 ## Widget previews for prospects
 
-**Widget previews** in the back office (`/previews`) reads a prospect agency's website (home page and a few listings, as its robots.txt allows) and makes a link (`/preview/<token>`, 30 days) that shows our booking widget on their own listings, in their colour. Their site is shown in a frame when it allows that, otherwise as a picture taken with the website browser. Nothing is put on their site, nothing is saved as an agency or listing, and booking in a preview books and sends nothing. The list shows how often each link was opened and whether someone tried booking. Agencies can also ask for one themselves at `/preview` (website + email) when `PREVIEW_AGENCY_ID` names the workspace those previews belong to.
+**Widget previews** in the back office (`/previews`) reads a prospect agency's website (home page and a few listings, as its robots.txt allows) and makes a link (`/preview/<token>`, 30 days) that shows our booking widget on their own listings, in their colour. Their site is shown in a frame when it allows that, otherwise as a page rebuilt from what was read (their colour, photo, address, price, agent). No browser runs for a preview and the read stops after about 15 seconds, so a preview costs a few plain page reads. Nothing is put on their site, nothing is saved as an agency or listing, and booking in a preview books and sends nothing. The list shows how often each link was opened and whether someone tried booking. Agencies can also ask for one themselves at `/preview` (website + email) when `PREVIEW_AGENCY_ID` names the workspace those previews belong to.
 
 ## Automatic jobs
 
