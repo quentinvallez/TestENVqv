@@ -148,6 +148,9 @@ export async function updateAutomationsAction(change: {
   nudges?: boolean;
   nudgeAfterDays?: number;
   sendRemindersAutomatically?: boolean;
+  sendFollowUpsAutomatically?: boolean;
+  sendNoShowsAutomatically?: boolean;
+  sendNudgesAutomatically?: boolean;
   sendOccupantAlertsAutomatically?: boolean;
   agentAlerts?: boolean;
   portalLeadCopies?: boolean;

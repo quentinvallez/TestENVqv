@@ -444,8 +444,8 @@ const AUTO_REPLY_QUIET_MS = 24 * 3600 * 1000;
 /**
  * Whether the planner may answer this message on its own: a lead from
  * Immoweb, Zimmo or Immovlan that asks to visit an active listing we matched,
- * with free times to offer, a client email address, and the agency allowing
- * it (autonomy.portal_replies = "act"). Everything else stays a draft.
+ * with free times to offer, a client email address, and the agency not having
+ * set it to "Ask me first" (autonomy.portal_replies = "suggest"). Everything else stays a draft.
  */
 export async function portalAutoReply(ctx: ToolContext, thread: Thread, t: Triage, plan: DraftPlan): Promise<{ portal: string } | null> {
   const lastInbound = [...thread.conversation.messages].reverse().find((m) => m.direction === "inbound" && m.authorType === "contact");
@@ -455,12 +455,11 @@ export async function portalAutoReply(ctx: ToolContext, thread: Thread, t: Triag
   if (thread.listing?.status !== "active" || !thread.contact?.email || thread.conversation.channel !== "email" || thread.upcoming) return null;
   const recentReply = thread.conversation.messages.some((m) => m.direction === "outbound" && Date.now() - m.sentAt.getTime() < AUTO_REPLY_QUIET_MS);
   if (recentReply) return null;
-  const [settings] = await ctx.db.select({ autonomy: agencySettings.autonomy }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
-  return settings?.autonomy.portal_replies === "act" ? { portal } : null;
+  return (await sendsAutomatically(ctx, "portal_replies")) ? { portal } : null;
 }
 
 /** Drafts a personal follow-up after a completed viewing, on the client's preferred channel. */
-export async function draftFollowUp(ctx: ToolContext, appointmentId: string, options: { useAi?: boolean } = {}) {
+export async function draftFollowUp(ctx: ToolContext, appointmentId: string, options: { useAi?: boolean; send?: boolean } = {}) {
   const useAi = options.useAi ?? true;
   const appointment = await ctx.db.query.appointments.findFirst({
     where: and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.id, appointmentId)),
@@ -499,8 +498,12 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
     leadStage: "follow_up",
     summary: `Follow up with ${appointment.contact.firstName ?? "the client"} after the viewing`,
   };
+  if (options.send) {
+    const sent = await proposeAndSend(ctx, thread, plan, lang, "Viewing completed: follow-up sent on its own (Settings → Automations).");
+    return { proposalId: sent.proposalId, conversationId: conversation.id, sent };
+  }
   const proposal = await propose(ctx, thread, plan, lang, "Viewing completed; no follow-up sent yet.", useAi);
-  return { proposalId: proposal.id, conversationId: conversation.id };
+  return { proposalId: proposal.id, conversationId: conversation.id, sent: null };
 }
 
 export type ClientAction = { kind: "booked" } | { kind: "cancelled" } | { kind: "rescheduled"; from: Date };
@@ -616,8 +619,25 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
 
 /** Booking and move confirmations to clients go out automatically unless autonomy.booking_confirmations is "suggest". */
 export async function confirmationsAutomatic(ctx: ToolContext) {
+  return sendsAutomatically(ctx, "booking_confirmations");
+}
+
+/** Messages the planner sends on its own unless the agency sets them to "Ask me first" (autonomy[key] = "suggest"). */
+export type AutoSendKey = "booking_confirmations" | "portal_replies" | "reminders" | "follow_ups" | "no_shows" | "nudges";
+export async function sendsAutomatically(ctx: ToolContext, key: AutoSendKey) {
   const [settings] = await ctx.db.select({ autonomy: agencySettings.autonomy }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
-  return settings?.autonomy.booking_confirmations !== "suggest";
+  return settings?.autonomy[key] !== "suggest";
+}
+
+/**
+ * Sends a planned message without waiting for a human: the fixed template (never
+ * AI text), stored as an approved proposal so the inbox shows what went out.
+ */
+export async function proposeAndSend(ctx: ToolContext, thread: Thread, plan: DraftPlan, lang: Lang, reasoning: string) {
+  const proposal = await propose(ctx, thread, plan, lang, reasoning, false, { fixedText: true });
+  const decided = await decideProposal.run({ ...ctx, actor: { type: "agent", id: "planner" } }, { proposalId: proposal.id, decision: "approved" });
+  const delivery = (decided.result as { output?: { delivery?: string } } | null)?.output?.delivery ?? null;
+  return { proposalId: proposal.id, status: decided.status, delivery };
 }
 
 /**

@@ -11,6 +11,8 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
   beforeAll(async () => {
     await db.insert(schema.organization).values({ id: agencyId, name: "Vastgoed Test", slug: agencyId, createdAt: new Date() });
     await runTool(tools.seedDemoData, ctx, {});
+    // Leads first land as drafts here; the auto-reply test switches the (default) automatic reply back on.
+    await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
   });
   afterAll(async () => {
     await db.delete(schema.organization).where(eq(schema.organization.id, agencyId));
@@ -111,7 +113,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(message!.delivery).toBe("failed");
   });
 
-  it("answers a portal visit request on its own with times and the booking link, only when the agency allows it", async () => {
+  it("answers a portal visit request on its own with times and the booking link, unless the agency set it to ask first", async () => {
     const lead = (n: number, ref = "21004871") => ({
       ...immowebLead(`<auto-${n}@immoweb.be>`),
       text: `Naam: Klant ${n}\nE-mail: klant${n}@example.be\nBericht: Kan ik dit appartement bezoeken?\n\nhttps://www.immoweb.be/nl/zoekertje/appartement/te-koop/berchem/2600/${ref}`,

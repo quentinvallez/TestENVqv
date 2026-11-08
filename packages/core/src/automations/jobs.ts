@@ -2,7 +2,7 @@ import type { AutomationRule } from "@viewing/db/schema";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, schema, db, type Database } from "@viewing/db";
 import { conversationFor, sendMessage } from "../channels";
 import { recordEvent } from "../events";
-import { absoluteUrl, addressOf, draftFollowUp, loadThread, pickSpreadSlots, propose, type DraftPlan } from "../planner/agent";
+import { absoluteUrl, addressOf, draftFollowUp, loadThread, pickSpreadSlots, propose, proposeAndSend, sendsAutomatically, type DraftPlan } from "../planner/agent";
 import { composeMessage, detailLabels, formatSlot, linkLabels, occupantLabels, occupantTemplates, reminderSubject, signature, templates, toLang, visitorLabel } from "../planner/language";
 import { messageOccupant, occupantAlertsAutomatic, occupantsWithAlerts, placeOf } from "../planner/occupants";
 import { availableSlots } from "../tools/booking";
@@ -57,7 +57,14 @@ async function loadSettings(ctx: ToolContext) {
     .select({ automations: agencySettings.automations, autonomy: agencySettings.autonomy })
     .from(agencySettings)
     .where(eq(agencySettings.agencyId, ctx.agencyId));
-  return { ...automationSettings(row?.automations), sendRemindersAutomatically: row?.autonomy.reminders === "act" };
+  // Automatic unless the agency chose "Ask me first" for that kind of message.
+  const auto = (key: string) => row?.autonomy[key] !== "suggest";
+  return {
+    ...automationSettings(row?.automations),
+    sendRemindersAutomatically: auto("reminders"),
+    sendFollowUpsAutomatically: auto("follow_ups"),
+    sendNudgesAutomatically: auto("nudges"),
+  };
 }
 
 const automationsCtx = (ctx: ToolContext): ToolContext => ({ ...ctx, actor: { type: "agent", id: "automations" } });
@@ -222,7 +229,7 @@ async function lastOutboundTo(ctx: ToolContext, contactId: string) {
   return row?.sentAt ?? null;
 }
 
-async function draftFollowUps(ctx: ToolContext, now: Date, useAi: boolean) {
+async function draftFollowUps(ctx: ToolContext, now: Date, useAi: boolean, send: boolean) {
   const done = await ctx.db
     .select()
     .from(appointments)
@@ -245,7 +252,11 @@ async function draftFollowUps(ctx: ToolContext, now: Date, useAi: boolean) {
     if (!runId) continue;
     outcomes.push(
       await attempt(ctx, runId, async () => {
-        const { proposalId } = await draftFollowUp({ ...ctx, actor: { type: "agent", id: "planner" } }, apt.id, { useAi });
+        const { proposalId, sent } = await draftFollowUp({ ...ctx, actor: { type: "agent", id: "planner" } }, apt.id, { useAi, send });
+        if (sent) {
+          await recordEvent(ctx, { type: "automation.follow_up_sent", subjectType: "appointment", subjectId: apt.id, data: { proposalId, delivery: sent.delivery } });
+          return { outcome: sent.delivery === "failed" ? "failed" : "sent", proposalId, detail: { delivery: sent.delivery } };
+        }
         await recordEvent(ctx, { type: "automation.follow_up_drafted", subjectType: "appointment", subjectId: apt.id, data: { proposalId } });
         return { outcome: "drafted", proposalId };
       }),
@@ -256,11 +267,12 @@ async function draftFollowUps(ctx: ToolContext, now: Date, useAi: boolean) {
 
 /** After an agent marks a no-show: a draft that offers new times, in the client's conversation. */
 export async function draftNoShow(ctx: ToolContext, appointmentId: string, options: { useAi?: boolean } = {}) {
+  const send = await sendsAutomatically(ctx, "no_shows");
   const apt = await ctx.db.query.appointments.findFirst({ where: and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.id, appointmentId)) });
   if (!apt?.contactId) return null;
   const runId = await claim(ctx, "no_show", "appointment", apt.id, apt.startsAt.toISOString());
   if (!runId) return null;
-  let result = null as { proposalId: string; conversationId: string } | null;
+  let result = null as { proposalId: string; conversationId: string; sent: boolean } | null;
   await attempt(ctx, runId, async () => {
     const conversation = await conversationFor(ctx, { contactId: apt.contactId!, listingId: apt.listingId, agentId: apt.agentId, leadId: apt.leadId });
     // The thread shows what happened, like the notes for bookings and cancellations through the link.
@@ -297,8 +309,15 @@ export async function draftNoShow(ctx: ToolContext, appointmentId: string, optio
       leadStage: "invited",
       summary: `Offer ${name} new times after the missed viewing`,
     };
-    const proposal = await propose({ ...ctx, actor: { type: "agent", id: "planner" } }, thread, plan, lang, "Marked as a no-show by the agent.", options.useAi ?? true);
-    result = { proposalId: proposal.id, conversationId: conversation.id };
+    const plannerCtx: ToolContext = { ...ctx, actor: { type: "agent", id: "planner" } };
+    if (send) {
+      const sent = await proposeAndSend(plannerCtx, thread, plan, lang, "Marked as a no-show by the agent: new times sent on its own (Settings → Automations).");
+      result = { proposalId: sent.proposalId, conversationId: conversation.id, sent: true };
+      await recordEvent(ctx, { type: "automation.no_show_sent", subjectType: "appointment", subjectId: apt.id, data: { proposalId: sent.proposalId, delivery: sent.delivery } });
+      return { outcome: sent.delivery === "failed" ? "failed" : "sent", proposalId: sent.proposalId, detail: { delivery: sent.delivery } };
+    }
+    const proposal = await propose(plannerCtx, thread, plan, lang, "Marked as a no-show by the agent.", options.useAi ?? true);
+    result = { proposalId: proposal.id, conversationId: conversation.id, sent: false };
     return { outcome: "drafted", proposalId: proposal.id };
   });
   return result;
@@ -306,7 +325,7 @@ export async function draftNoShow(ctx: ToolContext, appointmentId: string, optio
 
 // ---------------------------------------------------------------- nudges
 
-async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi: boolean) {
+async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi: boolean, send: boolean) {
   const waiting = await ctx.db.query.conversations.findMany({
     where: and(
       eq(conversations.agencyId, ctx.agencyId),
@@ -392,6 +411,11 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
               slots: [],
               summary: `Check in with ${name}: no answer for ${days} days`,
             };
+        if (send) {
+          const sent = await proposeAndSend(plannerCtx, thread, plan, lang, `No reply for ${days} days after our last message: check-in sent on its own (Settings → Automations).`);
+          await recordEvent(ctx, { type: "automation.nudge_sent", subjectType: "conversation", subjectId: conversation.id, data: { proposalId: sent.proposalId, nudge: nudges + 1, delivery: sent.delivery } });
+          return { outcome: sent.delivery === "failed" ? "failed" : "sent", proposalId: sent.proposalId, detail: { nudge: nudges + 1, delivery: sent.delivery } };
+        }
         const proposal = await propose(plannerCtx, thread, plan, lang, `No reply for ${days} days after our last message.`, useAi);
         await recordEvent(ctx, { type: "automation.nudge_drafted", subjectType: "conversation", subjectId: conversation.id, data: { proposalId: proposal.id, nudge: nudges + 1 } });
         return { outcome: "drafted", proposalId: proposal.id, detail: { nudge: nudges + 1 } };
@@ -517,14 +541,14 @@ export async function runAutomations(ctx: ToolContext, now = new Date(), options
   const withdrawn = await withdrawStaleReminders(actx, now);
   const reminders = settings.reminders ? await sendReminders(actx, now, settings.sendRemindersAutomatically) : [];
   const completed = await completeViewings(actx, now);
-  const followUps = settings.followUps ? await draftFollowUps(actx, now, useAi) : [];
-  const nudges = settings.nudges ? await draftNudges(actx, now, settings.nudgeAfterDays, useAi) : [];
+  const followUps = settings.followUps ? await draftFollowUps(actx, now, useAi, settings.sendFollowUpsAutomatically) : [];
+  const nudges = settings.nudges ? await draftNudges(actx, now, settings.nudgeAfterDays, useAi, settings.sendNudgesAutomatically) : [];
   const occupants = [...(await sendOccupantDigests(actx, now)), ...(await nudgeOccupants(actx, now))];
   return {
     reminders: { sent: tally(reminders, "sent"), drafted: tally(reminders, "drafted"), failed: tally(reminders, "failed") },
     completed,
-    followUps: tally(followUps, "drafted"),
-    nudges: tally(nudges, "drafted"),
+    followUps: tally(followUps, "drafted") + tally(followUps, "sent"),
+    nudges: tally(nudges, "drafted") + tally(nudges, "sent"),
     withdrawn,
     occupants: { sent: tally(occupants, "sent"), drafted: tally(occupants, "drafted") },
   };
