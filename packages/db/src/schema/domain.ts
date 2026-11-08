@@ -141,6 +141,8 @@ export type AutomationSettings = {
   agentAlerts?: boolean;
   /** Forward each portal email that the portals sent straight to the inbox address to the listing's agent (or channels.leadCopyAddress). On unless turned off. */
   portalLeadCopies?: boolean;
+  /** End client emails with a link to continue on WhatsApp (the client writes first), while they aren't on WhatsApp with us. */
+  whatsappInvite?: boolean;
 };
 
 /**

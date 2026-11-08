@@ -71,6 +71,10 @@ Meta stores WhatsApp Cloud API data in its own data centres; turn on **Cloud API
 
 An agency with its own number connects it in Settings → Channels with its phone number ID, number and system-user token. Its number must be in the same Meta app, so the webhook above receives its messages.
 
+### Clients write first
+
+WhatsApp only lets a business start a conversation with someone who agreed to it. So every email to a client who isn't on WhatsApp with you yet ends with "Prefer WhatsApp?" and a link that opens WhatsApp to your number with a short prefilled message (with a reference). When it arrives, the client's number is linked and their reminders and follow-ups go by WhatsApp from then on. Settings → Automations → *Invite clients to WhatsApp* turns it off. It needs `WHATSAPP_VERIFY_NUMBER` (shared number) or the agency's own number in Settings → Channels, because that is the number the link opens.
+
 ### The 24-hour rule and templates
 
 WhatsApp allows free text only within 24 hours of the client's last message. After that only pre-approved **templates** can start a conversation. Replies drafted by the planner are almost always inside the window. Reminders and follow-ups use these templates; when the window is closed and no template applies, the message goes by email if we have the client's address.

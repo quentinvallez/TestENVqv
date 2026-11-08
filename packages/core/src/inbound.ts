@@ -3,6 +3,7 @@ import type { ToolContext } from "./tool";
 import { mailDomain } from "./channels/email";
 import { aliasOf } from "./channels/inbound-email";
 import { platformWhatsapp } from "./channels/whatsapp";
+import { contactForInviteRef, parseInviteRef } from "./channels/whatsapp-invite";
 
 /*
  * Webhooks from Mailgun and WhatsApp arrive without a login. These lookups find
@@ -38,6 +39,10 @@ export async function agencyForWhatsApp(phoneNumberId: string, from: string, tex
   if (own) return own.agencyId;
   if (platformWhatsapp()?.phoneNumberId !== phoneNumberId) return null;
 
+  // The client answering the "Prefer WhatsApp?" link in one of our emails.
+  const ref = parseInviteRef(text);
+  const invited = ref ? await contactForInviteRef(db, ref) : null;
+  if (invited) return invited.agencyId;
   const phone = `+${from.replace(/\D/g, "")}`;
   const code = text.match(/\b(\d{6})\b/)?.[1];
   if (code) {

@@ -90,6 +90,36 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(form.get("subject")).toBe("Uw bezoek");
   });
 
+  it("invites email clients to WhatsApp and switches them over once they write first", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    vi.stubEnv("WHATSAPP_VERIFY_NUMBER", "+32 470 00 11 22");
+    const { conversationFor } = await import("../channels");
+    const { agencyForWhatsApp } = await import("../inbound");
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Wout", email: "wout@example.be", phone: "0499 11 22 33", language: "nl" }).returning();
+    const email = await conversationFor(ctx, { contactId: contact!.id });
+    expect(email.channel).toBe("email");
+    const sent = await sendMessage(ctx, { conversationId: email.id, body: "Beste Wout, hier zijn enkele momenten.", kind: "portal_reply" });
+    const [message] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
+    expect(message!.body).toContain("Liever via WhatsApp?");
+    const link = message!.body.match(/https:\/\/wa\.me\/\S+/)![0];
+    expect(link).toContain("https://wa.me/32470001122?text=");
+    const prefilled = new URL(link).searchParams.get("text")!;
+
+    // They write from another number than the one the portal gave: the reference still finds them.
+    expect(await agencyForWhatsApp("1055", "32488776655", prefilled)).toBe(agencyId);
+    await runTool(tools.receiveWhatsApp, ctx, { messages: [{ id: "wamid.wout1", from: "32488776655", name: "Wout", text: prefilled, timestamp: new Date() }], statuses: [], useAi: false });
+    const [after] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contact!.id));
+    expect(after).toMatchObject({ phone: "+32488776655", whatsappOptIn: true });
+    const conversations = await db.select().from(schema.conversations).where(eq(schema.conversations.contactId, contact!.id));
+    expect(conversations.map((c) => c.channel).sort()).toEqual(["email", "whatsapp"]);
+    expect((await conversationFor(ctx, { contactId: contact!.id })).channel).toBe("whatsapp");
+
+    // Once on WhatsApp, emails stop inviting; agencies can also turn it off.
+    const again = await sendMessage(ctx, { conversationId: email.id, body: "Nog een vraag?" });
+    expect((await db.select().from(schema.messages).where(eq(schema.messages.id, again.messageId)))[0]!.body).toBe("Nog een vraag?");
+  });
+
   it("falls back to email when the WhatsApp window is closed and no template is given", async () => {
     vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
     vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");

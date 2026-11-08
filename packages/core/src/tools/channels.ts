@@ -4,7 +4,9 @@ import { emailAgent, inboundAddress } from "../channels";
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { parsePortalEmail } from "../channels/portals";
+import { samePhone } from "../channels/phone";
 import { platformWhatsapp } from "../channels/whatsapp";
+import { contactForInviteRef, parseInviteRef } from "../channels/whatsapp-invite";
 import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
 import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/oauth";
@@ -21,7 +23,7 @@ function forwardedSender(text: string): string | null {
 }
 import { findOrCreateContact, receiveMessage } from "./conversations";
 
-const { agents, agencySettings, calendarConnections, leads, listings, messages } = schema;
+const { agents, agencySettings, calendarConnections, contacts, leads, listings, messages } = schema;
 
 const portals = ["immoweb", "zimmo", "immovlan"] as const;
 const portalNames = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
@@ -230,6 +232,19 @@ export const receiveEmail = defineTool({
   },
 });
 
+/**
+ * A client who followed the "Prefer WhatsApp?" link in our email: their number
+ * goes on their contact (so this message lands in their history) and WhatsApp
+ * becomes their channel from now on.
+ */
+async function linkInvitedContact(ctx: ToolContext, text: string, phone: string) {
+  const ref = parseInviteRef(text);
+  const contact = ref ? await contactForInviteRef(ctx.db, ref, ctx.agencyId) : null;
+  if (!contact || (contact.whatsappOptIn && samePhone(contact.phone, phone))) return;
+  await ctx.db.update(contacts).set({ phone, whatsappOptIn: true }).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.id, contact.id)));
+  await recordEvent(ctx, { type: "contact.whatsapp_opted_in", subjectType: "contact", subjectId: contact.id, data: { via: "email_invite", replacedPhone: contact.phone && !samePhone(contact.phone, phone) ? true : false } });
+}
+
 export const receiveWhatsApp = defineTool({
   name: "messages_receive_whatsapp",
   description: "Take in WhatsApp messages and delivery updates for the agency's business number.",
@@ -243,6 +258,7 @@ export const receiveWhatsApp = defineTool({
     const received = [];
     for (const m of input.messages) {
       const phone = `+${m.from.replace(/\D/g, "")}`;
+      await linkInvitedContact(ctx, m.text, phone);
       received.push(
         await receiveMessage.run(ctx, {
           channel: "whatsapp",
