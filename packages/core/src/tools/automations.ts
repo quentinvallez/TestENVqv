@@ -7,10 +7,24 @@ import { defineTool } from "../tool";
 
 const { agencySettings, appointments, automationRuns, conversations, leads, proposals } = schema;
 
+/** Every client message the planner can send on its own does so unless the agency set it to "Ask me first" ("suggest"). */
+const sendingKeys = {
+  sendRemindersAutomatically: "reminders",
+  sendFollowUpsAutomatically: "follow_ups",
+  sendNoShowsAutomatically: "no_shows",
+  sendNudgesAutomatically: "nudges",
+  sendOccupantAlertsAutomatically: "occupant_alerts",
+  replyToPortalLeadsAutomatically: "portal_replies",
+  sendBookingConfirmationsAutomatically: "booking_confirmations",
+} as const;
+type SendingFlag = keyof typeof sendingKeys;
+const sendingLevels = (autonomy: Record<string, string>) =>
+  Object.fromEntries(Object.entries(sendingKeys).map(([flag, key]) => [flag, autonomy[key] !== "suggest"])) as Record<SendingFlag, boolean>;
+
 export const getAutomationSettings = defineTool({
   name: "automations_get_settings",
   description:
-    "Which automatic jobs run for the agency (reminders, follow-ups after viewings, no-show messages, nudges to quiet leads, booking emails to agents), whether reminders go out without approval, and whether portal leads asking to visit get the booking link on their own.",
+    "Which automatic jobs run for the agency (reminders, follow-ups after viewings, no-show messages, nudges to quiet leads, booking emails to agents), and which client messages go out on their own (automatic by default) or wait for approval: reminders, follow-ups, no-show messages, nudges, booking confirmations, alerts to occupants and the booking-link reply to portal leads.",
   mutates: false,
   input: z.object({}),
   run: async (ctx) => {
@@ -20,10 +34,7 @@ export const getAutomationSettings = defineTool({
       .where(eq(agencySettings.agencyId, ctx.agencyId));
     return {
       ...automationSettings(row?.automations),
-      sendRemindersAutomatically: row?.autonomy.reminders === "act",
-      sendOccupantAlertsAutomatically: row?.autonomy.occupant_alerts !== "suggest",
-      replyToPortalLeadsAutomatically: row?.autonomy.portal_replies === "act",
-      sendBookingConfirmationsAutomatically: row?.autonomy.booking_confirmations !== "suggest",
+      ...sendingLevels(row?.autonomy ?? {}),
     };
   },
 });
@@ -40,6 +51,9 @@ export const updateAutomationSettings = defineTool({
     nudges: z.boolean().optional(),
     nudgeAfterDays: z.number().int().min(1).max(14).optional(),
     sendRemindersAutomatically: z.boolean().optional(),
+    sendFollowUpsAutomatically: z.boolean().optional().describe("Send the follow-up after a completed viewing on its own (fixed text) instead of waiting for approval"),
+    sendNoShowsAutomatically: z.boolean().optional().describe("Send new times after a no-show on its own (fixed text)"),
+    sendNudgesAutomatically: z.boolean().optional().describe("Send the check-in to quiet leads on its own (fixed text)"),
     sendOccupantAlertsAutomatically: z.boolean().optional(),
     agentAlerts: z.boolean().optional(),
     portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
@@ -47,17 +61,12 @@ export const updateAutomationSettings = defineTool({
     sendBookingConfirmationsAutomatically: z.boolean().optional().describe("Confirm a booking or move the client made on the website on their own (fixed text) instead of waiting for approval"),
   }),
   run: async (ctx, input) => {
-    const { sendRemindersAutomatically, sendOccupantAlertsAutomatically, replyToPortalLeadsAutomatically, sendBookingConfirmationsAutomatically, ...jobs } = input;
+    const flags = Object.keys(sendingKeys) as SendingFlag[];
+    const jobs = Object.fromEntries(Object.entries(input).filter(([k]) => !flags.includes(k as SendingFlag)));
     const [row] = await ctx.db.select().from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const automations = { ...row?.automations, ...jobs };
-    const level = (on: boolean) => (on ? ("act" as const) : ("suggest" as const));
-    const autonomy = {
-      ...row?.autonomy,
-      ...(sendRemindersAutomatically !== undefined && { reminders: level(sendRemindersAutomatically) }),
-      ...(sendOccupantAlertsAutomatically !== undefined && { occupant_alerts: level(sendOccupantAlertsAutomatically) }),
-      ...(replyToPortalLeadsAutomatically !== undefined && { portal_replies: level(replyToPortalLeadsAutomatically) }),
-      ...(sendBookingConfirmationsAutomatically !== undefined && { booking_confirmations: level(sendBookingConfirmationsAutomatically) }),
-    };
+    const autonomy = { ...row?.autonomy };
+    for (const flag of flags) if (input[flag] !== undefined) autonomy[sendingKeys[flag]] = input[flag] ? "act" : "suggest";
     await ctx.db
       .insert(agencySettings)
       .values({ agencyId: ctx.agencyId, automations, autonomy })
@@ -65,10 +74,7 @@ export const updateAutomationSettings = defineTool({
     await recordEvent(ctx, { type: "settings.automations_updated", subjectType: "agency", subjectId: ctx.agencyId, data: input });
     return {
       ...automationSettings(automations),
-      sendRemindersAutomatically: autonomy.reminders === "act",
-      sendOccupantAlertsAutomatically: autonomy.occupant_alerts !== "suggest",
-      replyToPortalLeadsAutomatically: autonomy.portal_replies === "act",
-      sendBookingConfirmationsAutomatically: autonomy.booking_confirmations !== "suggest",
+      ...sendingLevels(autonomy),
     };
   },
 });

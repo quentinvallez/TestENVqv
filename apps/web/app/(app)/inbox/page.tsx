@@ -176,7 +176,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 }
 
 /** A message sent without a human approving it, when the agency allows it: reminders, and booking links to portal leads asking to visit. */
-const automaticLabel: Record<string, string> = { reminder: "Reminder · automatic", portal_reply: "Booking link · automatic", booking_confirmation: "Confirmation · automatic" };
+const automaticLabel: Record<string, string> = {
+  reminder: "Reminder · automatic",
+  portal_reply: "Booking link · automatic",
+  booking_confirmation: "Confirmation · automatic",
+  follow_up: "Follow-up · automatic",
+  no_show: "New times · automatic",
+  nudge: "Check-in · automatic",
+};
 const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) =>
   m.authorType === "agent" && typeof m.metadata.kind === "string" ? (automaticLabel[m.metadata.kind] ?? null) : null;
 

@@ -151,7 +151,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
     vi.stubEnv("MAILGUN_API_KEY", "key");
     const setup = await runTool(tools.setupPortalForwarding, ctx, { agentId });
-    const test = calls.findLast((c) => c.url.startsWith("https://api.eu.mailgun.net/"))!;
+    const test = [...calls].reverse().find((c) => c.url.startsWith("https://api.eu.mailgun.net/"))!;
     const form = new URLSearchParams(String(test.body));
     expect(form.get("from")).toContain("forwarding-check@mail.example.be");
     expect(form.get("to")).toBe("quentin@agency.be");

@@ -127,7 +127,7 @@ export type WebsiteDiscovery = {
 
 /** Which automatic jobs run for the agency. Every job is on unless turned off. */
 export type AutomationSettings = {
-  /** Reminder the day before a viewing or valuation visit. Sent on its own only when autonomy.reminders is "act". */
+  /** Reminder the day before a viewing or valuation visit. Sent on its own unless autonomy.reminders is "suggest". */
   reminders?: boolean;
   /** After a viewing that ended, mark it completed and draft a follow-up the next day. */
   followUps?: boolean;
@@ -145,8 +145,10 @@ export type AutomationSettings = {
 
 /**
  * How much an AI agent may do on its own, per capability. Keys in use:
- * reminders, occupant_alerts, portal_replies (answer a portal lead that asks
- * to visit with free times and the listing's booking link).
+ * reminders, follow_ups, no_shows, nudges, booking_confirmations,
+ * occupant_alerts, portal_replies (answer a portal lead that asks to visit with
+ * free times and the listing's booking link). Client messages are sent on their
+ * own (fixed text) unless the key is "suggest".
  */
 export type Autonomy = Record<string, "suggest" | "act_and_notify" | "act">;
 

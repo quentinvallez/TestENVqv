@@ -15,6 +15,13 @@ const capabilities = [
   ["Reassign a lead to another agent", "suggest"],
 ] as const;
 
+/** Which "send automatically" setting belongs to which job. */
+const sendingFlag: Record<string, "sendRemindersAutomatically" | "sendFollowUpsAutomatically" | "sendNoShowsAutomatically" | "sendNudgesAutomatically"> = {
+  reminders: "sendRemindersAutomatically",
+  followUps: "sendFollowUpsAutomatically",
+  noShows: "sendNoShowsAutomatically",
+  nudges: "sendNudgesAutomatically",
+};
 const autonomyLabel = { suggest: "Ask me first", act_and_notify: "Do it and tell me", act: "Do it" };
 
 export default async function SettingsPage() {
@@ -38,19 +45,19 @@ export default async function SettingsPage() {
       key: "followUps",
       on: automations.followUps,
       title: "Follow-up after the viewing",
-      description: "An hour after a viewing the planner marks it done. The next day it drafts a personal follow-up, unless you already wrote to the client.",
+      description: "An hour after a viewing the planner marks it done. The next day the client gets a follow-up asking how they liked it, unless you already wrote to them. Mark no-shows the same day so they don't get it.",
     },
     {
       key: "noShows",
       on: automations.noShows,
       title: "Message after a no-show",
-      description: "When you mark that a client didn't come (Appointments), the planner drafts a friendly message with new times.",
+      description: "When you mark that a client didn't come (Appointments), the client gets a friendly message with new times to book.",
     },
     {
       key: "nudges",
       on: automations.nudges,
       title: "Check in with quiet leads",
-      description: `When a lead hasn't answered your last message for ${automations.nudgeAfterDays} days, the planner drafts a short check-in. At most two, and never once they booked.`,
+      description: `When a lead hasn't answered your last message for ${automations.nudgeAfterDays} days, they get a short check-in. At most two, and never once they booked.`,
     },
     {
       key: "agentAlerts",
@@ -205,7 +212,7 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
-            <p className="mb-2 text-muted">These jobs run on their own. Reminders, booking confirmations and alerts to occupants can go out without approval as set below; everything else waits in the inbox for your approval.</p>
+            <p className="mb-2 text-muted">These jobs run on their own and send their messages automatically, in fixed text in the client&apos;s language. Set any of them to “Ask me first” to approve each message in the inbox instead.</p>
             <Panel className="divide-y divide-line">
               {jobs.map((job) => (
                 <div key={job.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
@@ -216,15 +223,15 @@ export default async function SettingsPage() {
                       <span className="text-[12px] font-normal text-muted">{job.on ? "On" : "Off"}</span>
                     </div>
                     <p className="mt-0.5 max-w-xl text-muted">{job.description}</p>
-                    {job.key === "reminders" && job.on && (
+                    {job.on && job.key in sendingFlag && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className="text-muted">Sending:</span>
-                        <Pill className={automations.sendRemindersAutomatically ? "border-ai-line bg-ai-soft text-ai" : undefined}>
-                          {automations.sendRemindersAutomatically ? "Automatically" : "After your approval"}
+                        <Pill className={automations[sendingFlag[job.key]!] ? "border-ai-line bg-ai-soft text-ai" : undefined}>
+                          {automations[sendingFlag[job.key]!] ? "Automatically" : "After your approval"}
                         </Pill>
-                        <form action={updateAutomationsAction.bind(null, { sendRemindersAutomatically: !automations.sendRemindersAutomatically })}>
+                        <form action={updateAutomationsAction.bind(null, { [sendingFlag[job.key]!]: !automations[sendingFlag[job.key]!] })}>
                           <button type="submit" className="text-[12px] text-muted underline underline-offset-2 hover:text-fg">
-                            {automations.sendRemindersAutomatically ? "Ask me first instead" : "Send reminders automatically"}
+                            {automations[sendingFlag[job.key]!] ? "Ask me first instead" : "Send automatically"}
                           </button>
                         </form>
                       </div>

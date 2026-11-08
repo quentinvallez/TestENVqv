@@ -20,6 +20,13 @@ describe.skipIf(!process.env.DATABASE_URL)("automations", () => {
     const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.status, "active")));
     listingId = listing!.id;
     agentId = listing!.agentId!;
+    // The draft paths first; the last test switches back to the default (automatic).
+    await runTool(tools.updateAutomationSettings, ctx, {
+      sendRemindersAutomatically: false,
+      sendFollowUpsAutomatically: false,
+      sendNoShowsAutomatically: false,
+      sendNudgesAutomatically: false,
+    });
   });
 
   afterAll(async () => {
@@ -121,5 +128,59 @@ describe.skipIf(!process.env.DATABASE_URL)("automations", () => {
     // A pending nudge is not drafted again.
     await runAutomations(ctx, new Date(), { useAi: false });
     expect(await pendingFor(conversation!.id)).toHaveLength(1);
+  });
+
+  it("sends everything on its own by default: reminders, follow-ups, no-show messages and nudges, in fixed text", async () => {
+    const fresh: ToolContext = { db, agencyId: newId("org"), actor: { type: "system", id: null } };
+    expect(await runTool(tools.getAutomationSettings, fresh, {})).toMatchObject({
+      sendRemindersAutomatically: true,
+      sendFollowUpsAutomatically: true,
+      sendNoShowsAutomatically: true,
+      sendNudgesAutomatically: true,
+      replyToPortalLeadsAutomatically: true,
+      sendBookingConfirmationsAutomatically: true,
+    });
+
+    await runTool(tools.updateAutomationSettings, ctx, {
+      sendRemindersAutomatically: true,
+      sendFollowUpsAutomatically: true,
+      sendNoShowsAutomatically: true,
+      sendNudgesAutomatically: true,
+    });
+    const outbound = async (kind: string, contactId: string) =>
+      (
+        await db
+          .select({ m: schema.messages, c: schema.conversations })
+          .from(schema.messages)
+          .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+          .where(and(eq(schema.messages.agencyId, agencyId), eq(schema.messages.direction, "outbound"), eq(schema.conversations.contactId, contactId)))
+      ).filter((r) => (r.m.metadata as { kind?: string }).kind === kind);
+
+    const done = await viewing(5, new Date(Date.now() - 2 * DAY));
+    await runAutomations(ctx, new Date(), { useAi: false });
+    const [run] = await db.select().from(schema.automationRuns).where(and(eq(schema.automationRuns.subjectId, done.id), eq(schema.automationRuns.rule, "follow_up")));
+    expect(run?.outcome).toBe("sent");
+    const [followUp] = await outbound("follow_up", done.contactId!);
+    expect(followUp?.m.delivery).toBe("simulated");
+    expect(followUp?.m.authorType).toBe("agent");
+
+    const missed = await viewing(6, new Date(Date.now() - 3 * HOUR));
+    await runAutomations(ctx, new Date(), { useAi: false });
+    await runTool(tools.markAttendance, ctx, { appointmentId: missed.id, attended: false, useAi: false });
+    const [noShow] = await outbound("no_show", missed.contactId!);
+    expect(noShow?.m.body).toContain(`/book/${listingId}`);
+    expect(await pendingFor(missed.id)).toHaveLength(0);
+
+    const { contactId, leadId } = await client(7);
+    await db.update(schema.leads).set({ stage: "invited" }).where(eq(schema.leads.id, leadId));
+    const sentAt = new Date(Date.now() - 4 * DAY);
+    const [conversation] = await db
+      .insert(schema.conversations)
+      .values({ agencyId, contactId, leadId, listingId, agentId, channel: "email", provider: "outlook", status: "waiting", lastMessageAt: sentAt })
+      .returning();
+    await db.insert(schema.messages).values({ agencyId, conversationId: conversation!.id, direction: "outbound", delivery: "simulated", authorType: "user", body: "Bonjour", sentAt });
+    await runAutomations(ctx, new Date(), { useAi: false });
+    expect(await outbound("nudge", contactId)).toHaveLength(1);
+    expect(await pendingFor(conversation!.id)).toHaveLength(0);
   });
 });
