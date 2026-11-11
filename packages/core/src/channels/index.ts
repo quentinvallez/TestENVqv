@@ -126,12 +126,6 @@ export type SendInput = {
   metadata?: Record<string, unknown>;
 };
 
-/**
- * Stores and delivers an outbound message on the conversation's channel.
- * WhatsApp outside the 24-hour window needs an approved template; without one
- * the message goes by email when the contact has an address, else it fails
- * with "whatsapp_window_closed".
- */
 /** The "Prefer WhatsApp?" line for a client email, when the agency has a WhatsApp number and keeps the invitation on. */
 async function whatsappInviteFor(ctx: ToolContext, contact: { id: string; language: string | null }) {
   const [settings] = await ctx.db.select({ automations: schema.agencySettings.automations }).from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, ctx.agencyId));
@@ -141,6 +135,15 @@ async function whatsappInviteFor(ctx: ToolContext, contact: { id: string; langua
   return whatsappInviteLine(config.displayNumber, contact.id, toLang(contact.language));
 }
 
+/**
+ * Stores and delivers an outbound message on the conversation's channel.
+ * WhatsApp outside the 24-hour window needs an approved template; without one
+ * the message goes by email when the contact has an address, else it fails
+ * with "whatsapp_window_closed". The client should hear from us whatever
+ * breaks: WhatsApp that isn't connected or refuses the message falls back to
+ * email, and a connected Gmail/Outlook that refuses (e.g. an expired login)
+ * falls back to the agency's own address through Mailgun.
+ */
 export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<SendResult> {
   const conversation = await ctx.db.query.conversations.findFirst({
     where: and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.id, input.conversationId)),
@@ -166,12 +169,10 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       delivery = "failed";
       error = "no_phone";
     } else if (!config) {
+      if (contact.email) return sendByEmailInstead(ctx, { ...conversation, contact }, input, "whatsapp_not_connected");
       delivery = "simulated";
     } else if (!windowOpen && !input.whatsappTemplate) {
-      if (contact.email) {
-        const email = await conversationFor(ctx, { contactId: contact.id, channel: "email", listingId: conversation.listingId, agentId: conversation.agentId, leadId: conversation.leadId });
-        return sendMessage(ctx, { ...input, conversationId: email.id, metadata: { ...input.metadata, fallbackFrom: "whatsapp" } });
-      }
+      if (contact.email) return sendByEmailInstead(ctx, { ...conversation, contact }, input, "whatsapp_window_closed");
       delivery = "failed";
       error = "whatsapp_window_closed";
     } else {
@@ -182,8 +183,10 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
         externalId = await sendWhatsApp(config, contact.phone, message);
         delivery = "sent";
       } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        if (contact.email) return sendByEmailInstead(ctx, { ...conversation, contact }, input, "whatsapp_error", reason);
         delivery = "failed";
-        error = e instanceof Error ? e.message : String(e);
+        error = reason;
       }
     }
   } else if (conversation.channel === "email") {
@@ -247,6 +250,20 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       } catch (e) {
         delivery = "failed";
         error = e instanceof Error ? e.message : String(e);
+        // The agent's own mailbox refused (expired login, revoked access): send from the agency's address instead.
+        if (mailbox && mailgunConfigured() && replyTo) {
+          try {
+            await sendWithMailgun({ ...email, from: { name: email.from.name, address: replyTo } });
+            extra.mailboxError = error;
+            transport = "mailgun";
+            provider = "email";
+            externalId = messageId;
+            delivery = "sent";
+            error = undefined;
+          } catch (e2) {
+            error = `${error}; ${e2 instanceof Error ? e2.message : String(e2)}`;
+          }
+        }
       }
     }
   }
@@ -284,6 +301,15 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
     data: { messageId: message!.id, channel: conversation.channel, kind: input.kind ?? "reply", delivery, transport, ...(error && { error }) },
   });
   return { messageId: message!.id, conversationId: conversation.id, delivery, transport, ...(error && { error }) };
+}
+
+type Conversation = typeof conversations.$inferSelect;
+
+/** The same message on the contact's email conversation, noting why it didn't go by WhatsApp. */
+async function sendByEmailInstead(ctx: ToolContext, from: Conversation & { contact: { id: string } }, input: SendInput, reason: string, detail?: string): Promise<SendResult> {
+  const email = await conversationFor(ctx, { contactId: from.contact.id, channel: "email", listingId: from.listingId, agentId: from.agentId, leadId: from.leadId });
+  const { whatsappTemplate: _template, ...rest } = input;
+  return sendMessage(ctx, { ...rest, conversationId: email.id, metadata: { ...input.metadata, fallbackFrom: "whatsapp", fallbackReason: reason, ...(detail && { whatsappError: detail }) } });
 }
 
 export type AgentEmail = {

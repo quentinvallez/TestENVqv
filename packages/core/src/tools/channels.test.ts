@@ -143,6 +143,139 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(message!.delivery).toBe("failed");
   });
 
+  it("sends by email when WhatsApp isn't connected or refuses the message", async () => {
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Jens", email: "jens@example.be", phone: "+32470112233", whatsappOptIn: true }).returning();
+    const { conversationFor } = await import("../channels");
+    const whatsapp = await conversationFor(ctx, { contactId: contact!.id });
+    expect(whatsapp.channel).toBe("whatsapp");
+
+    // No WhatsApp number connected: email instead of "only saved".
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const mailgun = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", mailgun);
+    const notConnected = await sendMessage(ctx, { conversationId: whatsapp.id, body: "Herinnering", kind: "reminder" });
+    expect(notConnected).toMatchObject({ delivery: "sent", transport: "mailgun" });
+    expect(notConnected.conversationId).not.toBe(whatsapp.id);
+    const [first] = await db.select().from(schema.messages).where(eq(schema.messages.id, notConnected.messageId));
+    expect(first!.metadata).toMatchObject({ fallbackFrom: "whatsapp", fallbackReason: "whatsapp_not_connected", kind: "reminder" });
+
+    // Connected, but Meta refuses it right away.
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    const refusing = vi.fn(async (url: string) =>
+      String(url).includes("graph.facebook.com") ? new Response(JSON.stringify({ error: { message: "Template paused" } }), { status: 400 }) : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", refusing);
+    const refused = await sendMessage(ctx, { conversationId: whatsapp.id, body: "Herinnering", whatsappTemplate: { name: "viewing_reminder", language: "nl", params: ["Jens", "Kerkstraat 1", "di 28 okt 14:00", "Sofie"] } });
+    expect(refused).toMatchObject({ delivery: "sent", transport: "mailgun" });
+    const [second] = await db.select().from(schema.messages).where(eq(schema.messages.id, refused.messageId));
+    expect(second!.metadata).toMatchObject({ fallbackReason: "whatsapp_error" });
+  });
+
+  it("re-sends by email when WhatsApp fails a message later, once", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).includes("graph.facebook.com") ? new Response(JSON.stringify({ messages: [{ id: "wamid.late1" }] }), { status: 200 }) : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Lotte", email: "lotte@example.be", phone: "+32470445566", whatsappOptIn: true }).returning();
+    const { conversationFor } = await import("../channels");
+    const whatsapp = await conversationFor(ctx, { contactId: contact!.id });
+    const sent = await sendMessage(ctx, { conversationId: whatsapp.id, body: "Uw bezoek morgen", kind: "reminder", whatsappTemplate: { name: "viewing_reminder", language: "nl", params: ["Lotte", "Kerkstraat 1", "di 28 okt 14:00", "Sofie"] } });
+    expect(sent).toMatchObject({ delivery: "sent", transport: "whatsapp_cloud" });
+
+    const failed = { messages: [], statuses: [{ id: "wamid.late1", status: "failed" as const, error: "Message undeliverable" }] };
+    await runTool(tools.receiveWhatsApp, ctx, failed);
+    await runTool(tools.receiveWhatsApp, ctx, failed);
+    const [original] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
+    expect(original!.delivery).toBe("failed");
+    const recoveredBy = original!.metadata.recoveredBy as string;
+    const [email] = await db.select().from(schema.messages).where(eq(schema.messages.id, recoveredBy));
+    expect(email).toMatchObject({ body: "Uw bezoek morgen", delivery: "sent" });
+    expect(email!.metadata).toMatchObject({ kind: "reminder", fallbackReason: "whatsapp_failed", retryOf: sent.messageId });
+    const mails = fetchMock.mock.calls.filter((c) => String(c[0]).includes("mailgun"));
+    expect(mails).toHaveLength(1);
+
+    // Recovered, so it doesn't count as undelivered.
+    const undelivered = await runTool(tools.listUndeliveredMessages, ctx, {});
+    expect(undelivered.failed.map((m) => m.messageId)).not.toContain(sent.messageId);
+  });
+
+  it("sends from the agency address when the agent's mailbox refuses", async () => {
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    vi.stubEnv("CALENDAR_TOKEN_KEY", "k".repeat(32));
+    const { encrypt } = await import("../crypto");
+    const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.agencyId, agencyId)).limit(1);
+    const [connection] = await db
+      .insert(schema.calendarConnections)
+      .values({
+        agencyId,
+        agentId: agent!.id,
+        provider: "microsoft",
+        accountEmail: "agent@outlook.example",
+        scopes: ["calendar", "mail"],
+        status: "active",
+        credentials: encrypt(JSON.stringify({ accessToken: "a", refreshToken: "r", expiresAt: Date.now() + 3600_000 })),
+      } as typeof schema.calendarConnections.$inferInsert)
+      .returning();
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).includes("graph.microsoft.com") ? new Response(JSON.stringify({ error: { code: "InvalidAuthenticationToken" } }), { status: 401 }) : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Kato", email: "kato@example.be" }).returning();
+    const { conversationFor } = await import("../channels");
+    const conversation = await conversationFor(ctx, { contactId: contact!.id, agentId: agent!.id, subject: "Uw bezoek" });
+    const sent = await sendMessage(ctx, { conversationId: conversation.id, body: "Dag Kato" });
+    expect(sent).toMatchObject({ delivery: "sent", transport: "mailgun" });
+    const form = fetchMock.mock.calls.map((c) => (c as unknown as [string, RequestInit])[1]?.body).find((b) => b instanceof URLSearchParams) as URLSearchParams;
+    expect(form.get("from")).toMatch(/@mail\.example\.be>$/);
+    const [message] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
+    expect(message!.metadata.mailboxError).toBeTruthy();
+    await db.delete(schema.calendarConnections).where(eq(schema.calendarConnections.id, connection!.id));
+  });
+
+  it("marks a bounced email as not delivered and lists it for the office", async () => {
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Senne", lastName: "Mertens", email: "senne@typo.example" }).returning();
+    const { conversationFor } = await import("../channels");
+    const conversation = await conversationFor(ctx, { contactId: contact!.id });
+    const sent = await sendMessage(ctx, { conversationId: conversation.id, body: "Uw bezoek", kind: "reminder" });
+    const [stored] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
+
+    const { agencyForEmailMessageId, parseMailgunFailure } = await import("../inbound");
+    const event = {
+      "event-data": {
+        event: "failed",
+        severity: "permanent",
+        recipient: "senne@typo.example",
+        message: { headers: { "message-id": stored!.externalId!.replace(/^<|>$/g, "") } },
+        "delivery-status": { code: 550, message: "5.1.1 The email account that you tried to reach does not exist", description: "" },
+      },
+    };
+    const failure = parseMailgunFailure(event)!;
+    expect(parseMailgunFailure({ "event-data": { ...event["event-data"], severity: "temporary" } })).toBeNull();
+    expect(await agencyForEmailMessageId(failure.messageId)).toBe(agencyId);
+    expect(await runTool(tools.markEmailBounced, ctx, failure)).toMatchObject({ found: true, duplicate: false });
+    expect(await runTool(tools.markEmailBounced, ctx, failure)).toMatchObject({ duplicate: true });
+
+    const undelivered = await runTool(tools.listUndeliveredMessages, ctx, {});
+    const row = undelivered.failed.find((m) => m.messageId === sent.messageId);
+    expect(row).toMatchObject({ client: "Senne Mertens", kind: "reminder", channel: "email" });
+    expect(row!.reason).toMatch(/^The email bounced: 5\.1\.1/);
+    expect(undelivered.simulated).toBeGreaterThan(0);
+
+    // Another agency's bounce can't touch this message.
+    const other = { ...ctx, agencyId: newId("org") };
+    expect(await runTool(tools.markEmailBounced, other, failure)).toMatchObject({ found: false });
+  });
+
   it("answers a portal visit request on its own with times and the booking link, unless the agency set it to ask first", async () => {
     const lead = (n: number, ref = "21004871") => ({
       ...immowebLead(`<auto-${n}@immoweb.be>`),
