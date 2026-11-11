@@ -56,6 +56,7 @@ export const updateAutomationSettings = defineTool({
     sendNudgesAutomatically: z.boolean().optional().describe("Send the check-in to quiet leads on its own (fixed text)"),
     sendOccupantAlertsAutomatically: z.boolean().optional(),
     agentAlerts: z.boolean().optional(),
+    whatsappInvite: z.boolean().optional().describe("End client emails with a link to continue on WhatsApp, where the client writes first"),
     portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
     replyToPortalLeadsAutomatically: z.boolean().optional(),
     sendBookingConfirmationsAutomatically: z.boolean().optional().describe("Confirm a booking or move the client made on the website on their own (fixed text) instead of waiting for approval"),

@@ -4,7 +4,10 @@ import { recordEvent } from "../events";
 import { authorizedFetch } from "../integrations/oauth";
 import type { ToolContext } from "../tool";
 import { buildMime, mailDomain, mailgunConfigured, newMessageId, sendWithMailgun, type OutgoingEmail } from "./email";
+import { automationSettings } from "../automations/rules";
+import { toLang } from "../planner/language";
 import { sendWhatsApp, serviceWindowMs, whatsappConfig, type WhatsAppTemplate } from "./whatsapp";
+import { whatsappInviteLine } from "./whatsapp-invite";
 
 export type { WhatsAppTemplate } from "./whatsapp";
 export { normalizePhone, samePhone } from "./phone";
@@ -129,6 +132,15 @@ export type SendInput = {
  * the message goes by email when the contact has an address, else it fails
  * with "whatsapp_window_closed".
  */
+/** The "Prefer WhatsApp?" line for a client email, when the agency has a WhatsApp number and keeps the invitation on. */
+async function whatsappInviteFor(ctx: ToolContext, contact: { id: string; language: string | null }) {
+  const [settings] = await ctx.db.select({ automations: schema.agencySettings.automations }).from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, ctx.agencyId));
+  if (!automationSettings(settings?.automations).whatsappInvite) return null;
+  const config = await whatsappConfig(ctx);
+  if (!config?.displayNumber) return null;
+  return whatsappInviteLine(config.displayNumber, contact.id, toLang(contact.language));
+}
+
 export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<SendResult> {
   const conversation = await ctx.db.query.conversations.findFirst({
     where: and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.id, input.conversationId)),
@@ -145,6 +157,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
   let subject: string | null = null;
   let provider = conversation.provider;
   const extra: Record<string, unknown> = {};
+  let body = input.body;
 
   if (conversation.channel === "whatsapp") {
     const config = await whatsappConfig(ctx);
@@ -183,6 +196,12 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
     const lastEmailId = conversation.messages.find((m) => m.externalId?.startsWith("<"))?.externalId ?? undefined;
     const messageId = newMessageId();
     const references = [conversation.externalThreadId, lastEmailId].filter((r, i, all): r is string => Boolean(r) && all.indexOf(r) === i);
+    // Not on WhatsApp with us yet: end the email with a link to write us there first (WhatsApp needs the client to start).
+    const invite = contact?.email && !contact.whatsappOptIn ? await whatsappInviteFor(ctx, contact) : null;
+    if (invite) {
+      body = `${input.body}\n\n${invite}`;
+      extra.whatsappInvite = true;
+    }
     if (!contact?.email) {
       delivery = "failed";
       error = "no_email";
@@ -194,7 +213,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
         // Replies always come back through the forwarding address, so they reach the inbox even if the agent's mailbox isn't forwarded.
         replyTo: replyTo ?? undefined,
         subject,
-        text: input.body,
+        text: body,
         messageId,
         inReplyTo: lastEmailId,
         references,
@@ -213,7 +232,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
             body: JSON.stringify({
               message: {
                 subject,
-                body: { contentType: "Text", content: input.body },
+                body: { contentType: "Text", content: body },
                 toRecipients: [{ emailAddress: { address: contact.email, name: email.to.name } }],
                 replyTo: replyTo ? [{ emailAddress: { address: replyTo } }] : [],
               },
@@ -239,7 +258,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       agencyId: ctx.agencyId,
       conversationId: conversation.id,
       direction: "outbound",
-      body: input.body,
+      body,
       subject,
       delivery,
       authorType: ctx.actor.type,

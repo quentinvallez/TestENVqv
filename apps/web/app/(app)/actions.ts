@@ -154,6 +154,7 @@ export async function updateAutomationsAction(change: {
   sendOccupantAlertsAutomatically?: boolean;
   agentAlerts?: boolean;
   portalLeadCopies?: boolean;
+  whatsappInvite?: boolean;
   replyToPortalLeadsAutomatically?: boolean;
   sendBookingConfirmationsAutomatically?: boolean;
 }) {

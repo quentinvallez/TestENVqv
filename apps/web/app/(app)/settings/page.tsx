@@ -60,6 +60,13 @@ export default async function SettingsPage() {
       description: `When a lead hasn't answered your last message for ${automations.nudgeAfterDays} days, they get a short check-in. At most two, and never once they booked.`,
     },
     {
+      key: "whatsappInvite",
+      on: automations.whatsappInvite,
+      title: "Invite clients to WhatsApp",
+      description:
+        "Emails to clients who aren't on WhatsApp with you yet end with a link that opens WhatsApp with a short message to you. WhatsApp only allows you to write once the client has written first; after that, reminders and follow-ups go by WhatsApp. Needs a WhatsApp number (Settings → Channels).",
+    },
+    {
       key: "agentAlerts",
       on: automations.agentAlerts,
       title: "Email the agent about bookings",

@@ -27,6 +27,7 @@ export const defaultAutomationSettings: Required<AutomationSettings> = {
   nudgeAfterDays: 3,
   agentAlerts: true,
   portalLeadCopies: true,
+  whatsappInvite: true,
 };
 
 export function automationSettings(stored: AutomationSettings | null | undefined): Required<AutomationSettings> {
