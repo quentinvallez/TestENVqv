@@ -312,6 +312,32 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
   });
 
+  it("confirms a website booking on WhatsApp with the approved template when the client asked for it", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.confirm1" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { publicContext } = await import("../public");
+    const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "ANT-1042")));
+    const { slots } = await runTool(tools.availableSlots, ctx, { listingId: listing!.id });
+    const booked = await runTool(tools.bookViewing, publicContext(agencyId), {
+      listingId: listing!.id,
+      startsAt: slots[4]!.start,
+      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true },
+    });
+    const call = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]).find(([url]) => url.includes("graph.facebook.com"));
+    const payload = JSON.parse(call![1].body as string);
+    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "nl" } } });
+    const params = payload.template.components[0].parameters.map((p: { text: string }) => p.text);
+    expect(params).toHaveLength(5);
+    expect(params[0]).toBe("Mira");
+    expect(params[4]).toMatch(/\/a\/[^/]+$/);
+    const [message] = await db.select().from(schema.messages).where(eq(schema.messages.externalId, "wamid.confirm1"));
+    expect(message).toMatchObject({ delivery: "sent" });
+    expect(message!.metadata).toMatchObject({ kind: "booking_confirmation", template: "booking_confirmed" });
+    await runTool(tools.cancelAppointment, ctx, { appointmentId: booked.appointmentId });
+  });
+
   it("emails the agent when a client books on the website, without a connected mailbox", async () => {
     const { publicContext } = await import("../public");
     const client = publicContext(agencyId);
