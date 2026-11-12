@@ -20,7 +20,7 @@ Calendar access and `gmail.send` are *sensitive* scopes at Google, not *restrict
 
 1. Go to https://console.cloud.google.com and sign in with the company Google account.
 2. **Create a project**: project picker at the top → **New project** → name it after the product → Create.
-3. **Enable the API**: *APIs & Services* → *Library* → search **Google Calendar API** → **Enable**.
+3. **Enable the APIs**: *APIs & Services* → *Library* → search **Google Calendar API** → **Enable**; then the same for **Gmail API** (without it, sending from an agent's Gmail fails).
 4. **Consent screen**: *Google Auth Platform* (or *APIs & Services → OAuth consent screen*) → **Get started**.
    - App name: the product name. Support email: yours.
    - Audience: **External**.
