@@ -140,6 +140,7 @@ export const replyToConversation = defineTool({
       .optional()
       .describe("Approved WhatsApp template used when the 24-hour window is closed"),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    alsoEmail: z.boolean().optional().describe("When it goes by WhatsApp, send the same text by email too"),
   }),
   run: async (ctx, input) => {
     const [conversation] = await ctx.db
@@ -157,6 +158,7 @@ export const replyToConversation = defineTool({
       subject: input.subject,
       kind: input.kind,
       whatsappTemplate: input.whatsappTemplate,
+      alsoEmail: input.alsoEmail,
       metadata: { ...input.metadata, ...(input.offeredSlots.length && { offeredSlots: input.offeredSlots }) },
     });
     if (input.leadStage && conversation.contactId) {

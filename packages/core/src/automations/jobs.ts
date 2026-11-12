@@ -146,7 +146,7 @@ async function sendReminders(ctx: ToolContext, now: Date, autoSend: boolean) {
         const metadata = { appointmentId: apt.id, startsAt: apt.startsAt.toISOString() };
 
         if (autoSend) {
-          const sent = await sendMessage(ctx, { conversationId: conversation.id, body, subject: reminderSubject[lang], kind: "reminder", whatsappTemplate, metadata });
+          const sent = await sendMessage(ctx, { conversationId: conversation.id, body, subject: reminderSubject[lang], kind: "reminder", whatsappTemplate, metadata, alsoEmail: true });
           await recordEvent(ctx, { type: "automation.reminder_sent", subjectType: "appointment", subjectId: apt.id, data: { delivery: sent.delivery } });
           return { outcome: sent.delivery === "failed" ? "failed" : "sent", messageId: sent.messageId, detail: { delivery: sent.delivery, error: sent.error } };
         }
@@ -160,7 +160,7 @@ async function sendReminders(ctx: ToolContext, now: Date, autoSend: boolean) {
             kind: "reminder",
             generatedBy: "template",
             toolName: "conversations_reply",
-            input: { conversationId: conversation.id, body, kind: "reminder", whatsappTemplate, metadata },
+            input: { conversationId: conversation.id, body, subject: reminderSubject[lang], kind: "reminder", whatsappTemplate, metadata, alsoEmail: true },
             summary: `Remind ${contact.firstName ?? "the client"} of the ${isValuation ? "valuation visit" : "viewing"} ${formatSlot(apt.startsAt, "en")}`,
             reasoning: "Reminder the day before. Reminders wait for approval unless Settings → Automations sends them automatically.",
             subjectType: "appointment",
