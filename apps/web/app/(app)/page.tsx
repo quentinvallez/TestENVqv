@@ -7,12 +7,14 @@ import { address, formatDay, formatRelative, formatTime, fullName } from "@/lib/
 import { appointmentStatusMeta, eventLabel } from "@/lib/labels";
 import { resetDemoAction, seedDemoAction } from "./actions";
 import { DemoReset } from "./demo-reset";
+import { UndeliveredMessages } from "./undelivered";
 
 export default async function DashboardPage() {
   const { user } = await getSession();
   const ctx = await getToolContext();
-  const [summary, upcoming, activity, proposals] = await Promise.all([
+  const [summary, undelivered, upcoming, activity, proposals] = await Promise.all([
     runTool(tools.dashboardSummary, ctx, {}),
+    runTool(tools.listUndeliveredMessages, ctx, {}),
     runTool(tools.listAppointments, ctx, {}),
     runTool(tools.recentActivity, ctx, { limit: 12 }),
     runTool(tools.listProposals, ctx, {}),
@@ -49,6 +51,8 @@ export default async function DashboardPage() {
                 <Stat label="Viewings next 7 days" value={summary.viewingsNext7Days} />
                 <Stat label="Active listings" value={summary.activeListings} />
               </div>
+
+              <UndeliveredMessages {...undelivered} />
 
               {proposals.length > 0 && (
                 <Link href="/inbox?f=drafts" className="mt-3 block">

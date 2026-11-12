@@ -97,12 +97,12 @@ export default async function SettingsPage() {
             </Panel>
           </section>
 
-          <section>
+          <section id="channels" className="scroll-mt-4">
             <h2 className="mb-1 flex items-center gap-2 font-medium">
               <Radio className="size-4 text-muted" />
               Channels
             </h2>
-            <p className="mb-2 text-muted">How messages to clients go out, and how replies and portal leads come in. Nothing is sent without your approval.</p>
+            <p className="mb-2 text-muted">How messages to clients go out, and how replies and portal leads come in. When WhatsApp or an agent's mailbox doesn't work, messages go by email from the agency address instead.</p>
             <Panel className="divide-y divide-line">
               <div className="px-4 py-3">
                 <div className="flex items-center justify-between gap-3">

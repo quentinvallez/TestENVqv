@@ -12,7 +12,7 @@ import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, get
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
 import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateWidgetSettings } from "./tools/settings";
-import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
+import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, listConnections, listUndeliveredMessages, markEmailBounced, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import { createWidgetPreview, deleteWidgetPreview, listWidgetPreviews, noteWidgetPreview } from "./tools/previews";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
@@ -86,6 +86,8 @@ export const tools = {
   receivePortalLead,
   receiveEmail,
   receiveWhatsApp,
+  markEmailBounced,
+  listUndeliveredMessages,
   listConnections,
   connectCalendar,
   disconnectCalendar,

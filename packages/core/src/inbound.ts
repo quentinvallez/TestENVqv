@@ -1,4 +1,4 @@
-import { and, db, desc, eq, isNull, schema, sql } from "@viewing/db";
+import { and, db, desc, eq, inArray, isNull, schema, sql } from "@viewing/db";
 import type { ToolContext } from "./tool";
 import { mailDomain } from "./channels/email";
 import { aliasOf } from "./channels/inbound-email";
@@ -69,4 +69,34 @@ export async function agencyForWhatsApp(phoneNumberId: string, from: string, tex
 export async function agencyForWhatsAppMessage(externalId: string): Promise<string | null> {
   const [row] = await db.select({ agencyId: schema.messages.agencyId }).from(schema.messages).where(eq(schema.messages.externalId, externalId)).limit(1);
   return row?.agencyId ?? null;
+}
+
+/** The agency that sent the email with this Message-ID (from a Mailgun delivery event). */
+export async function agencyForEmailMessageId(messageId: string): Promise<string | null> {
+  const id = messageId.trim().replace(/^<|>$/g, "");
+  if (!id) return null;
+  const [row] = await db
+    .select({ agencyId: schema.messages.agencyId })
+    .from(schema.messages)
+    .where(and(eq(schema.messages.direction, "outbound"), inArray(schema.messages.externalId, [`<${id}>`, id])))
+    .limit(1);
+  return row?.agencyId ?? null;
+}
+
+/**
+ * A Mailgun delivery event ("Permanent failure" webhook), reduced to what we
+ * act on. Temporary failures are retried by Mailgun itself and ignored here.
+ */
+export function parseMailgunFailure(body: unknown): { messageId: string; recipient: string | null; reason: string | null } | null {
+  const event = (body as { "event-data"?: Record<string, unknown> } | null)?.["event-data"];
+  if (!event || event.event !== "failed" || event.severity !== "permanent") return null;
+  const headers = (event.message as { headers?: Record<string, string> } | undefined)?.headers ?? {};
+  const messageId = headers["message-id"];
+  if (!messageId) return null;
+  const status = (event["delivery-status"] ?? {}) as { message?: string; description?: string; code?: number };
+  return {
+    messageId,
+    recipient: typeof event.recipient === "string" ? event.recipient : null,
+    reason: status.description || status.message || (event.reason as string | undefined) || null,
+  };
 }

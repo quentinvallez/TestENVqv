@@ -24,7 +24,8 @@ Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be
    - Action: **Forward** to `https://testenvqv.vercel.app/api/channels/email/inbound` (leave **Store and notify** unticked).
    - Priority 0, description "Inbox".
 5. **API security**: create a **sending API key** and copy the **HTTP webhook signing key**.
-6. In Vercel add:
+6. **Sending → Webhooks** (domain `mail.yourdomain.be`) → **Add webhook**: event **Permanent failure**, URL `https://testenvqv.vercel.app/api/channels/email/events`. A client email that bounces (address doesn't exist, rejected as spam) then shows as not delivered on the dashboard. This covers mail sent from the agency address; bounces of mail sent from an agent's own Gmail/Outlook land in that agent's mailbox.
+7. In Vercel add:
    - `MAILGUN_API_KEY`
    - `MAILGUN_DOMAIN` = `mail.yourdomain.be`
    - `MAILGUN_WEBHOOK_SIGNING_KEY`

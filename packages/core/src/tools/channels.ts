@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
-import { emailAgent, inboundAddress } from "../channels";
+import { conversationFor, emailAgent, inboundAddress, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { parsePortalEmail } from "../channels/portals";
@@ -245,6 +245,40 @@ async function linkInvitedContact(ctx: ToolContext, text: string, phone: string)
   await recordEvent(ctx, { type: "contact.whatsapp_opted_in", subjectType: "contact", subjectId: contact.id, data: { via: "email_invite", replacedPhone: contact.phone && !samePhone(contact.phone, phone) ? true : false } });
 }
 
+/**
+ * WhatsApp accepted a message and failed it later (number not on WhatsApp,
+ * template paused, …): send the same text by email once, so the client still
+ * hears from us. The failed message keeps its status and points to the email.
+ */
+async function resendByEmail(ctx: ToolContext, messageId: string, error: string | null) {
+  const message = await ctx.db.query.messages.findFirst({
+    where: and(eq(messages.agencyId, ctx.agencyId), eq(messages.id, messageId)),
+    with: { conversation: { with: { contact: true } } },
+  });
+  const contact = message?.conversation.contact;
+  if (!message || message.direction !== "outbound" || message.metadata?.recoveredBy || !contact?.email) return null;
+  const email = await conversationFor(ctx, {
+    contactId: contact.id,
+    channel: "email",
+    listingId: message.conversation.listingId,
+    agentId: message.conversation.agentId,
+    leadId: message.conversation.leadId,
+  });
+  const sent = await sendMessage(ctx, {
+    conversationId: email.id,
+    body: message.body,
+    kind: typeof message.metadata?.kind === "string" ? message.metadata.kind : undefined,
+    metadata: { fallbackFrom: "whatsapp", fallbackReason: "whatsapp_failed", ...(error && { whatsappError: error }), retryOf: message.id },
+  });
+  if (sent.delivery !== "failed") {
+    await ctx.db
+      .update(messages)
+      .set({ metadata: { ...message.metadata, recoveredBy: sent.messageId } })
+      .where(eq(messages.id, message.id));
+  }
+  return sent;
+}
+
 export const receiveWhatsApp = defineTool({
   name: "messages_receive_whatsapp",
   description: "Take in WhatsApp messages and delivery updates for the agency's business number.",
@@ -282,9 +316,102 @@ export const receiveWhatsApp = defineTool({
         .where(eq(messages.id, message.id));
       if (s.status === "failed") {
         await recordEvent(ctx, { type: "message.failed", subjectType: "conversation", subjectId: message.conversationId, data: { messageId: message.id, channel: "whatsapp", error: s.error } });
+        await resendByEmail(ctx, message.id, s.error);
       }
     }
     return { received: received.length, statuses: input.statuses.length };
+  },
+});
+
+/** Mailgun's reasons are long; keep the part an office can act on. */
+const bounceReason = (reason: string | null) => (reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300) || null;
+
+export const markEmailBounced = defineTool({
+  name: "messages_mark_bounced",
+  description:
+    "Mark a client email as not delivered after the mail provider reported a permanent failure (address doesn't exist, mailbox full for good, blocked as spam). The message shows as failed in the inbox and on the dashboard.",
+  mutates: true,
+  input: z.object({
+    messageId: z.string().describe("The Message-ID header of the email we sent, with or without angle brackets"),
+    recipient: z.string().nullable(),
+    reason: z.string().nullable(),
+  }),
+  run: async (ctx, input) => {
+    const id = input.messageId.trim().replace(/^<|>$/g, "");
+    const [message] = await ctx.db
+      .select({ id: messages.id, metadata: messages.metadata, conversationId: messages.conversationId, delivery: messages.delivery })
+      .from(messages)
+      .where(and(eq(messages.agencyId, ctx.agencyId), eq(messages.direction, "outbound"), inArray(messages.externalId, [`<${id}>`, id])));
+    if (!message) return { found: false as const };
+    if (message.delivery === "failed" && message.metadata?.bounced) return { found: true as const, messageId: message.id, duplicate: true };
+    const reason = bounceReason(input.reason);
+    await ctx.db
+      .update(messages)
+      .set({ delivery: "failed", metadata: { ...message.metadata, bounced: true, error: reason ?? "bounced", ...(input.recipient && { bouncedAddress: input.recipient }) } })
+      .where(eq(messages.id, message.id));
+    await recordEvent(ctx, { type: "message.failed", subjectType: "conversation", subjectId: message.conversationId, data: { messageId: message.id, channel: "email", error: reason, bounced: true } });
+    return { found: true as const, messageId: message.id, duplicate: false };
+  },
+});
+
+const failureLabels: Record<string, string> = {
+  no_email: "No email address for this client",
+  no_phone: "No phone number for this client",
+  whatsapp_window_closed: "WhatsApp only allows a template after 24 hours, and there is no email address",
+};
+
+/** Plain words for why a message didn't arrive, for the office. */
+export function failureLabel(metadata: Record<string, unknown> | null): string {
+  const error = typeof metadata?.error === "string" ? metadata.error : null;
+  if (metadata?.bounced) return `The email bounced${error && error !== "bounced" ? `: ${error}` : ""}`;
+  if (error && failureLabels[error]) return failureLabels[error];
+  const transport = metadata?.transport;
+  const via = transport === "whatsapp_cloud" ? "WhatsApp" : transport === "gmail" ? "Gmail" : transport === "outlook" ? "Outlook" : transport === "mailgun" ? "The agency email" : "The channel";
+  return `${via} refused it${error ? `: ${error.slice(0, 200)}` : ""}`;
+}
+
+export const listUndeliveredMessages = defineTool({
+  name: "messages_list_undelivered",
+  description:
+    "Client messages from the last 14 days that didn't reach the client and weren't sent another way, with why; plus how many were only saved because no channel is connected. For the dashboard warning.",
+  mutates: false,
+  input: z.object({ days: z.number().int().min(1).max(60).default(14), limit: z.number().int().min(1).max(50).default(10) }),
+  run: async (ctx, input) => {
+    const since = new Date(Date.now() - input.days * 24 * 3600 * 1000);
+    const base = and(eq(messages.agencyId, ctx.agencyId), eq(messages.direction, "outbound"), sql`${messages.sentAt} >= ${since}`);
+    const failed = await ctx.db
+      .select({
+        id: messages.id,
+        conversationId: messages.conversationId,
+        sentAt: messages.sentAt,
+        metadata: messages.metadata,
+        channel: schema.conversations.channel,
+        firstName: contacts.firstName,
+        lastName: contacts.lastName,
+      })
+      .from(messages)
+      .innerJoin(schema.conversations, eq(schema.conversations.id, messages.conversationId))
+      .leftJoin(contacts, eq(contacts.id, schema.conversations.contactId))
+      .where(and(base, eq(messages.delivery, "failed"), sql`${messages.metadata}->>'recoveredBy' is null`))
+      .orderBy(desc(messages.sentAt))
+      .limit(input.limit + 1);
+    const [simulated] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(and(base, eq(messages.delivery, "simulated")));
+    return {
+      failed: failed.slice(0, input.limit).map((m) => ({
+        messageId: m.id,
+        conversationId: m.conversationId,
+        sentAt: m.sentAt,
+        channel: m.channel,
+        client: [m.firstName, m.lastName].filter(Boolean).join(" ") || null,
+        kind: typeof m.metadata?.kind === "string" ? m.metadata.kind : "reply",
+        reason: failureLabel(m.metadata),
+      })),
+      more: failed.length > input.limit,
+      simulated: simulated?.count ?? 0,
+    };
   },
 });
 

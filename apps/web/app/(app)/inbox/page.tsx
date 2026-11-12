@@ -357,10 +357,21 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
   }
   if (delivery === "failed") {
     const error = String(metadata.error ?? "");
+    if (metadata.recoveredBy) {
+      return (
+        <span className="flex items-center gap-1.5 text-[11px] text-faint" title={error}>
+          <StatusDot color="var(--warning)" />
+          WhatsApp couldn&apos;t deliver this; sent by email instead
+        </span>
+      );
+    }
+    const why = metadata.bounced
+      ? `the email bounced${error && error !== "bounced" ? ` (${error.length > 80 ? `${error.slice(0, 80)}…` : error})` : ""}`
+      : (failureLabel[error] ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it"));
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-danger" title={error}>
         <StatusDot color="var(--danger)" />
-        Not delivered: {failureLabel[error] ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it")}
+        Not delivered: {why}
       </span>
     );
   }
@@ -371,6 +382,8 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
       Sent via {transportLabel[String(metadata.transport)] ?? channel}
       {metadata.template ? " template" : ""}
       {status}
+      {metadata.fallbackFrom === "whatsapp" ? (metadata.fallbackReason === "whatsapp_window_closed" ? " · WhatsApp needed a template" : " · WhatsApp didn't work") : ""}
+      {metadata.mailboxError ? " · the agent's mailbox refused it" : ""}
     </span>
   );
 }
