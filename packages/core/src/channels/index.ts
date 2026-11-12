@@ -124,6 +124,8 @@ export type SendInput = {
   /** Used for WhatsApp when the 24-hour service window is closed. */
   whatsappTemplate?: WhatsAppTemplate;
   metadata?: Record<string, unknown>;
+  /** When it goes by WhatsApp, send the same text by email too (booking confirmations and reminders). */
+  alsoEmail?: boolean;
 };
 
 /** The "Prefer WhatsApp?" line for a client email, when the agency has a WhatsApp number and keeps the invitation on. */
@@ -300,6 +302,16 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
     subjectId: conversation.id,
     data: { messageId: message!.id, channel: conversation.channel, kind: input.kind ?? "reply", delivery, transport, ...(error && { error }) },
   });
+  // The client also gets it by email, so a missed WhatsApp never means a missed confirmation.
+  if (input.alsoEmail && conversation.channel === "whatsapp" && delivery !== "failed" && contact?.email) {
+    const email = await conversationFor(ctx, { contactId: contact.id, channel: "email", listingId: conversation.listingId, agentId: conversation.agentId, leadId: conversation.leadId });
+    const { whatsappTemplate: _template, alsoEmail: _also, ...rest } = input;
+    const copy = await sendMessage(ctx, { ...rest, conversationId: email.id, metadata: { ...input.metadata, copyOf: message!.id } });
+    await ctx.db
+      .update(messages)
+      .set({ metadata: { ...message!.metadata, emailCopy: copy.messageId } })
+      .where(eq(messages.id, message!.id));
+  }
   return { messageId: message!.id, conversationId: conversation.id, delivery, transport, ...(error && { error }) };
 }
 

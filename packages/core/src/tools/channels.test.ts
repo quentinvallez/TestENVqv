@@ -312,10 +312,14 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
   });
 
-  it("confirms a website booking on WhatsApp with the approved template when the client asked for it", async () => {
+  it("confirms a website booking on WhatsApp with the approved template when the client asked for it, and by email too", async () => {
     vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
     vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: "wamid.confirm1" }] }), { status: 200 }));
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).includes("graph.facebook.com") ? new Response(JSON.stringify({ messages: [{ id: "wamid.confirm1" }] }), { status: 200 }) : new Response("{}", { status: 200 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const { publicContext } = await import("../public");
     const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "ANT-1042")));
@@ -335,6 +339,21 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const [message] = await db.select().from(schema.messages).where(eq(schema.messages.externalId, "wamid.confirm1"));
     expect(message).toMatchObject({ delivery: "sent" });
     expect(message!.metadata).toMatchObject({ kind: "booking_confirmation", template: "booking_confirmed" });
+
+    // The same confirmation by email, linked to the WhatsApp message.
+    const mails = fetchMock.mock.calls.filter((c) => String(c[0]).includes("mailgun"));
+    const confirmation = mails.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("to")?.includes("mira@example.be"));
+    expect(confirmation).toBeTruthy();
+    const [copy] = await db.select().from(schema.messages).where(eq(schema.messages.id, message!.metadata.emailCopy as string));
+    expect(copy).toMatchObject({ delivery: "sent", body: message!.body });
+    expect(copy!.metadata).toMatchObject({ copyOf: message!.id, kind: "booking_confirmation" });
+
+    // WhatsApp failing later doesn't send the email a second time.
+    const before = fetchMock.mock.calls.length;
+    await runTool(tools.receiveWhatsApp, ctx, { messages: [], statuses: [{ id: "wamid.confirm1", status: "failed", error: "Message undeliverable" }] });
+    expect(fetchMock.mock.calls.length).toBe(before);
+    const [after] = await db.select().from(schema.messages).where(eq(schema.messages.id, message!.id));
+    expect(after!.metadata.recoveredBy).toBe(copy!.id);
     await runTool(tools.cancelAppointment, ctx, { appointmentId: booked.appointmentId });
   });
 

@@ -196,6 +196,8 @@ export type DraftPlan = {
   messageKind?: string;
   /** Approved WhatsApp template for when the client hasn't written in the last 24 hours (e.g. a booking they made on the website). */
   whatsappTemplate?: WhatsAppTemplate;
+  /** When it goes by WhatsApp, send it by email too. */
+  alsoEmail?: boolean;
   summary: string;
   otherListing?: string;
   /** Address to talk about when it isn't a listing, e.g. the owner's home for a valuation. */
@@ -397,6 +399,7 @@ export async function propose(ctx: ToolContext, thread: Thread, plan: DraftPlan,
         leadStage: plan.leadStage,
         ...(plan.messageKind && { kind: plan.messageKind }),
         ...(plan.whatsappTemplate && { whatsappTemplate: plan.whatsappTemplate }),
+        ...(plan.alsoEmail && { alsoEmail: true }),
       },
       summary: plan.summary,
       reasoning,
@@ -603,6 +606,7 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       summary: isValuation ? `Confirm ${name}'s valuation visit` : `Confirm ${name}'s viewing`,
       address: place,
       whatsappTemplate: confirmedTemplate,
+      alsoEmail: true,
     };
   } else {
     plan = {
@@ -614,6 +618,7 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       link: changeLink,
       summary: `Confirm ${name}'s new viewing time`,
       whatsappTemplate: confirmedTemplate,
+      alsoEmail: true,
     };
   }
   // A confirmation of what the client just did goes out on its own (fixed text) unless the agency approves them first.
