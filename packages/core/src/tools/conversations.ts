@@ -258,6 +258,7 @@ export const receiveMessage = defineTool({
     externalId: z.string().max(500).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
     useAi: z.boolean().default(true),
+    copyOnly: z.boolean().optional().describe("A copy of a reply that went to the agent's own mailbox: kept so the app knows the client answered, without a draft or an unread mark"),
   }),
   run: async (ctx, input) => {
     if (input.externalId) {
@@ -309,12 +310,14 @@ export const receiveMessage = defineTool({
       .returning();
     await ctx.db
       .update(conversations)
-      .set({ unread: true, status: "open", lastMessageAt: message!.sentAt, ...(input.listingId && { listingId: input.listingId }) })
+      .set({ ...(!input.copyOnly && { unread: true, status: "open" as const }), lastMessageAt: message!.sentAt, ...(input.listingId && { listingId: input.listingId }) })
       .where(eq(conversations.id, conversation.id));
     await recordEvent(
       { ...ctx, actor: { type: "contact", id: contact.id } },
-      { type: "message.received", subjectType: "conversation", subjectId: conversation.id, data: { channel: input.channel, messageId: message!.id } },
+      { type: "message.received", subjectType: "conversation", subjectId: conversation.id, data: { channel: input.channel, messageId: message!.id, ...(input.copyOnly && { copyOnly: true }) } },
     );
+    // The agent answers this one from their own mailbox.
+    if (input.copyOnly) return { conversationId: conversation.id, triage: null, proposalId: null, autoReplied: null, copyOnly: true };
 
     // "Code 123456" from the owner's own WhatsApp verifies a pending home valuation.
     if (input.channel === "whatsapp" && input.from.phone) {

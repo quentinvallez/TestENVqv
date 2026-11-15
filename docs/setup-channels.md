@@ -14,7 +14,7 @@ Until these are set, every message is stored with "Not delivered" and nothing re
 
 ## 1. Email (Mailgun EU)
 
-Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be` (Settings → Channels). Mail sent from the platform uses it as Reply-To, so client replies always land in the inbox, even when an agent sends from Gmail or Outlook. Agents without a connected mailbox send from that address.
+Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be` (Settings → Channels). Agents without a connected mailbox send from that address. Client emails carry Reply-To the agent's own address plus the inbox address, so a reply lands in the agent's Outlook or Gmail and the app keeps a silent copy (no draft) to stop check-ins. With "Client replies go to the agent's mailbox" turned off in Settings, Reply-To is the inbox address only and replies are answered in the app.
 
 1. Create an account at https://signup.mailgun.com. When asked, pick the **EU** region (the region can't be changed later for a domain).
 2. **Sending → Domains → Add new domain**: a subdomain you own, e.g. `mail.yourdomain.be`, region **EU**.

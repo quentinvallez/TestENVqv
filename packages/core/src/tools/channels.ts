@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
-import { conversationFor, emailAgent, inboundAddress, sendMessage } from "../channels";
+import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { parsePortalEmail } from "../channels/portals";
@@ -219,6 +219,12 @@ export const receiveEmail = defineTool({
 
     const body = (input.strippedText || input.text).trim();
     if (!body) return { kind: "ignored" as const, reason: "empty" };
+    // A reply to one of our emails, which also went to the agent's own mailbox: the agent answers it there.
+    const answers = [input.inReplyTo, ...input.references].filter((id): id is string => Boolean(id));
+    const replyToOurs =
+      answers.length > 0 &&
+      (await repliesToAgent(ctx)) &&
+      Boolean((await ctx.db.select({ id: messages.id }).from(messages).where(and(eq(messages.agencyId, ctx.agencyId), eq(messages.direction, "outbound"), inArray(messages.externalId, answers))).limit(1))[0]);
     const result = await receiveMessage.run(ctx, {
       channel: "email",
       provider: "email",
@@ -226,8 +232,9 @@ export const receiveEmail = defineTool({
       subject: input.subject || undefined,
       body: body.slice(0, 10000),
       externalId: input.messageId ?? undefined,
-      metadata: input.inReplyTo ? { inReplyTo: input.inReplyTo } : undefined,
+      metadata: input.inReplyTo ? { inReplyTo: input.inReplyTo, ...(replyToOurs && { copyOnly: true }) } : undefined,
       useAi: input.useAi,
+      copyOnly: replyToOurs,
     });
     return { kind: "message" as const, ...result };
   },
