@@ -116,17 +116,17 @@ Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`),
 
 Alerts to the occupants of a listing (see "Owners and tenants" in the README) use these, all category Utility:
 
-**occupant_invite**. Variables: 1 first name, 2 address.
-- nl: Dag {{1}}, wij plannen de bezoeken aan {{2}}. Antwoord op dit bericht om de link te krijgen waarmee u aangeeft wanneer de woning bezocht kan worden.
-- fr: Bonjour {{1}}, nous organisons les visites de {{2}}. Répondez à ce message pour recevoir le lien qui vous permet d'indiquer quand le bien peut être visité.
-- en: Hi {{1}}, we're planning the viewings of {{2}}. Reply to this message to get the link where you say when the home can be visited.
-- de: Guten Tag {{1}}, wir planen die Besichtigungen von {{2}}. Antworten Sie auf diese Nachricht, um den Link zu erhalten, mit dem Sie angeben, wann die Immobilie besichtigt werden kann.
+**occupant_invite**. Variables: 1 first name, 2 address, 3 link to their page.
+- nl: Dag {{1}}, wij plannen de bezoeken aan {{2}}. Via deze link geeft u aan wanneer de woning bezocht kan worden: {{3}} Alvast bedankt!
+- fr: Bonjour {{1}}, nous organisons les visites de {{2}}. Indiquez via ce lien quand le bien peut être visité : {{3}} Merci d'avance !
+- en: Hi {{1}}, we're planning the viewings of {{2}}. Use this link to say when the home can be visited: {{3}} Thank you!
+- de: Guten Tag {{1}}, wir planen die Besichtigungen von {{2}}. Über diesen Link geben Sie an, wann die Immobilie besichtigt werden kann: {{3}} Vielen Dank!
 
-**occupant_nudge**. Variables: 1 first name, 2 address.
-- nl: Dag {{1}}, we hebben nog geen momenten ontvangen waarop {{2}} bezocht kan worden. Antwoord op dit bericht om uw link opnieuw te krijgen.
-- fr: Bonjour {{1}}, nous n'avons pas encore reçu les moments où {{2}} peut être visité. Répondez à ce message pour recevoir à nouveau votre lien.
-- en: Hi {{1}}, we haven't received any times yet when {{2}} can be visited. Reply to this message to get your link again.
-- de: Guten Tag {{1}}, wir haben noch keine Zeiten erhalten, zu denen {{2}} besichtigt werden kann. Antworten Sie auf diese Nachricht, um Ihren Link erneut zu erhalten.
+**occupant_nudge**. Variables: 1 first name, 2 address, 3 link to their page.
+- nl: Dag {{1}}, we hebben nog geen momenten ontvangen waarop {{2}} bezocht kan worden. U kunt ze hier doorgeven: {{3}} Alvast bedankt!
+- fr: Bonjour {{1}}, nous n'avons pas encore reçu les moments où {{2}} peut être visité. Vous pouvez les indiquer ici : {{3}} Merci d'avance !
+- en: Hi {{1}}, we haven't received any times yet when {{2}} can be visited. You can add them here: {{3}} Thank you!
+- de: Guten Tag {{1}}, wir haben noch keine Zeiten erhalten, zu denen {{2}} besichtigt werden kann. Sie können sie hier angeben: {{3}} Vielen Dank!
 
 **occupant_viewing_booked**. Variables: 1 first name, 2 address, 3 date and time, 4 visitor (first name and initial).
 - nl: Dag {{1}}, er is een bezoek gepland aan {{2}} op {{3}} ({{4}}).
@@ -152,11 +152,11 @@ Alerts to the occupants of a listing (see "Owners and tenants" in the README) us
 - en: Hi {{1}}, tomorrow there are viewings of {{2}} at {{3}}.
 - de: Guten Tag {{1}}, morgen finden Besichtigungen von {{2}} um {{3}} statt.
 
-**viewing_move_request** (to a visitor whose viewing the occupants can't receive). Variables: 1 first name, 2 address, 3 date and time.
-- nl: Dag {{1}}, de bewoners van {{2}} kunnen u helaas niet ontvangen op {{3}}. Antwoord op dit bericht, dan zoeken we samen een ander moment.
-- fr: Bonjour {{1}}, les occupants de {{2}} ne pourront malheureusement pas vous recevoir le {{3}}. Répondez à ce message et nous trouverons un autre moment ensemble.
-- en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Reply to this message and we'll find another time together.
-- de: Guten Tag {{1}}, die Bewohner von {{2}} können Sie am {{3}} leider nicht empfangen. Antworten Sie auf diese Nachricht, dann finden wir gemeinsam einen anderen Termin.
+**viewing_move_request** (to a visitor whose viewing the occupants can't receive). Variables: 1 first name, 2 address, 3 date and time, 4 link to pick another time.
+- nl: Dag {{1}}, de bewoners van {{2}} kunnen u helaas niet ontvangen op {{3}}. Kies hier een ander moment: {{4}} Excuses voor het ongemak.
+- fr: Bonjour {{1}}, les occupants de {{2}} ne pourront malheureusement pas vous recevoir le {{3}}. Choisissez un autre moment ici : {{4}} Désolés pour le désagrément.
+- en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Pick another time here: {{4}} Sorry for the inconvenience.
+- de: Guten Tag {{1}}, die Bewohner von {{2}} können Sie am {{3}} leider nicht empfangen. Wählen Sie hier einen anderen Termin: {{4}} Entschuldigen Sie die Unannehmlichkeiten.
 
 ## For developers
 

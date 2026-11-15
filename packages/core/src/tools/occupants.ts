@@ -191,7 +191,7 @@ export const addListingOccupant = defineTool({
           link: { url: absoluteUrl(`/s/${occupant!.token}`), label: occupantLabels.page[lang] },
           signature: signature(lang, agentName, agency, channel),
         }),
-      whatsappTemplate: (lang) => ({ name: "occupant_invite", language: lang, params: [contact!.firstName ?? "", place] }),
+      whatsappTemplate: (lang) => ({ name: "occupant_invite", language: lang, params: [contact!.firstName ?? "", place, absoluteUrl(`/s/${occupant!.token}`)] }),
     });
     await recordEvent(ctx, { type: "listing.occupant_added", subjectType: "listing", subjectId: listing.id, data: { occupantId: occupant!.id, role: input.role, proposalId: invite.proposalId } });
     return { occupantId: occupant!.id, link: `/s/${occupant!.token}`, proposalId: invite.proposalId };

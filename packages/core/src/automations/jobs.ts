@@ -511,7 +511,7 @@ async function nudgeOccupants(ctx: ToolContext, now: Date) {
               link: { url: absoluteUrl(`/s/${occupant.token}`), label: occupantLabels.page[lang] },
               signature: signature(lang, agentName, agency, channel),
             }),
-          whatsappTemplate: (lang) => ({ name: "occupant_nudge", language: lang, params: [name, place] }),
+          whatsappTemplate: (lang) => ({ name: "occupant_nudge", language: lang, params: [name, place, absoluteUrl(`/s/${occupant.token}`)] }),
         });
         return result.proposalId ? { outcome: "drafted", proposalId: result.proposalId } : { outcome: result.sent === "failed" ? "failed" : "sent", messageId: result.messageId };
       }),
