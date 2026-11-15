@@ -10,6 +10,7 @@ const demoText = {
   nl: { pick: "Kies eerst een moment.", details: "Vul je voornaam en e-mail in.", gone: "Deze preview is verlopen." },
   fr: { pick: "Choisissez d'abord un moment.", details: "Indiquez votre prénom et votre e-mail.", gone: "Cet aperçu a expiré." },
   en: { pick: "Choose a time first.", details: "Please fill in your first name and email.", gone: "This preview has expired." },
+  de: { pick: "Wählen Sie zuerst einen Termin.", details: "Bitte geben Sie Ihren Vornamen und Ihre E-Mail ein.", gone: "Diese Vorschau ist abgelaufen." },
 };
 
 /** Booking in a preview: checks the form like the real widget and shows the confirmation, but books and sends nothing. */
@@ -37,6 +38,7 @@ const requestText = {
   nl: { off: "Previews aanvragen kan hier nog niet.", details: "Vul de website van je kantoor en je e-mail in.", failed: "We konden de website niet lezen. Controleer het adres." },
   fr: { off: "Les aperçus ne peuvent pas encore être demandés ici.", details: "Indiquez le site de votre agence et votre e-mail.", failed: "Nous n'avons pas pu lire le site. Vérifiez l'adresse." },
   en: { off: "Previews can't be requested here yet.", details: "Enter your agency's website and your email.", failed: "We couldn't read the website. Check the address." },
+  de: { off: "Vorschauen können hier noch nicht angefragt werden.", details: "Geben Sie die Website Ihres Büros und Ihre E-Mail ein.", failed: "Wir konnten die Website nicht lesen. Prüfen Sie die Adresse." },
 };
 
 /**

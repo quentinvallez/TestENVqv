@@ -3,7 +3,7 @@ import { z } from "zod";
 import { conversationFor } from "../channels";
 import { recordEvent } from "../events";
 import { expandWindows } from "../planner/availability";
-import { composeMessage, occupantLabels, occupantTemplates, signature, visitorLabel } from "../planner/language";
+import { composeMessage, occupantLabels, toLang, occupantTemplates, signature, visitorLabel } from "../planner/language";
 import { draftOccupantConflicts, messageOccupant, placeOf } from "../planner/occupants";
 import { startOfZonedDay, zonedTime } from "../time";
 import { defineTool, runTool, type ToolContext } from "../tool";
@@ -145,7 +145,7 @@ export const addListingOccupant = defineTool({
         lastName: z.string().trim().max(80).optional(),
         email: z.string().trim().toLowerCase().email().optional(),
         phone: z.string().trim().max(40).optional(),
-        language: z.enum(["nl", "fr", "en"]).optional(),
+        language: z.enum(["nl", "fr", "en", "de"]).optional(),
         whatsappOptIn: z.boolean().default(false),
       })
       .refine((c) => c.email || c.phone, "An email address or a phone number is needed"),
@@ -233,10 +233,10 @@ export const getOccupantPage = defineTool({
     // Opening the link is the only thing recorded; it tells the agent the occupant saw it.
     if (input.markSeen) await ctx.db.update(listingOccupants).set({ lastSeenAt: new Date() }).where(eq(listingOccupants.id, occupant.id));
     const agent = listing.agentId ? await ctx.db.query.agents.findFirst({ where: and(eq(schema.agents.agencyId, ctx.agencyId), eq(schema.agents.id, listing.agentId)) }) : null;
-    const lang = occupant.contact.language === "fr" || occupant.contact.language === "en" ? occupant.contact.language : "nl";
+    const lang = toLang(occupant.contact.language);
     const viewings = await upcomingViewings(ctx, listing.id);
     return {
-      occupant: { role: occupant.role, firstName: occupant.contact.firstName, language: lang as "nl" | "fr" | "en", alerts: occupant.alerts },
+      occupant: { role: occupant.role, firstName: occupant.contact.firstName, language: lang, alerts: occupant.alerts },
       listing: { address: placeOf(listing), postcode: listing.postcode, access: listing.access, viewingNoticeHours: listing.viewingNoticeHours, status: listing.status, photo: listing.photos[0]?.url ?? null },
       agent: agent ? { name: agent.name, phone: agent.phone, email: agent.email } : null,
       windows: await windowsOf(ctx, listing.id),

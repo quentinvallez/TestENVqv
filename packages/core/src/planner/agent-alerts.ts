@@ -20,16 +20,16 @@ export type AgentAlert = { kind: "booked" | "cancelled" } | { kind: "rescheduled
 
 const subjects: Record<AgentAlert["kind"], Record<"viewing" | "valuation", Record<Lang, string>>> = {
   booked: {
-    viewing: { nl: "Nieuw bezoek", fr: "Nouvelle visite", en: "New viewing" },
-    valuation: { nl: "Nieuwe waardebepaling", fr: "Nouvelle estimation", en: "New valuation visit" },
+    viewing: { nl: "Nieuw bezoek", fr: "Nouvelle visite", en: "New viewing", de: "Neue Besichtigung" },
+    valuation: { nl: "Nieuwe waardebepaling", fr: "Nouvelle estimation", en: "New valuation visit", de: "Neue Bewertung" },
   },
   rescheduled: {
-    viewing: { nl: "Bezoek verplaatst", fr: "Visite déplacée", en: "Viewing moved" },
-    valuation: { nl: "Waardebepaling verplaatst", fr: "Estimation déplacée", en: "Valuation visit moved" },
+    viewing: { nl: "Bezoek verplaatst", fr: "Visite déplacée", en: "Viewing moved", de: "Besichtigung verschoben" },
+    valuation: { nl: "Waardebepaling verplaatst", fr: "Estimation déplacée", en: "Valuation visit moved", de: "Bewertung verschoben" },
   },
   cancelled: {
-    viewing: { nl: "Bezoek geannuleerd", fr: "Visite annulée", en: "Viewing cancelled" },
-    valuation: { nl: "Waardebepaling geannuleerd", fr: "Estimation annulée", en: "Valuation visit cancelled" },
+    viewing: { nl: "Bezoek geannuleerd", fr: "Visite annulée", en: "Viewing cancelled", de: "Besichtigung abgesagt" },
+    valuation: { nl: "Waardebepaling geannuleerd", fr: "Estimation annulée", en: "Valuation visit cancelled", de: "Bewertung abgesagt" },
   },
 };
 
@@ -38,34 +38,38 @@ const lines = {
     nl: (who: string, what: string, when: string) => `${who} heeft een ${what} geboekt op ${when}.`,
     fr: (who: string, what: string, when: string) => `${who} a réservé une ${what} le ${when}.`,
     en: (who: string, what: string, when: string) => `${who} booked a ${what} for ${when}.`,
+    de: (who: string, what: string, when: string) => `${who} hat eine ${what} für ${when} gebucht.`,
   },
   rescheduled: {
     nl: (who: string, what: string, when: string, from: string) => `${who} heeft de ${what} van ${from} verplaatst naar ${when}.`,
     fr: (who: string, what: string, when: string, from: string) => `${who} a déplacé la ${what} du ${from} au ${when}.`,
     en: (who: string, what: string, when: string, from: string) => `${who} moved the ${what} from ${from} to ${when}.`,
+    de: (who: string, what: string, when: string, from: string) => `${who} hat die ${what} von ${from} auf ${when} verschoben.`,
   },
   cancelled: {
     nl: (who: string, what: string, when: string) => `${who} heeft de ${what} van ${when} geannuleerd.`,
     fr: (who: string, what: string, when: string) => `${who} a annulé la ${what} du ${when}.`,
     en: (who: string, what: string, when: string) => `${who} cancelled the ${what} on ${when}.`,
+    de: (who: string, what: string, when: string) => `${who} hat die ${what} am ${when} abgesagt.`,
   },
 };
 
 const what = {
-  viewing: { nl: "bezoek", fr: "visite", en: "viewing" },
-  valuation: { nl: "waardebepaling", fr: "estimation", en: "valuation visit" },
+  viewing: { nl: "bezoek", fr: "visite", en: "viewing", de: "Besichtigung" },
+  valuation: { nl: "waardebepaling", fr: "estimation", en: "valuation visit", de: "Bewertung" },
 };
 
 const labels = {
-  where: { nl: "Adres", fr: "Adresse", en: "Address" },
-  client: { nl: "Klant", fr: "Client", en: "Client" },
-  source: { nl: "Via", fr: "Via", en: "Via" },
-  message: { nl: "Bericht", fr: "Message", en: "Message" },
-  open: { nl: "Bekijk in de planning", fr: "Voir dans le planning", en: "Open in the planner" },
+  where: { nl: "Adres", fr: "Adresse", en: "Address", de: "Adresse" },
+  client: { nl: "Klant", fr: "Client", en: "Client", de: "Kunde" },
+  source: { nl: "Via", fr: "Via", en: "Via", de: "Über" },
+  message: { nl: "Bericht", fr: "Message", en: "Message", de: "Nachricht" },
+  open: { nl: "Bekijk in de planning", fr: "Voir dans le planning", en: "Open in the planner", de: "Im Planer öffnen" },
   footer: {
     nl: "Automatisch bericht. Uitzetten kan in Instellingen → Automatisaties.",
     fr: "Message automatique. Désactivable dans Paramètres → Automatisations.",
     en: "Automatic message. You can turn it off in Settings → Automations.",
+    de: "Automatische Nachricht. Abschalten unter Einstellungen → Automatisierungen.",
   },
 };
 
@@ -126,7 +130,7 @@ export async function alertAgent(ctx: ToolContext, appointmentId: string, action
       type: apt.type === "valuation" ? "valuation" : "viewing",
       lang,
       client: {
-        name: [contact?.firstName, contact?.lastName].filter(Boolean).join(" ") || { nl: "Een klant", fr: "Un client", en: "A client" }[lang],
+        name: [contact?.firstName, contact?.lastName].filter(Boolean).join(" ") || { nl: "Een klant", fr: "Un client", en: "A client", de: "Ein Kunde" }[lang],
         email: contact?.email ?? null,
         phone: contact?.phone ?? null,
       },

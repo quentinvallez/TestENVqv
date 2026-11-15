@@ -327,11 +327,11 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const booked = await runTool(tools.bookViewing, publicContext(agencyId), {
       listingId: listing!.id,
       startsAt: slots[4]!.start,
-      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true },
+      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true, language: "de" },
     });
     const call = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]).find(([url]) => url.includes("graph.facebook.com"));
     const payload = JSON.parse(call![1].body as string);
-    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "nl" } } });
+    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "de" } } });
     const params = payload.template.components[0].parameters.map((p: { text: string }) => p.text);
     expect(params).toHaveLength(5);
     expect(params[0]).toBe("Mira");

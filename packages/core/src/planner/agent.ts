@@ -87,7 +87,7 @@ function listingFacts(listing: Thread["listing"]) {
 const triageSchema = z.object({
   category: z.enum(categories),
   priority: z.enum(["high", "normal", "low"]),
-  language: z.enum(["nl", "fr", "en"]),
+  language: z.enum(["nl", "fr", "en", "de"]),
   summary: z.string().describe("One short English sentence for the agent's inbox, e.g. 'Wants to move Saturday's viewing to next week.'"),
   sentiment: z.enum(["positive", "neutral", "negative"]),
 });
@@ -114,7 +114,15 @@ function triageByRules(thread: Thread): Triage {
   // Moving or cancelling only makes sense when there is a viewing to move.
   const rules = thread.upcoming ? keywordRules : keywordRules.filter(([c]) => c !== "reschedule" && c !== "cancellation");
   const category = rules.find(([, re]) => re.test(text))?.[0] ?? "other";
-  const language: Lang = /\b(je|vous|merci|bonjour|nous)\b/i.test(text) ? "fr" : /\b(the|you|would|thanks|hi)\b/i.test(text) ? "en" : toLang(thread.contact?.language);
+  const language: Lang = /\b(je|vous|merci|bonjour|nous)\b/i.test(text)
+    ? "fr"
+    : /\b(ich|sie|danke|guten|bitte|besichtigung)\b/i.test(text)
+      ? "de"
+      : /\b(ik|u|graag|bedankt|dag|bezoek|woning)\b/i.test(text)
+        ? "nl"
+        : /\b(the|you|would|thanks|hi)\b/i.test(text)
+          ? "en"
+          : toLang(thread.contact?.language);
   const negative = /(te klein|trop petit|too small|niet voor ons|pas pour nous|not for us)/i.test(text);
   const priority: Priority = category === "offer" ? "high" : category === "confirmation" || category === "other" ? "low" : "normal";
   const summaries: Record<TriageCategory, string> = {
@@ -356,7 +364,7 @@ async function writeBody(thread: Thread, plan: DraftPlan, lang: Lang, useAi: boo
   }
   const body = templates[plan.templateKey]![lang]({
     name: thread.contact?.firstName ?? "",
-    address: plan.address || addressOf(thread.listing) || { nl: "het pand", fr: "le bien", en: "the property" }[lang],
+    address: plan.address || addressOf(thread.listing) || { nl: "het pand", fr: "le bien", en: "the property", de: "die Immobilie" }[lang],
     agentName: thread.agent?.name ?? thread.agencyName,
     other: plan.otherListing,
   });

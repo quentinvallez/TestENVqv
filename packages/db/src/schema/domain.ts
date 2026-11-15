@@ -401,7 +401,7 @@ export const widgetPreviews = pgTable(
     site: text().notNull(),
     name: text(),
     brandColor: text(),
-    language: text().$type<"nl" | "fr" | "en">().notNull().default("nl"),
+    language: text().$type<"nl" | "fr" | "en" | "de">().notNull().default("nl"),
     homeFramable: boolean().notNull().default(false),
     listingFramable: boolean().notNull().default(false),
     listings: jsonb().$type<WidgetPreviewListing[]>().notNull().default([]),

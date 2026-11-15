@@ -275,7 +275,7 @@ export async function addOccupantAction(listingId: string, _state: OccupantState
         lastName: text("lastName"),
         email: text("email"),
         phone: text("phone"),
-        language: (text("language") as "nl" | "fr" | "en" | undefined) ?? undefined,
+        language: (text("language") as "nl" | "fr" | "en" | "de" | undefined) ?? undefined,
         whatsappOptIn: form.get("whatsapp") === "on",
       },
     });

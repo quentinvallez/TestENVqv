@@ -8,6 +8,7 @@ const text = {
   nl: { website: "Website van je kantoor", email: "Je e-mail", submit: "Toon mijn preview", busy: "We lezen je website… (tot een minuut)", privacy: "We gebruiken je e-mail alleen om je over deze preview te contacteren.", off: "Previews aanvragen kan hier nog niet." },
   fr: { website: "Site de votre agence", email: "Votre e-mail", submit: "Voir mon aperçu", busy: "Nous lisons votre site… (jusqu'à une minute)", privacy: "Nous utilisons votre e-mail uniquement pour vous contacter au sujet de cet aperçu.", off: "Les aperçus ne peuvent pas encore être demandés ici." },
   en: { website: "Your agency's website", email: "Your email", submit: "Show my preview", busy: "Reading your website… (up to a minute)", privacy: "We only use your email to contact you about this preview.", off: "Previews can't be requested here yet." },
+  de: { website: "Website Ihres Büros", email: "Ihre E-Mail", submit: "Meine Vorschau zeigen", busy: "Wir lesen Ihre Website… (bis zu einer Minute)", privacy: "Wir verwenden Ihre E-Mail nur, um Sie zu dieser Vorschau zu kontaktieren.", off: "Vorschauen können hier noch nicht angefragt werden." },
 };
 
 const field = "h-10 w-full rounded-md border border-line bg-panel px-3 outline-none placeholder:text-faint focus:border-line-strong";

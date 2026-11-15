@@ -45,6 +45,7 @@ const widgetErrors = {
   nl: { slot: "Dit moment is net ingenomen. Kies een ander moment.", details: "Controleer uw gegevens.", generic: "Er ging iets mis. Probeer opnieuw.", gone: "Dit pand kan niet meer geboekt worden." },
   fr: { slot: "Ce moment vient d'être pris. Choisissez-en un autre.", details: "Vérifiez vos coordonnées.", generic: "Une erreur s'est produite. Réessayez.", gone: "Ce bien ne peut plus être réservé." },
   en: { slot: "This time was just taken. Please choose another.", details: "Please check your details.", generic: "Something went wrong. Please try again.", gone: "This property can no longer be booked." },
+  de: { slot: "Dieser Termin wurde gerade vergeben. Bitte wählen Sie einen anderen.", details: "Bitte prüfen Sie Ihre Angaben.", generic: "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.", gone: "Diese Immobilie kann nicht mehr gebucht werden." },
 };
 
 /** Booking from the widget: stays on the page (it may be inside an iframe) and returns the confirmation. */

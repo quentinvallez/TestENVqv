@@ -10,7 +10,7 @@ describe.skipIf(!process.env.DATABASE_URL)("valuations", () => {
   const client: ToolContext = { ...ctx, actor: { type: "contact", id: null } };
   const answers = { propertyType: "house" as const, livingArea: 160, bedrooms: 3, bathrooms: 1, condition: "good" as const, epcLabel: "D" as const, extras: [], plans: "sell_soon" as const };
   const request = (postcode: string, phone: string) =>
-    runTool(tools.requestValuation, client, { street: "Teststraat", houseNumber: "1", postcode, city: "Testdorp", firstName: "Ann", phone, consent: true, answers });
+    runTool(tools.requestValuation, client, { street: "Teststraat", houseNumber: "1", postcode, city: "Testdorp", firstName: "Ann", phone, language: "nl", consent: true, answers });
 
   beforeAll(async () => {
     await db.insert(schema.organization).values({ id: agencyId, name: "Test agency", slug: agencyId, createdAt: new Date() });

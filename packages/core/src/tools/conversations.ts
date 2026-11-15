@@ -136,7 +136,7 @@ export const replyToConversation = defineTool({
     subject: z.string().trim().max(300).optional(),
     kind: z.string().max(40).optional().describe('What the message is for, e.g. "reply", "reminder", "no_show", "follow_up"'),
     whatsappTemplate: z
-      .object({ name: z.string(), language: z.enum(["nl", "fr", "en"]), params: z.array(z.string()) })
+      .object({ name: z.string(), language: z.enum(["nl", "fr", "en", "de"]), params: z.array(z.string()) })
       .optional()
       .describe("Approved WhatsApp template used when the 24-hour window is closed"),
     metadata: z.record(z.string(), z.unknown()).optional(),
