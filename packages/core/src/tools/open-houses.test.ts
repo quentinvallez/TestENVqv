@@ -91,8 +91,11 @@ describe.skipIf(!process.env.DATABASE_URL)("phone bookings and open houses", () 
     expect(planned.capacity).toBe(8);
 
     // Exclusive: the listing now offers only the open house.
-    const { slots } = await runTool(tools.availableSlots, visitor, { listingId, days: 21 });
+    const { slots, openHouses } = await runTool(tools.availableSlots, visitor, { listingId, days: 21 });
     expect(slots.map((s) => s.start.getTime())).toEqual([0, 15, 30, 45].map((m) => start.getTime() + m * MINUTE));
+    expect(openHouses).toEqual([{ id: planned.openHouseId, startsAt: start, endsAt: end, placesLeft: 8 }]);
+    // Exclusive: offered even when it lies beyond the days asked for.
+    expect((await runTool(tools.availableSlots, visitor, { listingId, days: 3 })).slots).toHaveLength(4);
     expect(slots[0]).toMatchObject({ openHouseId: planned.openHouseId, spotsLeft: 2 });
 
     const first = await runTool(tools.bookViewing, visitor, { listingId, startsAt: start, contact: { firstName: "Ann", email: "ann@example.com" } });

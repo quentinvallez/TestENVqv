@@ -93,3 +93,11 @@ body {
 ::selection {
   background: var(--ai-line);
 }
+
+/* Widgets inside an agency's website: larger than the back office, headings in the site's font. */
+.embed-large {
+  zoom: 1.12;
+}
+.embed-large h3 {
+  font-family: var(--heading-font, inherit);
+}

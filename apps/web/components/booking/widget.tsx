@@ -27,6 +27,7 @@ export function BookingWidget({
   awaitingOccupant = false,
   occupied = false,
   privacyUrl,
+  openHouses = [],
   action,
 }: {
   lang: WidgetLang;
@@ -41,6 +42,8 @@ export function BookingWidget({
   occupied?: boolean;
   /** The agency's privacy notice for clients. */
   privacyUrl?: string;
+  /** Upcoming open houses at this listing, shown as a banner above the times. */
+  openHouses?: { when: string; placesLeft: number }[];
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = widgetText[lang];
@@ -116,6 +119,23 @@ export function BookingWidget({
       </div>
 
       <section className={stepClass(1)}>
+        {openHouses.length > 0 && (
+          <div role="note" className="mb-4 rounded-lg border border-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_8%,var(--panel))] px-3.5 py-3">
+            <div className="flex items-center gap-2 font-semibold text-[var(--brand)]">
+              <CalendarCheck className="size-4 shrink-0" />
+              {t.openHouseTitle}
+            </div>
+            <ul className="mt-1.5 flex flex-col gap-0.5">
+              {openHouses.map((o) => (
+                <li key={o.when} className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <span className="font-medium">{o.when}</span>
+                  <span className="text-[12px] text-muted">{o.placesLeft > 0 ? t.openHousePlaces(o.placesLeft) : t.openHouseFull}</span>
+                </li>
+              ))}
+            </ul>
+            {openHouses.some((o) => o.placesLeft > 0) && <p className="mt-1.5 text-[12px] text-muted">{t.openHouseBook}</p>}
+          </div>
+        )}
         <h3 className="mb-1 font-medium">{t.step1}</h3>
         <p className="mb-3 flex items-center gap-1.5 text-[12px] text-muted">
           <CalendarCheck className="size-3.5" />

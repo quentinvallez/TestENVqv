@@ -152,26 +152,33 @@ export async function listingOpenHouses(ctx: ToolContext, listing: Listing, from
     .where(and(eq(openHouses.agencyId, ctx.agencyId), eq(openHouses.listingId, listing.id), eq(openHouses.status, "planned"), gt(openHouses.endsAt, now)))
     .orderBy(asc(openHouses.startsAt));
   const exclusive = planned.some((o) => o.exclusive);
-  const inRange = planned.filter((o) => o.startsAt < to && o.endsAt > from);
-  const booked = inRange.length
+  const booked = planned.length
     ? await ctx.db
         .select({ openHouseId: appointments.openHouseId, startsAt: appointments.startsAt })
         .from(appointments)
         .where(
           and(
             eq(appointments.agencyId, ctx.agencyId),
-            inArray(appointments.openHouseId, inRange.map((o) => o.id)),
+            inArray(appointments.openHouseId, planned.map((o) => o.id)),
             inArray(appointments.status, ["scheduled", "confirmed"]),
             excludeAppointmentId ? ne(appointments.id, excludeAppointmentId) : undefined,
           ),
         )
     : [];
+  const bookedAt = (o: { id: string }) => booked.filter((b) => b.openHouseId === o.id).map((b) => b.startsAt);
+  // An exclusive open house is offered even beyond the range asked for: it is the listing's only way in.
+  const inRange = planned.filter((o) => o.endsAt > from && (o.startsAt < to || o.exclusive));
   const slots: OpenHouseSlot[] = inRange.flatMap((o) =>
-    openHouseSlots(o, booked.filter((b) => b.openHouseId === o.id).map((b) => b.startsAt), { now, minNoticeMinutes: OPEN_HOUSE_NOTICE_MINUTES }).filter(
-      (slot) => slot.end > from && slot.start < to,
-    ),
+    openHouseSlots(o, bookedAt(o), { now, minNoticeMinutes: OPEN_HOUSE_NOTICE_MINUTES }).filter((slot) => slot.end > from && (o.exclusive || slot.start < to)),
   );
-  return { planned: inRange, exclusive, slots };
+  // For the visitor's banner: every upcoming open house and how many places are left.
+  const upcoming = planned.map((o) => ({
+    id: o.id,
+    startsAt: o.startsAt,
+    endsAt: o.endsAt,
+    placesLeft: openHouseSlots(o, bookedAt(o), { now, minNoticeMinutes: OPEN_HOUSE_NOTICE_MINUTES }).reduce((sum, slot) => sum + slot.spotsLeft, 0),
+  }));
+  return { planned: inRange, exclusive, slots, upcoming };
 }
 
 /** Bookable times to view a listing: its open house slots, plus the agent's own free slots unless an open house is exclusive. */
@@ -268,12 +275,19 @@ export const availableSlots = defineTool({
     const from = input.from ?? new Date();
     const to = startOfZonedDay(from, input.days);
     const minutes = input.minutes ?? agent.slotMinutes;
-    const slots: ViewingSlot[] = listing
-      ? await viewingSlots(ctx, agent, listing, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes })
-      : await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes });
+    let slots: ViewingSlot[];
+    let openHouses: { id: string; startsAt: Date; endsAt: Date; placesLeft: number }[] = [];
+    if (listing) {
+      const shows = await listingOpenHouses(ctx, listing, from, to, input.excludeAppointmentId);
+      const own = shows.exclusive ? [] : await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes, listing });
+      slots = [...shows.slots, ...own].sort((a, b) => a.start.getTime() - b.start.getTime());
+      openHouses = shows.upcoming;
+    } else {
+      slots = await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes });
+    }
     // An occupied home whose occupants haven't given any times yet: visitors can only ask for a viewing.
     const awaitingOccupant = Boolean(listing && listing.access !== "agent" && !(await homeConstraints(ctx, listing, from, to))?.windows);
-    return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots, awaitingOccupant };
+    return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots, awaitingOccupant, openHouses };
   },
 });
 

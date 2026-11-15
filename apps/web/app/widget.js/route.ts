@@ -57,6 +57,86 @@ const script = String.raw`(function () {
     return best;
   }
 
+
+  // The site's own look, read from the page, so the widget blends in: page
+  // background and text colour, its font, and the colour of its own buttons
+  // (used when the agency hasn't set a brand colour in the back office).
+  function rgb(value) {
+    var m = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/.exec(value || "");
+    if (!m || (m[4] !== undefined && Number(m[4]) < 0.5)) return null;
+    return [Number(m[1]), Number(m[2]), Number(m[3])];
+  }
+  function hex(c) {
+    return "#" + c.map(function (n) { return ("0" + n.toString(16)).slice(-2); }).join("");
+  }
+  function lum(c) {
+    var v = c.map(function (n) { n /= 255; return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4); });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function contrast(a, b) {
+    var x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  // The file of a web font the site loads itself (from a stylesheet we may read),
+  // so the widget can use the same font; fonts don't cross into an iframe.
+  function fontFile(stack) {
+    var family = (stack || "").split(",")[0].replace(/["']/g, "").trim().toLowerCase();
+    if (!family) return "";
+    var found = "";
+    for (var i = 0; i < document.styleSheets.length && !found; i++) {
+      var sheet = document.styleSheets[i];
+      var rules;
+      try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (var j = 0; rules && j < rules.length && !found; j++) {
+        var rule = rules[j];
+        if (rule.type !== 5) continue;
+        if (rule.style.getPropertyValue("font-family").replace(/["']/g, "").trim().toLowerCase() !== family) continue;
+        var weight = rule.style.getPropertyValue("font-weight");
+        if (weight && !/^(400|normal|\d+ \d+)$/.test(weight.trim())) continue;
+        var m = /url\(\s*["']?([^"')]+\.woff2?[^"')]*)["']?\s*\)/.exec(rule.style.getPropertyValue("src"));
+        if (m) found = new URL(m[1], sheet.href || location.href).href;
+      }
+    }
+    return /^https:\/\//.test(found) ? found : "";
+  }
+  var siteLook = null;
+  function readLook() {
+    if (siteLook) return siteLook;
+    var body = getComputedStyle(document.body);
+    var bg = rgb(body.backgroundColor) || rgb(getComputedStyle(document.documentElement).backgroundColor) || [255, 255, 255];
+    var fg = rgb(body.color) || [17, 17, 17];
+    var counts = {};
+    var best = null;
+    var els = document.querySelectorAll("button, a[class*=btn], a[class*=button], a[class*=cta], [class*=badge], [class*=label], [class*=tag], [role=button], input[type=submit]");
+    for (var i = 0; i < els.length && i < 400; i++) {
+      var c = rgb(getComputedStyle(els[i]).backgroundColor);
+      if (!c || contrast(c, bg) < 2.5) continue;
+      var key = hex(c);
+      counts[key] = (counts[key] || 0) + 1;
+      if (!best || counts[key] > counts[best]) best = key;
+    }
+    var heading = document.querySelector("h1, h2");
+    var headingFont = heading ? getComputedStyle(heading).fontFamily : "";
+    siteLook = {
+      bg: hex(bg),
+      fg: hex(fg),
+      brand: best,
+      font: body.fontFamily,
+      heading: headingFont,
+      fontSrc: fontFile(body.fontFamily),
+      headingSrc: headingFont ? fontFile(headingFont) : "",
+      dark: lum(bg) < 0.25,
+    };
+    return siteLook;
+  }
+  function lookQuery(config) {
+    var l = readLook();
+    var brand = config && /^#[0-9a-f]{3,8}$/i.test(config.brand || "") ? config.brand : l.brand;
+    return "&bg=" + encodeURIComponent(l.bg) + "&fg=" + encodeURIComponent(l.fg) + (brand ? "&brand=" + encodeURIComponent(brand) : "") +
+      "&font=" + encodeURIComponent(l.font.slice(0, 120)) + (l.heading ? "&hfont=" + encodeURIComponent(l.heading.slice(0, 120)) : "") +
+      (l.fontSrc ? "&fontsrc=" + encodeURIComponent(l.fontSrc) : "") + (l.headingSrc ? "&hfontsrc=" + encodeURIComponent(l.headingSrc) : "");
+  }
+
   function mount(container) {
     var reference = container.getAttribute("data-listing");
     var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "en").slice(0, 2);
@@ -67,7 +147,7 @@ const script = String.raw`(function () {
         if (!data.listingId) return;
         var agent = detectAgent(data.agents || [], container);
         var iframe = document.createElement("iframe");
-        iframe.src = origin + "/embed/" + data.listingId + "?lang=" + lang + (agent ? "&agent=" + agent.id : "");
+        iframe.src = origin + "/embed/" + data.listingId + "?lang=" + lang + (agent ? "&agent=" + agent.id : "") + lookQuery(data);
         iframe.title = "Booking";
         iframe.style.cssText = "width:100%;border:0;height:560px;display:block;background:transparent";
         container.setAttribute("data-viewing-agent", agent ? agent.name : "");
@@ -97,7 +177,7 @@ const script = String.raw`(function () {
   // Home valuation for owners: <div data-viewing-valuation></div>
   function mountValuation(container) {
     var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "en").slice(0, 2);
-    if (agency) frame(container, origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + lang);
+    if (agency) frame(container, origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + lang + lookQuery(siteConfig));
   }
 
   function pageLang() {
@@ -112,19 +192,23 @@ const script = String.raw`(function () {
   var houseIcon = '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>';
   var calendarIcon = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>';
   function launcher(config, options) {
-    var brand = /^#[0-9a-f]{3,8}$/i.test(config.brand || "") ? config.brand : "#111111";
+    var look = readLook();
+    var brand = /^#[0-9a-f]{3,8}$/i.test(config.brand || "") ? config.brand : look.brand || "#111111";
+    var brandRgb = rgb(brand.length === 7 ? "rgb(" + parseInt(brand.slice(1, 3), 16) + "," + parseInt(brand.slice(3, 5), 16) + "," + parseInt(brand.slice(5, 7), 16) + ")" : "") || [17, 17, 17];
+    var onBrand = contrast(brandRgb, [255, 255, 255]) >= contrast(brandRgb, [17, 17, 17]) ? "#ffffff" : "#111111";
+    var font = (look.font || "system-ui,sans-serif").replace(/[<>{};]/g, "");
     var host = document.createElement("div");
     host.setAttribute("data-viewing-launcher", "");
     var root = host.attachShadow({ mode: "open" });
     root.innerHTML =
       "<style>" +
       ":host{all:initial}" +
-      ".open{position:fixed;z-index:2147483000;right:20px;bottom:20px;display:flex;align-items:center;gap:8px;height:48px;padding:0 18px 0 14px;border:0;border-radius:999px;background:" + brand + ";color:#fff;font:600 15px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.2);cursor:pointer}" +
+      ".open{position:fixed;z-index:2147483000;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;height:54px;padding:0 22px 0 18px;border:0;border-radius:999px;background:" + brand + ";color:" + onBrand + ";font-weight:600;font-size:16px;line-height:1;font-family:" + font + ";box-shadow:0 6px 24px rgba(0,0,0,.2);cursor:pointer}" +
       ".open:focus-visible,.close:focus-visible{outline:2px solid " + brand + ";outline-offset:2px}" +
       ".open svg{width:20px;height:20px;flex:none}" +
-      ".panel{position:fixed;z-index:2147483001;right:20px;bottom:20px;width:420px;max-width:calc(100vw - 40px);height:min(720px,calc(100vh - 40px));display:flex;flex-direction:column;overflow:hidden;border-radius:14px;color-scheme:light dark;background:Canvas;color:CanvasText;box-shadow:0 12px 48px rgba(0,0,0,.28)}" +
+      ".panel{position:fixed;z-index:2147483001;right:24px;bottom:24px;width:540px;max-width:calc(100vw - 48px);height:min(880px,calc(100vh - 48px));display:flex;flex-direction:column;overflow:hidden;border-radius:16px;color-scheme:" + (look.dark ? "dark" : "light") + ";background:" + look.bg + ";color:" + look.fg + ";box-shadow:0 16px 56px rgba(0,0,0,.3)}" +
       ".panel[hidden],.open[hidden]{display:none}" +
-      ".bar{display:flex;align-items:center;justify-content:space-between;gap:8px;height:48px;padding:0 8px 0 16px;border-bottom:1px solid rgba(127,127,127,.25);font:600 14px/1.2 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}" +
+      ".bar{display:flex;align-items:center;justify-content:space-between;gap:8px;height:56px;padding:0 10px 0 20px;border-bottom:1px solid rgba(127,127,127,.25);font-weight:600;font-size:16px;line-height:1.2;font-family:" + (look.heading || font).replace(/[<>{};]/g, "") + "}" +
       ".close{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:inherit;font:400 24px/1 system-ui,sans-serif;cursor:pointer}" +
       "iframe{flex:1;width:100%;border:0;background:transparent}" +
       "@media (max-width:560px){.open{right:16px;bottom:16px}.panel{inset:0;width:auto;max-width:none;height:100%;border-radius:0}}" +
@@ -143,7 +227,7 @@ const script = String.raw`(function () {
       if (!iframe) {
         iframe = document.createElement("iframe");
         iframe.title = options.title;
-        iframe.src = options.src;
+        iframe.src = options.src + lookQuery(config) + "&panel=1";
         panel.appendChild(iframe);
       }
       panel.hidden = false;

@@ -39,6 +39,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
           questions={widget.questions}
           agentName={widget.agent.name}
           slotMinutes={widget.slotMinutes}
+          openHouses={widget.openHouses}
           awaitingOccupant={widget.awaitingOccupant}
           occupied={widget.listing.access !== "agent"}
           agencyName={agencyName}
