@@ -46,11 +46,14 @@ function Field({ label, children, className }: { label: string; children: React.
 export function ValuationWidget({
   lang,
   agencyName,
+  privacyUrl,
   request,
   verify,
 }: {
   lang: WidgetLang;
   agencyName: string;
+  /** The agency's privacy notice for clients. */
+  privacyUrl?: string;
   request: (state: ValuationRequestState | undefined, form: FormData) => Promise<ValuationRequestState>;
   verify: (token: string, state: VerifyState, form: FormData) => Promise<VerifyState>;
 }) {
@@ -189,7 +192,17 @@ export function ValuationWidget({
         <input name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
         <label className="flex items-start gap-2 text-muted">
           <input type="checkbox" name="consent" required={step === 3} className="mt-0.5 accent-[var(--brand)]" />
-          {t.consent(agencyName)}
+          <span>
+            {t.consent(agencyName)}
+            {privacyUrl && (
+              <>
+                {" "}
+                <a href={privacyUrl} target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-fg">
+                  {t.privacyLink}
+                </a>
+              </>
+            )}
+          </span>
         </label>
         {requested?.error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{requested.error}</p>}
         {nav(true)}

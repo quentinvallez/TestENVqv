@@ -5,10 +5,11 @@ import { CalendarCheck, Mail, MessageCircle, Phone, Sparkles, UserPlus } from "l
 import { ChannelMark, providerOf } from "@/components/channel";
 import { AiPill, Avatar, Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { getToolContext } from "@/lib/context";
+import { getSession, getToolContext } from "@/lib/context";
 import { address, formatDateTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta, categoryMeta, leadStageMeta, reasonLabel, sourceLabel, temperatureMeta } from "@/lib/labels";
-import { draftFollowUpAction, suggestListingsAction } from "../../actions";
+import { draftFollowUpAction, eraseContactAction, suggestListingsAction } from "../../actions";
+import { PrivacyPanel } from "./privacy-panel";
 
 function EntryIcon({ entry }: { entry: TimelineEntry }) {
   if (entry.kind === "message" || entry.kind === "draft") {
@@ -25,6 +26,7 @@ function EntryIcon({ entry }: { entry: TimelineEntry }) {
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await getToolContext();
+  const { isAdmin } = await getSession();
   const [data, recommendations] = await Promise.all([runTool(tools.getContact, ctx, { contactId: id }), runTool(tools.recommendForContact, ctx, { contactId: id })]);
   if (!data) notFound();
   const { contact, leads, appointments, timeline, qualification } = data;
@@ -196,6 +198,14 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                 </form>
               </Panel>
             )}
+
+            <PrivacyPanel
+              contactId={contact.id}
+              isAdmin={isAdmin}
+              upcoming={appointments.filter((a) => (a.status === "scheduled" || a.status === "confirmed") && a.endsAt.getTime() > Date.now()).length}
+              inDeal={leads.some((l) => l.stage === "offer" || l.stage === "won")}
+              erase={eraseContactAction.bind(null, contact.id)}
+            />
 
             <Panel className="p-4 text-muted">
               <div className="mb-1 flex items-center gap-2 font-medium text-fg">

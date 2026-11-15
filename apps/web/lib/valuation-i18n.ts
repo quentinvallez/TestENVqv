@@ -33,6 +33,7 @@ type Text = {
   phone: string;
   email: string;
   consent: (agency: string) => string;
+  privacyLink: string;
   next: string;
   back: string;
   submit: string;
@@ -98,6 +99,7 @@ export const valuationText: Record<WidgetLang, Text> = {
     phone: "GSM-nummer",
     email: "E-mail (optioneel)",
     consent: (agency) => `Ik ga akkoord dat ${agency} mij contacteert over deze schatting.`,
+    privacyLink: "Privacyverklaring",
     next: "Volgende",
     back: "Terug",
     submit: "Toon mijn schatting",
@@ -161,6 +163,7 @@ export const valuationText: Record<WidgetLang, Text> = {
     phone: "GSM",
     email: "E-mail (facultatif)",
     consent: (agency) => `J'accepte que ${agency} me contacte au sujet de cette estimation.`,
+    privacyLink: "Déclaration de confidentialité",
     next: "Suivant",
     back: "Retour",
     submit: "Voir mon estimation",
@@ -224,6 +227,7 @@ export const valuationText: Record<WidgetLang, Text> = {
     phone: "Mobile number",
     email: "Email (optional)",
     consent: (agency) => `I agree that ${agency} may contact me about this estimate.`,
+    privacyLink: "Privacy notice",
     next: "Next",
     back: "Back",
     submit: "Show my estimate",
@@ -287,6 +291,7 @@ export const valuationText: Record<WidgetLang, Text> = {
     phone: "Handynummer",
     email: "E-Mail (optional)",
     consent: (agency) => `Ich bin einverstanden, dass ${agency} mich zu dieser Schätzung kontaktiert.`,
+    privacyLink: "Datenschutzhinweis",
     next: "Weiter",
     back: "Zurück",
     submit: "Meine Schätzung anzeigen",

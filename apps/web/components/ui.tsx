@@ -7,7 +7,7 @@ export function Button({
   size = "md",
   className,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "ai"; size?: "sm" | "md" }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "ai" | "danger"; size?: "sm" | "md" }) {
   return (
     <button
       className={cn(
@@ -17,6 +17,7 @@ export function Button({
         variant === "secondary" && "border border-line bg-panel text-fg hover:bg-hover",
         variant === "ghost" && "text-muted hover:bg-hover hover:text-fg",
         variant === "ai" && "border border-ai-line bg-ai-soft text-ai hover:brightness-95",
+        variant === "danger" && "bg-danger text-white hover:opacity-90",
         className,
       )}
       {...props}

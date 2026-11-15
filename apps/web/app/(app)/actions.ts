@@ -173,6 +173,12 @@ export async function setNudgeDaysAction(form: FormData) {
   revalidatePath("/settings");
 }
 
+export async function setRetentionAction(form: FormData) {
+  await requireAdmin();
+  await runTool(tools.updateAutomationSettings, await getToolContext(), { retentionMonths: Number(form.get("retentionMonths")) });
+  revalidatePath("/settings");
+}
+
 export async function runAutomationsAction() {
   await requireAdmin();
   await runTool(tools.runAutomationsNow, await getToolContext(), {});
@@ -347,4 +353,12 @@ export async function leadCopyAddressAction(_state: ForwardingState, form: FormD
   }
   revalidatePath("/settings");
   return { done: true };
+}
+
+/** GDPR erasure, admins only: the client is forgotten and the page goes back to the list. */
+export async function eraseContactAction(contactId: string) {
+  await requireAdmin();
+  await runTool(tools.eraseContact, await getToolContext(), { contactId });
+  revalidatePath("/", "layout");
+  redirect("/contacts?erased=1");
 }

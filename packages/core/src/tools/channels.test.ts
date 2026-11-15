@@ -250,7 +250,9 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(original!.delivery).toBe("failed");
     const recoveredBy = original!.metadata.recoveredBy as string;
     const [email] = await db.select().from(schema.messages).where(eq(schema.messages.id, recoveredBy));
-    expect(email).toMatchObject({ body: "Uw bezoek morgen", delivery: "sent" });
+    // The first email to the client ends with where the privacy notice is.
+    expect(email).toMatchObject({ delivery: "sent" });
+    expect(email!.body).toMatch(/^Uw bezoek morgen\n\nHow we handle your data: http\S+\/privacy\/org_\S+\?lang=en$/);
     expect(email!.metadata).toMatchObject({ kind: "reminder", fallbackReason: "whatsapp_failed", retryOf: sent.messageId });
     const mails = fetchMock.mock.calls.filter((c) => String(c[0]).includes("mailgun"));
     expect(mails).toHaveLength(1);
@@ -400,7 +402,8 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const confirmation = mails.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("to")?.includes("mira@example.be"));
     expect(confirmation).toBeTruthy();
     const [copy] = await db.select().from(schema.messages).where(eq(schema.messages.id, message!.metadata.emailCopy as string));
-    expect(copy).toMatchObject({ delivery: "sent", body: message!.body });
+    expect(copy).toMatchObject({ delivery: "sent" });
+    expect(copy!.body.startsWith(message!.body)).toBe(true);
     expect(copy!.metadata).toMatchObject({ copyOf: message!.id, kind: "booking_confirmation" });
 
     // WhatsApp failing later doesn't send the email a second time.

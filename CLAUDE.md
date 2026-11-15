@@ -39,6 +39,12 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 
 - Logins are Better Auth organization members (`member`, `invitation`); an agent record is tied to its login by `agents.userId`, matched by email on accept (`team_*` tools in `tools/team.ts`). Admins (`owner`/`admin`) invite agents from the agent page (link at `/invite/<id>`, emailed in the agent's language via `emailAgent`, valid 7 days), change roles and remove logins; removing a login keeps the agent and their viewings. Agents (`member`) can't change settings: server actions that change settings start with `requireAdmin()`. "Forgot password" (`/forgot-password`, `/reset-password`) emails a 1-hour link through `team_send_password_reset` (the login's agency via `agencyOfUser`); `team_get_my_agent` gives the menu's "My page" link.
 
+## Client data (GDPR)
+
+- The agency is the controller, we are its processor. `contacts_export` gives everything about a client (download at `/api/contacts/<id>/export`); `contacts_erase` (admins) cancels their upcoming viewings, deletes the contact, leads, conversations, messages, drafts and valuations, empties `events.data`/`automation_runs.detail` that refer to them and keeps past appointments without contact or notes; the `contact.erased` event names no one. New tables with personal data must be handled in `tools/privacy.ts` (export and erase).
+- Retention (`automations.retentionMonths`, default 24, 0 = never) runs with the automations: clients without contact for that long are erased, except occupants and leads in `offer`/`won`; unverified valuations go after 30 days.
+- Clients see the agency's privacy notice at `/privacy/<agencyId>?lang=` (`lib/privacy-i18n.ts`, NL/FR/EN/DE), linked from the booking and valuation forms and at the end of the first email to a client (`privacyLine` in channels). Update the notice when a new subprocessor or kind of data is added.
+
 ## Owners and tenants
 
 - An occupied listing (`access` "owner"/"tenant") only offers slots inside its occupants' windows (`listing_windows`, `listing_blocks`); always pass `listingId` to `availability_slots` when the viewing is for a listing. Occupants act through their token (`occupants_*` tools, `occupantAgency` in `@viewing/core/public`).

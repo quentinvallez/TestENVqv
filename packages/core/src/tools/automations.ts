@@ -60,6 +60,7 @@ export const updateAutomationSettings = defineTool({
     repliesToAgent: z.boolean().optional().describe("Send client email replies to the agent's own mailbox (the inbox address keeps a silent copy) instead of answering them in the app"),
     portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
     replyToPortalLeadsAutomatically: z.boolean().optional(),
+    retentionMonths: z.number().int().min(0).max(120).optional().describe("Erase clients nobody has been in touch with for this many months (0 = never)"),
     sendBookingConfirmationsAutomatically: z.boolean().optional().describe("Confirm a booking or move the client made on the website on their own (fixed text) instead of waiting for approval"),
   }),
   run: async (ctx, input) => {

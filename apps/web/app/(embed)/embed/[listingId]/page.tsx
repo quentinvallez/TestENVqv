@@ -32,6 +32,7 @@ export default async function EmbedPage({ params, searchParams }: { params: Prom
         awaitingOccupant={widget.awaitingOccupant}
         occupied={widget.listing.access !== "agent"}
         agencyName={widget.agencyName}
+        privacyUrl={`/privacy/${widget.listing.agencyId}?lang=${lang}`}
         action={bookFromWidgetAction.bind(null, listingId, lang, widget.agent.id)}
       />
     </div>

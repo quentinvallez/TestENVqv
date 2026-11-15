@@ -29,6 +29,7 @@ export const defaultAutomationSettings: Required<AutomationSettings> = {
   portalLeadCopies: true,
   whatsappInvite: true,
   repliesToAgent: true,
+  retentionMonths: 24,
 };
 
 export function automationSettings(stored: AutomationSettings | null | undefined): Required<AutomationSettings> {

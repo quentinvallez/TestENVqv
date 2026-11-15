@@ -529,6 +529,7 @@ export type AutomationSummary = {
   nudges: number;
   withdrawn: number;
   occupants: { sent: number; drafted: number };
+  retention: { erased: number; unverifiedValuations: number };
 };
 
 const tally = (outcomes: string[], outcome: string) => outcomes.filter((o) => o === outcome).length;
@@ -544,6 +545,8 @@ export async function runAutomations(ctx: ToolContext, now = new Date(), options
   const followUps = settings.followUps ? await draftFollowUps(actx, now, useAi, settings.sendFollowUpsAutomatically) : [];
   const nudges = settings.nudges ? await draftNudges(actx, now, settings.nudgeAfterDays, useAi, settings.sendNudgesAutomatically) : [];
   const occupants = [...(await sendOccupantDigests(actx, now)), ...(await nudgeOccupants(actx, now))];
+  const { applyRetention } = await import("../tools/privacy");
+  const retention = await applyRetention(actx, now);
   return {
     reminders: { sent: tally(reminders, "sent"), drafted: tally(reminders, "drafted"), failed: tally(reminders, "failed") },
     completed,
@@ -551,6 +554,7 @@ export async function runAutomations(ctx: ToolContext, now = new Date(), options
     nudges: tally(nudges, "drafted") + tally(nudges, "sent"),
     withdrawn,
     occupants: { sent: tally(occupants, "sent"), drafted: tally(occupants, "drafted") },
+    retention,
   };
 }
 
