@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, ne, schema } from "@viewing/db";
+import { bookingUrl } from "./booking-link";
 import type { ConversationCategory, Priority } from "@viewing/db/schema";
 import { z } from "zod";
 import { conversationFor, type WhatsAppTemplate } from "../channels";
@@ -217,7 +218,7 @@ async function planFor(ctx: ToolContext, thread: Thread, t: Triage): Promise<Dra
   const name = thread.contact?.firstName ?? "";
   // Only active listings take viewings: under option, sold or off the site, there are no times or booking link to offer.
   const offMarket = thread.listing && thread.listing.status !== "active" ? thread.listing.status : null;
-  const bookLink = thread.listing && !offMarket ? { url: `/book/${thread.listing.id}`, label: linkLabels.book[lang] } : undefined;
+  const bookLink = thread.listing && !offMarket ? { url: (await bookingUrl(ctx, thread.listing.id)).url, label: linkLabels.book[lang] } : undefined;
   const slotsFor = async (excludeAppointmentId?: string) => {
     if (!thread.agent || offMarket) return [];
     const { slots } = await runTool(availableSlots, ctx, { agentId: thread.agent.id, listingId: thread.listing?.id, days: 10, excludeAppointmentId });
@@ -766,7 +767,7 @@ export async function draftRecommendation(
     purpose: `Suggest a few properties of the agency to a client who earlier showed interest in ${place}. Mention briefly why they could fit (${suggestions.map((s) => `${s.label}: ${s.reasons.join(", ")}`).join("; ")}). Invite them to plan a viewing. Do not invent features.`,
     templateKey: "recommendation",
     slots: [],
-    lines: suggestions.map((s) => `${s.label}: ${absoluteUrl(`/book/${s.id}`)}`),
+    lines: await Promise.all(suggestions.map(async (s) => `${s.label}: ${absoluteUrl((await bookingUrl(ctx, s.id)).url)}`)),
     summary: `Suggest ${suggestions.length} ${suggestions.length === 1 ? "property" : "properties"} to ${contact.firstName ?? "the client"}`,
     address: place,
   };

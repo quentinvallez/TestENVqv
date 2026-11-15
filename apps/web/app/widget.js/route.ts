@@ -157,8 +157,14 @@ const script = String.raw`(function () {
           }
         });
         container.appendChild(iframe);
+        if (wantsBooking()) container.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function () {});
+  }
+  // "See on website" in the back office opens the listing page at #viewing-booking:
+  // scroll to the calendar, or open the floating booking panel.
+  function wantsBooking() {
+    return location.hash === "#viewing-booking";
   }
 
   function frame(container, src) {
@@ -246,6 +252,7 @@ const script = String.raw`(function () {
     document.body.appendChild(host);
     launcherHost = host;
     refreshLauncher();
+    if (options.booking && wantsBooking()) show();
   }
   function valuationLauncher(config) {
     if (!config || !config.valuationLauncher || bookingPage || current.getAttribute("data-launcher") === "off") return;
@@ -274,6 +281,7 @@ const script = String.raw`(function () {
           label: config.text.booking,
           title: config.text.booking,
           icon: calendarIcon,
+          booking: true,
           src: origin + "/embed/" + data.listingId + "?lang=" + pageLang() + (agent ? "&agent=" + agent.id : ""),
         });
       })
