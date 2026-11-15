@@ -38,6 +38,33 @@ function CalendarCell({ agent, available }: { agent: Agent; available: { google:
   );
 }
 
+/** Can the agent log in: role, invited, or not yet. */
+function LoginCell({ agent }: { agent: Agent }) {
+  const { login } = agent;
+  if (login.status === "member") {
+    return (
+      <span className="flex items-center gap-1.5">
+        <StatusDot color="var(--success)" />
+        {{ owner: "Owner", admin: "Admin", member: "Agent" }[login.role]}
+      </span>
+    );
+  }
+  if (login.status === "invited") {
+    return (
+      <span className="flex items-center gap-1.5 text-muted">
+        <StatusDot color={login.expired ? "var(--danger)" : "var(--warning)"} />
+        {login.expired ? "Invitation expired" : "Invited"}
+      </span>
+    );
+  }
+  return (
+    <Link href={`/agents/${agent.id}`} className="flex items-center gap-1.5 text-muted hover:text-fg">
+      <StatusDot color="var(--line-strong)" />
+      No login
+    </Link>
+  );
+}
+
 export default async function AgentsPage() {
   const agents = await runTool(tools.listAgents, await getToolContext(), {});
   const available = { google: oauthConfigured("google"), microsoft: oauthConfigured("microsoft") };
@@ -67,18 +94,20 @@ export default async function AgentsPage() {
                 </Link>
                 <div className="mt-2 flex flex-col gap-2 pl-11 text-[13px]">
                   <AgentEmail agentId={a.id} email={a.email} action={saveAgentAction} />
+                  <LoginCell agent={a} />
                   <CalendarCell agent={a} available={available} />
                 </div>
               </li>
             ))}
           </ul>
-          <table className="hidden w-full min-w-[760px] text-left md:table">
+          <table className="hidden w-full min-w-[860px] text-left md:table">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
                 <th className="py-2 pr-3 pl-5 font-normal">Agent</th>
                 <th className="px-3 font-normal">Office</th>
                 <th className="px-3 font-normal">Active listings</th>
                 <th className="px-3 font-normal">Upcoming viewings</th>
+                <th className="px-3 font-normal">Login</th>
                 <th className="py-2 pr-5 pl-3 font-normal">Calendar</th>
               </tr>
             </thead>
@@ -104,6 +133,9 @@ export default async function AgentsPage() {
                   <td className="px-3 text-muted">{a.officeName ?? "—"}</td>
                   <td className="px-3 tabular-nums">{a.activeListings}</td>
                   <td className="px-3 tabular-nums">{a.upcomingAppointments}</td>
+                  <td className="px-3 whitespace-nowrap">
+                    <LoginCell agent={a} />
+                  </td>
                   <td className="py-2.5 pr-5 pl-3">
                     <CalendarCell agent={a} available={available} />
                   </td>

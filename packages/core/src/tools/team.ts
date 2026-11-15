@@ -1,0 +1,141 @@
+import { and, desc, eq, isNull, schema, sql } from "@viewing/db";
+import { z } from "zod";
+import { emailAgent } from "../channels";
+import { recordEvent } from "../events";
+import { absoluteUrl } from "../planner/agent";
+import { type Lang, toLang } from "../planner/language";
+import { defineTool, type ToolContext } from "../tool";
+
+/*
+ * Logins for the agency's agents. Better Auth keeps the logins themselves
+ * (member, invitation); these tools read them per agency, send the invitation
+ * email and tie a login to its agent record, matched by email address.
+ */
+
+const { agents, member, invitation, user } = schema;
+
+export type TeamRole = "owner" | "admin" | "member";
+export type AgentLogin =
+  | { status: "member"; role: TeamRole; userId: string; memberId: string }
+  | { status: "invited"; invitationId: string; invitedAt: Date; expiresAt: Date; expired: boolean }
+  | { status: "none" };
+
+/** Each agent's login: signed up (with role), invited, or nothing yet. */
+export async function agentLogins(ctx: ToolContext): Promise<Map<string, AgentLogin>> {
+  const team = await ctx.db.select({ id: agents.id, email: agents.email, userId: agents.userId }).from(agents).where(eq(agents.agencyId, ctx.agencyId));
+  const members = await ctx.db
+    .select({ memberId: member.id, userId: member.userId, role: member.role, email: user.email })
+    .from(member)
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(eq(member.organizationId, ctx.agencyId));
+  const invites = await ctx.db
+    .select()
+    .from(invitation)
+    .where(and(eq(invitation.organizationId, ctx.agencyId), eq(invitation.status, "pending")))
+    .orderBy(desc(invitation.createdAt));
+  const now = Date.now();
+  const logins = new Map<string, AgentLogin>();
+  for (const agent of team) {
+    const email = agent.email?.toLowerCase() ?? null;
+    const login = members.find((m) => m.userId === agent.userId) ?? (email ? members.find((m) => m.email.toLowerCase() === email) : undefined);
+    if (login) {
+      logins.set(agent.id, { status: "member", role: login.role as TeamRole, userId: login.userId, memberId: login.memberId });
+      continue;
+    }
+    const invite = email ? invites.find((i) => i.email.toLowerCase() === email) : undefined;
+    logins.set(
+      agent.id,
+      invite ? { status: "invited", invitationId: invite.id, invitedAt: invite.createdAt, expiresAt: invite.expiresAt, expired: invite.expiresAt.getTime() < now } : { status: "none" },
+    );
+  }
+  return logins;
+}
+
+export const getAgentLogin = defineTool({
+  name: "team_get_agent_login",
+  description: "Whether an agent can log in: signed up (and as admin or agent), invited (with the invitation link), or not yet.",
+  mutates: false,
+  input: z.object({ agentId: z.string() }),
+  run: async (ctx, input) => {
+    const [agent] = await ctx.db.select({ id: agents.id, email: agents.email }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
+    if (!agent) throw new Error("Agent not found");
+    const login = (await agentLogins(ctx)).get(agent.id) ?? { status: "none" as const };
+    return { email: agent.email, login, link: login.status === "invited" ? absoluteUrl(`/invite/${login.invitationId}`) : null };
+  },
+});
+
+const subjects: Record<Lang, (agency: string) => string> = {
+  nl: (agency) => `Uitnodiging: log in bij ${agency}`,
+  fr: (agency) => `Invitation : connectez-vous chez ${agency}`,
+  en: (agency) => `Invitation: log in to ${agency}`,
+  de: (agency) => `Einladung: Melden Sie sich bei ${agency} an`,
+};
+
+const bodies: Record<Lang, (v: { name: string; inviter: string; agency: string; link: string; days: number }) => string> = {
+  nl: (v) =>
+    `Dag ${v.name},\n\n${v.inviter} nodigt u uit om in te loggen bij ${v.agency}. U ziet er uw bezoeken en koppelt uw eigen Outlook of Gmail, zodat berichten aan klanten van uw eigen adres vertrekken.\n\nAccepteer de uitnodiging: ${v.link}\n\nDe link is ${v.days} dagen geldig.`,
+  fr: (v) =>
+    `Bonjour ${v.name},\n\n${v.inviter} vous invite à vous connecter chez ${v.agency}. Vous y voyez vos visites et vous connectez votre propre Outlook ou Gmail, pour que les messages aux clients partent de votre propre adresse.\n\nAccepter l'invitation : ${v.link}\n\nLe lien est valable ${v.days} jours.`,
+  en: (v) =>
+    `Hi ${v.name},\n\n${v.inviter} invites you to log in to ${v.agency}. You'll see your viewings there and connect your own Outlook or Gmail, so messages to clients go out from your own address.\n\nAccept the invitation: ${v.link}\n\nThe link works for ${v.days} days.`,
+  de: (v) =>
+    `Guten Tag ${v.name},\n\n${v.inviter} lädt Sie ein, sich bei ${v.agency} anzumelden. Dort sehen Sie Ihre Besichtigungen und verbinden Ihr eigenes Outlook oder Gmail, damit Nachrichten an Kunden von Ihrer eigenen Adresse aus versendet werden.\n\nEinladung annehmen: ${v.link}\n\nDer Link ist ${v.days} Tage gültig.`,
+};
+
+export const sendInvitationEmail = defineTool({
+  name: "team_send_invitation_email",
+  description: "Email an agent the link to accept their invitation and set up their login, in the agent's language.",
+  mutates: true,
+  input: z.object({ invitationId: z.string(), inviterName: z.string().optional() }),
+  run: async (ctx, input) => {
+    const [invite] = await ctx.db.select().from(invitation).where(and(eq(invitation.organizationId, ctx.agencyId), eq(invitation.id, input.invitationId)));
+    if (!invite) throw new Error("Invitation not found");
+    const [agent] = await ctx.db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.agencyId, ctx.agencyId), sql`lower(${agents.email}) = ${invite.email.toLowerCase()}`));
+    const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, ctx.agencyId), columns: { name: true } });
+    const lang = toLang(agent?.languages[0]);
+    const link = absoluteUrl(`/invite/${invite.id}`);
+    const days = Math.max(1, Math.round((invite.expiresAt.getTime() - Date.now()) / 86_400_000));
+    const text = bodies[lang]({ name: agent?.name.split(" ")[0] ?? "", inviter: input.inviterName ?? agency?.name ?? "", agency: agency?.name ?? "", link, days });
+    const sent = await emailAgent(ctx, { agentId: agent?.id ?? null, to: invite.email, subject: subjects[lang](agency?.name ?? ""), text });
+    await recordEvent(ctx, { type: "team.invited", subjectType: "agent", subjectId: agent?.id ?? invite.id, data: { invitationId: invite.id, delivery: sent.delivery } });
+    return { link, delivery: sent.delivery, error: sent.error ?? null };
+  },
+});
+
+export const linkAgentLogin = defineTool({
+  name: "team_link_agent_login",
+  description: "Tie a login that just joined the agency to the agent with the same email address.",
+  mutates: true,
+  input: z.object({ userId: z.string(), email: z.string() }),
+  run: async (ctx, input) => {
+    const [agent] = await ctx.db
+      .update(agents)
+      .set({ userId: input.userId })
+      .where(and(eq(agents.agencyId, ctx.agencyId), isNull(agents.userId), sql`lower(${agents.email}) = ${input.email.toLowerCase()}`))
+      .returning({ id: agents.id });
+    if (agent) await recordEvent(ctx, { type: "team.joined", subjectType: "agent", subjectId: agent.id, data: { userId: input.userId } });
+    return { agentId: agent?.id ?? null };
+  },
+});
+
+export const unlinkAgentLogin = defineTool({
+  name: "team_unlink_agent_login",
+  description: "Detach a login from its agent record after the login was removed from the agency. The agent and their viewings stay.",
+  mutates: true,
+  input: z.object({ agentId: z.string() }),
+  run: async (ctx, input) => {
+    await ctx.db.update(agents).set({ userId: null }).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
+    await recordEvent(ctx, { type: "team.removed", subjectType: "agent", subjectId: input.agentId, data: {} });
+    return { agentId: input.agentId };
+  },
+});
+
+/** The agent record of a logged-in user, for "my page". */
+export async function agentForUser(ctx: ToolContext, userId: string) {
+  const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.userId, userId)));
+  return agent?.id ?? null;
+}
+

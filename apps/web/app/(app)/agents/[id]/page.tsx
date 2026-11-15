@@ -1,14 +1,16 @@
 import { notFound } from "next/navigation";
 import { adminConsentUrl, runTool, tools } from "@viewing/core";
 import { headers } from "next/headers";
-import { CalendarPlus } from "lucide-react";
+import { CalendarPlus, KeyRound } from "lucide-react";
 import { Avatar, PageHeader, Panel, StatusDot } from "@/components/ui";
-import { getToolContext } from "@/lib/context";
-import { formatDay, formatTime } from "@/lib/format";
+import { getSession, getToolContext } from "@/lib/context";
+import { formatDay, formatRelative, formatTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { disconnectCalendarAction, saveAgentAction, saveAvailabilityAction } from "../../actions";
 import { AgentEmail } from "../agent-forms";
 import { AvailabilityForm } from "./availability-form";
+import { InviteButton } from "./login-panel";
+import { cancelInvitationAction, inviteAgentAction, removeLoginAction, setLoginRoleAction } from "../team-actions";
 import { CopyText } from "../../settings/channels";
 
 const connectNotice: Record<string, string> = {
@@ -24,9 +26,95 @@ async function adminLink() {
   return adminConsentUrl({ redirectUri: new URL("/api/calendar/microsoft/callback", origin).toString() });
 }
 
-export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ connect?: string }> }) {
+const roleLabel = { owner: "Owner", admin: "Admin", member: "Agent" } as const;
+
+/** Whether the agent can log in, and for admins the invite, role and remove buttons. */
+async function LoginPanel({ agentId, email }: { agentId: string; email: string | null }) {
+  const { user, isAdmin } = await getSession();
+  const { login, link } = await runTool(tools.getAgentLogin, await getToolContext(), { agentId });
+  const self = login.status === "member" && login.userId === user.id;
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center gap-2 font-medium">
+        <KeyRound className="size-4 text-muted" />
+        Login
+      </div>
+      {login.status === "member" && (
+        <>
+          <p className="mt-1 flex items-center gap-1.5">
+            <StatusDot color="var(--success)" />
+            Can log in · {roleLabel[login.role]}
+            {self && <span className="text-muted">(you)</span>}
+          </p>
+          <p className="mt-1 text-[12px] text-muted">
+            {login.role === "member" ? "Sees the whole agency and runs their own viewings. Can't change settings or invite colleagues." : "Can change settings and invite colleagues."}
+          </p>
+          {isAdmin && !self && login.role !== "owner" && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <form action={setLoginRoleAction.bind(null, agentId, login.memberId, login.role === "admin" ? "member" : "admin")}>
+                <button className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover">{login.role === "admin" ? "Make agent" : "Make admin"}</button>
+              </form>
+              <form action={removeLoginAction.bind(null, agentId, login.memberId)}>
+                <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-danger">Remove login</button>
+              </form>
+            </div>
+          )}
+        </>
+      )}
+      {login.status === "invited" && (
+        <>
+          <p className="mt-1 flex items-center gap-1.5">
+            <StatusDot color={login.expired ? "var(--danger)" : "var(--warning)"} />
+            {login.expired ? "Invitation expired" : `Invited ${formatRelative(login.invitedAt)}`}
+          </p>
+          {isAdmin && (
+            <>
+              {!login.expired && link && (
+                <div className="mt-2">
+                  <p className="mb-1 text-[12px] text-muted">The invitation went to {email}. You can also send this link yourself:</p>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{link}</span>
+                    <CopyText text={link} />
+                  </div>
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-start gap-2">
+                <InviteButton action={inviteAgentAction.bind(null, agentId)} again />
+                {!login.expired && (
+                  <form action={cancelInvitationAction.bind(null, agentId, login.invitationId)}>
+                    <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-fg">Cancel invitation</button>
+                  </form>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
+      {login.status === "none" && (
+        <>
+          <p className="mt-1 flex items-center gap-1.5 text-muted">
+            <StatusDot color="var(--line-strong)" />
+            No login yet
+          </p>
+          {isAdmin && (
+            <>
+              <p className="mt-1 text-[12px] text-muted">
+                {email ? `We email ${email} a link to set a password. They then connect their own Outlook or Gmail.` : "Add the agent's email address above to invite them."}
+              </p>
+              <div className="mt-3">
+                <InviteButton action={inviteAgentAction.bind(null, agentId)} disabled={!email} />
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ connect?: string; welcome?: string }> }) {
   const { id } = await params;
-  const { connect } = await searchParams;
+  const { connect, welcome } = await searchParams;
   const ctx = await getToolContext();
   const availability = await runTool(tools.getAgentAvailability, ctx, { agentId: id }).catch(() => null);
   if (!availability) notFound();
@@ -51,6 +139,21 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                 </div>
               </div>
             </div>
+            {welcome && !connections.some((c) => c.scopes.includes("mail") && c.status === "active") && (available.google || available.microsoft) && (
+              <Panel className="mb-6 p-4">
+                <div className="font-medium">Welcome, {agent.name.split(" ")[0]}</div>
+                <p className="mt-1 text-muted">One step left: connect your mailbox. Messages to your clients then go out from your own address, and your busy times block bookings.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(["microsoft", "google"] as const)
+                    .filter((p) => available[p])
+                    .map((p) => (
+                      <a key={p} href={`/api/calendar/${p}/start?agentId=${agent.id}`} className="inline-flex h-8 items-center rounded-md bg-primary px-3 font-medium text-primary-fg hover:opacity-90">
+                        Connect {p === "google" ? "Gmail" : "Outlook"}
+                      </a>
+                    ))}
+                </div>
+              </Panel>
+            )}
             <h2 className="mb-1 font-medium">Working hours for viewings</h2>
             <p className="mb-3 text-muted">Clients can only book inside these hours, never over existing appointments or calendar events.</p>
             <AvailabilityForm
@@ -116,6 +219,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   : "Connecting needs the Google and Microsoft app registrations (docs/setup-calendars.md)."}
               </p>
             </Panel>
+            <LoginPanel agentId={agent.id} email={agent.email} />
             <Panel className="p-4">
               <div className="font-medium">Next free times</div>
               <ul className="mt-2 flex flex-col gap-1 text-muted tabular-nums">

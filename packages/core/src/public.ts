@@ -205,3 +205,30 @@ export async function previewPage(token: string, which: string): Promise<string 
   const url = index === -1 ? row.site : row.listings[index]?.url;
   return html && url ? previewPageHtml(html, url) : null;
 }
+
+/** An invitation to log in, for the page its link opens: who it is for and whether it still works. */
+export async function invitationForLink(invitationId: string) {
+  const [row] = await db
+    .select({ invitation: schema.invitation, agencyName: schema.organization.name })
+    .from(schema.invitation)
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.invitation.organizationId))
+    .where(eq(schema.invitation.id, invitationId));
+  if (!row) return null;
+  const { invitation } = row;
+  const email = invitation.email.toLowerCase();
+  const [agent] = await db
+    .select({ id: schema.agents.id, name: schema.agents.name })
+    .from(schema.agents)
+    .where(and(eq(schema.agents.agencyId, invitation.organizationId), sql`lower(${schema.agents.email}) = ${email}`));
+  const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(sql`lower(${schema.user.email}) = ${email}`);
+  return {
+    id: invitation.id,
+    agencyId: invitation.organizationId,
+    agencyName: row.agencyName,
+    email: invitation.email,
+    agentId: agent?.id ?? null,
+    agentName: agent?.name ?? null,
+    hasAccount: Boolean(existing),
+    state: invitation.status !== "pending" ? (invitation.status as "accepted" | "rejected" | "canceled") : invitation.expiresAt.getTime() < Date.now() ? ("expired" as const) : ("pending" as const),
+  };
+}

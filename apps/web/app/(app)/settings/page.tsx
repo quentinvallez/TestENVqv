@@ -25,7 +25,19 @@ const sendingFlag: Record<string, "sendRemindersAutomatically" | "sendFollowUpsA
 const autonomyLabel = { suggest: "Ask me first", act_and_notify: "Do it and tell me", act: "Do it" };
 
 export default async function SettingsPage() {
-  const { agency } = await getSession();
+  const { agency, isAdmin } = await getSession();
+  if (!isAdmin) {
+    return (
+      <>
+        <PageHeader crumbs={[{ label: "Settings" }]} />
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[760px] px-5 py-6">
+            <Panel className="px-4 py-3 text-muted">Only the agency&apos;s admins can change settings. Ask an admin if something should be different.</Panel>
+          </div>
+        </div>
+      </>
+    );
+  }
   const ctx = await getToolContext();
   const settings = await db.query.agencySettings.findFirst({ where: eq(schema.agencySettings.agencyId, agency.id) });
   const [channels, automations, runs] = await Promise.all([

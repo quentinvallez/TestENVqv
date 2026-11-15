@@ -1,4 +1,5 @@
 import { db, schema } from "@viewing/db";
+import { runTool, tools, type ToolContext } from "@viewing/core";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
@@ -17,7 +18,26 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   plugins: [
     organization({
+      // Agents get a week to accept; inviting again replaces the old invitation (and its link).
+      invitationExpiresIn: 7 * 24 * 60 * 60,
+      cancelPendingInvitationsOnReInvite: true,
+      // The link was emailed to that address, so holding it is the proof.
+      requireEmailVerificationOnInvitation: false,
+      sendInvitationEmail: async ({ id, organization, inviter }) => {
+        const ctx: ToolContext = { db, agencyId: organization.id, actor: { type: "user", id: inviter.user.id } };
+        try {
+          await runTool(tools.sendInvitationEmail, ctx, { invitationId: id, inviterName: inviter.user.name });
+        } catch (error) {
+          // The office can still copy the link from the agent's page.
+          console.error("Sending the invitation email failed", error);
+        }
+      },
       organizationHooks: {
+        // The new login belongs to the agent with the same email address.
+        afterAcceptInvitation: async ({ user, organization }) => {
+          const ctx: ToolContext = { db, agencyId: organization.id, actor: { type: "user", id: user.id } };
+          await runTool(tools.linkAgentLogin, ctx, { userId: user.id, email: user.email });
+        },
         // Every new agency gets its settings row, and its creator is its first agent.
         afterCreateOrganization: async ({ organization, user }) => {
           await db.insert(schema.agencySettings).values({ agencyId: organization.id }).onConflictDoNothing();
