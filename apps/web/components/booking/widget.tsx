@@ -51,6 +51,11 @@ export function BookingWidget({
   const firstName = agentName.split(" ")[0] ?? agentName;
   // Without any free time, visitors leave their details instead of picking one.
   const requesting = days.length === 0;
+  // Open house slots: others come at the same time, so say so instead of the usual length.
+  const allSlots = days.flatMap((d) => d.slots);
+  const allOpenHouse = allSlots.length > 0 && allSlots.every((s) => s.openHouse);
+  const pickedOpenHouse = Boolean(allSlots.find((s) => s.value === slot)?.openHouse);
+  const withLine = allOpenHouse || pickedOpenHouse ? t.openHouse(agentName) : t.with(slotMinutes, agentName);
 
   // Let a parent page size the iframe to the content.
   useEffect(() => {
@@ -84,7 +89,7 @@ export function BookingWidget({
         </span>
         <h3 className="mt-3 text-[16px] font-semibold">{t.doneTitle}</h3>
         <p className="mt-1 font-medium">{state.booked.when}</p>
-        <p className="mt-1 text-muted">{t.with(slotMinutes, agentName)}</p>
+        <p className="mt-1 text-muted">{withLine}</p>
         <p className="mt-4 max-w-xs text-muted">{t.doneText}</p>
         <a href={state.booked.manageUrl} target="_top" className="mt-3 font-medium text-[var(--brand)] underline-offset-2 hover:underline">
           {t.manage}
@@ -114,7 +119,7 @@ export function BookingWidget({
         <h3 className="mb-1 font-medium">{t.step1}</h3>
         <p className="mb-3 flex items-center gap-1.5 text-[12px] text-muted">
           <CalendarCheck className="size-3.5" />
-          {t.with(slotMinutes, agentName)}
+          {withLine}
         </p>
         {requesting ? (
           <p className="rounded-lg border border-line px-4 py-6 text-center text-muted">{awaitingOccupant ? t.awaitingOwner : t.noSlotsRequest}</p>

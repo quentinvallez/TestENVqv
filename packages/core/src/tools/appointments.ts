@@ -23,6 +23,7 @@ export const listAppointments = defineTool({
         id: appointments.id,
         type: appointments.type,
         status: appointments.status,
+        openHouseId: appointments.openHouseId,
         startsAt: appointments.startsAt,
         endsAt: appointments.endsAt,
         location: appointments.location,

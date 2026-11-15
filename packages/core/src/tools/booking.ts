@@ -2,14 +2,14 @@ import { and, asc, eq, gt, inArray, lt, ne, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { syncAppointmentToCalendar, externalBusy, type CalendarEvent } from "../calendar";
 import { recordEvent } from "../events";
-import { computeSlots, expandWindows, type Interval } from "../planner/availability";
+import { computeSlots, expandWindows, openHouseSlots, type Interval, type OpenHouseSlot } from "../planner/availability";
 import { qualify } from "../planner/qualification";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
 import { alertOccupants } from "../planner/occupants";
 import { alertAgent } from "../planner/agent-alerts";
 
-const { agents, appointments, availabilityRules, contacts, leads, listingBlocks, listings, listingWindows } = schema;
+const { agents, appointments, availabilityRules, contacts, leads, listingBlocks, listings, listingWindows, openHouses } = schema;
 
 const MINUTE = 60_000;
 export const VALUATION_MINUTES = 60;
@@ -104,14 +104,27 @@ export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to:
         excludeAppointmentId ? ne(appointments.id, excludeAppointmentId) : undefined,
       ),
     );
+  // The agent's open houses take the whole block, wherever they are.
+  const shows = await ctx.db
+    .select({ start: openHouses.startsAt, end: openHouses.endsAt, listingId: openHouses.listingId })
+    .from(openHouses)
+    .where(
+      and(
+        eq(openHouses.agencyId, ctx.agencyId),
+        eq(openHouses.agentId, agent.id),
+        eq(openHouses.status, "planned"),
+        lt(openHouses.startsAt, new Date(to.getTime() + margin)),
+        gt(openHouses.endsAt, new Date(from.getTime() - margin)),
+      ),
+    );
   const external = await externalBusy(ctx, agent.id, from, to);
   const home = listing ? await homeConstraints(ctx, listing, from, to) : null;
   // Viewings at the same house go back to back: the agent is already there.
-  const sameHouse = (b: (typeof booked)[number]) => Boolean(listing && b.listingId === listing.id && b.type === "viewing");
+  const sameHouse = (b: { listingId: string | null; type?: string }) => Boolean(listing && b.listingId === listing.id && (b.type ?? "viewing") === "viewing");
   return computeSlots({
     workingHours: rules,
-    busy: [...booked.filter((b) => !sameHouse(b)), ...external],
-    busyNoBuffer: [...booked.filter(sameHouse), ...(home?.blocks ?? [])],
+    busy: [...booked.filter((b) => !sameHouse(b)), ...shows.filter((b) => !sameHouse(b)), ...external],
+    busyNoBuffer: [...booked.filter(sameHouse), ...shows.filter(sameHouse), ...(home?.blocks ?? [])],
     allowed: home?.allowed,
     from,
     to,
@@ -119,6 +132,88 @@ export async function agentSlots(ctx: ToolContext, agent: Agent, from: Date, to:
     bufferMinutes: agent.bufferMinutes,
     minNoticeMinutes: home?.noticeMinutes ?? MIN_NOTICE_MINUTES,
   });
+}
+
+/** Open house time notice: visitors can sign up until shortly before. */
+const OPEN_HOUSE_NOTICE_MINUTES = 30;
+
+export type ViewingSlot = Interval & { openHouseId?: string; spotsLeft?: number };
+
+/**
+ * The listing's planned open houses between two instants, with the time slots
+ * that still have room, and whether one of them is exclusive: until an
+ * exclusive open house is over, the listing offers no other times.
+ */
+export async function listingOpenHouses(ctx: ToolContext, listing: Listing, from: Date, to: Date, excludeAppointmentId?: string) {
+  const now = new Date();
+  const planned = await ctx.db
+    .select()
+    .from(openHouses)
+    .where(and(eq(openHouses.agencyId, ctx.agencyId), eq(openHouses.listingId, listing.id), eq(openHouses.status, "planned"), gt(openHouses.endsAt, now)))
+    .orderBy(asc(openHouses.startsAt));
+  const exclusive = planned.some((o) => o.exclusive);
+  const inRange = planned.filter((o) => o.startsAt < to && o.endsAt > from);
+  const booked = inRange.length
+    ? await ctx.db
+        .select({ openHouseId: appointments.openHouseId, startsAt: appointments.startsAt })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.agencyId, ctx.agencyId),
+            inArray(appointments.openHouseId, inRange.map((o) => o.id)),
+            inArray(appointments.status, ["scheduled", "confirmed"]),
+            excludeAppointmentId ? ne(appointments.id, excludeAppointmentId) : undefined,
+          ),
+        )
+    : [];
+  const slots: OpenHouseSlot[] = inRange.flatMap((o) =>
+    openHouseSlots(o, booked.filter((b) => b.openHouseId === o.id).map((b) => b.startsAt), { now, minNoticeMinutes: OPEN_HOUSE_NOTICE_MINUTES }).filter(
+      (slot) => slot.end > from && slot.start < to,
+    ),
+  );
+  return { planned: inRange, exclusive, slots };
+}
+
+/** Bookable times to view a listing: its open house slots, plus the agent's own free slots unless an open house is exclusive. */
+export async function viewingSlots(ctx: ToolContext, agent: Agent, listing: Listing, from: Date, to: Date, options: { excludeAppointmentId?: string; slotMinutes?: number } = {}): Promise<ViewingSlot[]> {
+  const shows = await listingOpenHouses(ctx, listing, from, to, options.excludeAppointmentId);
+  const own = shows.exclusive ? [] : await agentSlots(ctx, agent, from, to, { ...options, listing });
+  return [...shows.slots, ...own].sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+/**
+ * For a time an agent agreed on the phone outside the offered slots: the agent
+ * must have nothing else then (with the travel buffer), and an occupied home
+ * must allow it. Working hours don't apply; the agent chose the time.
+ */
+async function assertFreeAt(ctx: ToolContext, agent: Agent, listing: Listing, start: Date, end: Date) {
+  if (start.getTime() < Date.now()) throw new Error("This time has already passed.");
+  const margin = agent.bufferMinutes * MINUTE;
+  const clash = await ctx.db
+    .select({ id: appointments.id, listingId: appointments.listingId, start: appointments.startsAt, end: appointments.endsAt })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.agencyId, ctx.agencyId),
+        eq(appointments.agentId, agent.id),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+        lt(appointments.startsAt, new Date(end.getTime() + margin)),
+        gt(appointments.endsAt, new Date(start.getTime() - margin)),
+      ),
+    );
+  // At the same house the agent needs no travel time, only no overlap.
+  if (clash.some((c) => (c.listingId === listing.id ? c.start < end && c.end > start : true))) throw new Error(`${agent.name} already has an appointment around that time.`);
+  const [show] = await ctx.db
+    .select({ id: openHouses.id })
+    .from(openHouses)
+    .where(and(eq(openHouses.agencyId, ctx.agencyId), eq(openHouses.agentId, agent.id), eq(openHouses.status, "planned"), lt(openHouses.startsAt, end), gt(openHouses.endsAt, start)));
+  if (show) throw new Error(`${agent.name} has an open house at that time.`);
+  const home = await homeConstraints(ctx, listing, startOfZonedDay(start), startOfZonedDay(start, 1));
+  if (home) {
+    const allowed = home.allowed.some((a) => a.start <= start && a.end >= end);
+    const blocked = home.blocks.some((b) => b.start < end && b.end > start);
+    if (!allowed || blocked) throw new Error("The occupants don't allow visitors at that time.");
+  }
 }
 
 /** Serialises bookings per agent so two people can never take the same slot. */
@@ -173,21 +268,45 @@ export const availableSlots = defineTool({
     const from = input.from ?? new Date();
     const to = startOfZonedDay(from, input.days);
     const minutes = input.minutes ?? agent.slotMinutes;
-    const slots = await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes, listing });
+    const slots: ViewingSlot[] = listing
+      ? await viewingSlots(ctx, agent, listing, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes })
+      : await agentSlots(ctx, agent, from, to, { excludeAppointmentId: input.excludeAppointmentId, slotMinutes: minutes });
     // An occupied home whose occupants haven't given any times yet: visitors can only ask for a viewing.
     const awaitingOccupant = Boolean(listing && listing.access !== "agent" && !(await homeConstraints(ctx, listing, from, to))?.windows);
     return { agent: { id: agent.id, name: agent.name }, slotMinutes: minutes, slots, awaitingOccupant };
   },
 });
 
-const contactInput = z.object({
-  firstName: z.string().trim().min(1).max(80),
-  lastName: z.string().trim().max(80).optional(),
-  email: z.string().trim().toLowerCase().email(),
-  phone: z.string().trim().max(40).optional(),
-  language: z.enum(["nl", "fr", "en", "de"]).optional(),
-  whatsappOptIn: z.boolean().default(false),
-});
+const contactInput = z
+  .object({
+    firstName: z.string().trim().min(1).max(80),
+    lastName: z.string().trim().max(80).optional(),
+    email: z.string().trim().toLowerCase().email().optional(),
+    phone: z.string().trim().max(40).optional(),
+    language: z.enum(["nl", "fr", "en", "de"]).optional(),
+    whatsappOptIn: z.boolean().default(false),
+  })
+  .refine((c) => c.email || c.phone, "Give an email address or a phone number");
+
+/** Digits only (with a leading +), so "0470 12 34 56" and "0470123456" are the same caller. */
+const phoneKey = (phone: string) => phone.replace(/[^0-9+]/g, "");
+
+/** The agency's contact with this email address, else with this phone number. */
+async function findContact(ctx: ToolContext, contact: { email?: string; phone?: string }) {
+  if (contact.email) {
+    const [byEmail] = await ctx.db.select().from(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.email, contact.email)));
+    if (byEmail) return byEmail;
+  }
+  if (contact.phone && phoneKey(contact.phone).length >= 6) {
+    const [byPhone] = await ctx.db
+      .select()
+      .from(contacts)
+      .where(and(eq(contacts.agencyId, ctx.agencyId), sql`regexp_replace(${contacts.phone}, '[^0-9+]', '', 'g') = ${phoneKey(contact.phone)}`))
+      .orderBy(asc(contacts.createdAt));
+    if (byPhone) return byPhone;
+  }
+  return null;
+}
 
 export const bookViewing = defineTool({
   name: "appointments_book",
@@ -202,28 +321,43 @@ export const bookViewing = defineTool({
     message: z.string().trim().max(2000).optional(),
     source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
     qualification: z.record(z.string(), z.string()).optional().describe("Answers to the widget's qualifying questions: question id → option id"),
+    anyTime: z.boolean().default(false).describe("Staff only: book a time agreed with the client outside the offered slots, if the agent is free and the home allows it"),
+    confirmToClient: z.boolean().default(false).describe("Staff only: send the client the usual booking confirmation, e.g. after a booking by phone"),
   }),
   run: async (ctx, input) => {
+    const staff = ctx.actor.type === "user";
+    if (input.anyTime && !staff) throw new Error("Only the agency can book outside the offered times");
     const result = await ctx.db.transaction(async (tx) => {
       const txCtx = { ...ctx, db: tx };
       const listing = await getListing(txCtx, input.listingId);
-      const agent = (input.agentId && (await activeAgent(txCtx, input.agentId))) || (await resolveAgentForListing(txCtx, listing));
+      if (listing.status !== "active" && !staff) throw new Error("This listing takes no viewings");
+      const dayStart = startOfZonedDay(input.startsAt);
+      const dayEnd = startOfZonedDay(input.startsAt, 1);
+      // A place at an open house is booked with the agent who holds it.
+      const show = input.anyTime ? undefined : (await listingOpenHouses(txCtx, listing, dayStart, dayEnd)).slots.find((s) => s.start.getTime() === input.startsAt.getTime());
+      const showAgent = show && (await tx.select({ agentId: openHouses.agentId }).from(openHouses).where(eq(openHouses.id, show.openHouseId)))[0];
+      const agent =
+        (showAgent && (await activeAgent(txCtx, showAgent.agentId))) ||
+        (input.agentId && (await activeAgent(txCtx, input.agentId))) ||
+        (await resolveAgentForListing(txCtx, listing));
       await lockAgent(txCtx, agent.id);
       await lockListing(txCtx, listing);
 
-      const dayStart = startOfZonedDay(input.startsAt);
-      const slots = await agentSlots(txCtx, agent, dayStart, startOfZonedDay(input.startsAt, 1), { listing });
-      const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
+      let slot: ViewingSlot | undefined;
+      if (input.anyTime) {
+        slot = { start: input.startsAt, end: new Date(input.startsAt.getTime() + agent.slotMinutes * MINUTE) };
+        await assertFreeAt(txCtx, agent, listing, slot.start, slot.end);
+      } else {
+        const slots = await viewingSlots(txCtx, agent, listing, dayStart, dayEnd);
+        slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime() && s.openHouseId === show?.openHouseId);
+      }
       if (!slot) throw new SlotUnavailableError();
 
-      const [existingContact] = await tx
-        .select()
-        .from(contacts)
-        .where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.email, input.contact.email)));
+      const existingContact = await findContact(txCtx, input.contact);
       const contactValues = {
         firstName: input.contact.firstName,
-        lastName: input.contact.lastName ?? null,
-        email: input.contact.email,
+        lastName: input.contact.lastName ?? existingContact?.lastName ?? null,
+        email: input.contact.email ?? existingContact?.email ?? null,
         phone: input.contact.phone ?? existingContact?.phone ?? null,
         language: input.contact.language ?? existingContact?.language ?? null,
         whatsappOptIn: input.contact.whatsappOptIn || (existingContact?.whatsappOptIn ?? false),
@@ -263,6 +397,7 @@ export const bookViewing = defineTool({
           listingId: listing.id,
           contactId: contact!.id,
           leadId: lead!.id,
+          openHouseId: slot.openHouseId ?? null,
           type: "viewing",
           status: "confirmed",
           startsAt: slot.start,
@@ -276,32 +411,43 @@ export const bookViewing = defineTool({
         type: "appointment.booked",
         subjectType: "appointment",
         subjectId: appointment!.id,
-        data: { listingId: listing.id, agentId: agent.id, leadId: lead!.id, startsAt: slot.start.toISOString(), source: input.source },
+        data: { listingId: listing.id, agentId: agent.id, leadId: lead!.id, startsAt: slot.start.toISOString(), source: input.source, openHouseId: slot.openHouseId ?? null, anyTime: input.anyTime || undefined },
       });
       return { appointment: appointment!, listing, agent, contact: contact! };
     });
 
-    const externalEventId = await syncAppointmentToCalendar(
-      ctx,
-      result.agent.id,
-      null,
-      calendarEvent(result.listing, result.contact, result.appointment.startsAt, result.appointment.endsAt),
-    );
-    if (externalEventId) {
-      await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, result.appointment.id));
+    // An open house is one event in the agent's calendar, not one per visitor.
+    if (!result.appointment.openHouseId) {
+      const externalEventId = await syncAppointmentToCalendar(
+        ctx,
+        result.agent.id,
+        null,
+        calendarEvent(result.listing, result.contact, result.appointment.startsAt, result.appointment.endsAt),
+      );
+      if (externalEventId) {
+        await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, result.appointment.id));
+      }
     }
     if (ctx.actor.type === "contact") {
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, result.appointment.id, { kind: "booked" });
+    } else if (staff && input.confirmToClient) {
+      const { noteClientAction } = await import("../planner/agent");
+      await noteClientAction(ctx, result.appointment.id, { kind: "booked", by: input.source === "phone" ? "phone" : "staff" });
     }
-    await alertOccupants(ctx, result.appointment.id, { kind: "booked" });
-    await alertAgent(ctx, result.appointment.id, { kind: "booked" });
+    // Open house visitors show on its list; owners and the agent aren't alerted for each one.
+    if (!result.appointment.openHouseId) {
+      await alertOccupants(ctx, result.appointment.id, { kind: "booked" });
+      await alertAgent(ctx, result.appointment.id, { kind: "booked" });
+    }
     return {
       appointmentId: result.appointment.id,
       manageToken: result.appointment.manageToken,
       startsAt: result.appointment.startsAt,
       endsAt: result.appointment.endsAt,
       agentName: result.agent.name,
+      openHouseId: result.appointment.openHouseId,
+      contactId: result.contact.id,
     };
   },
 });
@@ -357,8 +503,10 @@ export const cancelAppointment = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, appointment.id, { kind: "cancelled" });
     }
-    await alertOccupants(ctx, appointment.id, { kind: "cancelled" });
-    await alertAgent(ctx, appointment.id, { kind: "cancelled" });
+    if (!appointment.openHouseId) {
+      await alertOccupants(ctx, appointment.id, { kind: "cancelled" });
+      await alertAgent(ctx, appointment.id, { kind: "cancelled" });
+    }
     return { changed: true };
   },
 });
@@ -374,19 +522,30 @@ export const rescheduleAppointment = defineTool({
       const txCtx = { ...ctx, db: tx };
       const appointment = await getAppointment(txCtx, input.appointmentId);
       if (!["scheduled", "confirmed"].includes(appointment.status)) throw new Error("Only upcoming appointments can be rescheduled");
-      const [agent] = await tx.select().from(agents).where(eq(agents.id, appointment.agentId));
+      let [agent] = await tx.select().from(agents).where(eq(agents.id, appointment.agentId));
       const listing = appointment.type === "viewing" && appointment.listingId ? await getListing(txCtx, appointment.listingId) : null;
+      const dayStart = startOfZonedDay(input.startsAt);
+      const dayEnd = startOfZonedDay(input.startsAt, 1);
+      // Moving to an open house slot moves the viewing to the agent who holds it.
+      const show = listing ? (await listingOpenHouses(txCtx, listing, dayStart, dayEnd, appointment.id)).slots.find((s) => s.start.getTime() === input.startsAt.getTime()) : undefined;
+      if (show) {
+        const [held] = await tx.select({ agentId: openHouses.agentId }).from(openHouses).where(eq(openHouses.id, show.openHouseId));
+        const showAgent = held && (await activeAgent(txCtx, held.agentId));
+        if (showAgent) agent = showAgent;
+      }
       await lockAgent(txCtx, agent!.id);
       if (listing) await lockListing(txCtx, listing);
 
-      const slots = await agentSlots(txCtx, agent!, startOfZonedDay(input.startsAt), startOfZonedDay(input.startsAt, 1), { excludeAppointmentId: appointment.id, listing });
-      const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime());
+      const slots: ViewingSlot[] = listing
+        ? await viewingSlots(txCtx, agent!, listing, dayStart, dayEnd, { excludeAppointmentId: appointment.id })
+        : await agentSlots(txCtx, agent!, dayStart, dayEnd, { excludeAppointmentId: appointment.id, slotMinutes: Math.round((appointment.endsAt.getTime() - appointment.startsAt.getTime()) / MINUTE) });
+      const slot = slots.find((s) => s.start.getTime() === input.startsAt.getTime() && s.openHouseId === show?.openHouseId);
       if (!slot) throw new SlotUnavailableError();
 
       previousStart = appointment.startsAt;
       const [row] = await tx
         .update(appointments)
-        .set({ startsAt: slot.start, endsAt: slot.end, status: "confirmed" })
+        .set({ startsAt: slot.start, endsAt: slot.end, status: "confirmed", agentId: agent!.id, openHouseId: slot.openHouseId ?? null })
         .where(eq(appointments.id, appointment.id))
         .returning();
       await recordEvent(txCtx, {
@@ -404,7 +563,7 @@ export const rescheduleAppointment = defineTool({
       ctx,
       updated.agentId,
       updated.externalEventId,
-      calendarEvent(listing ?? null, contact ?? { firstName: null, lastName: null, email: null, phone: null }, updated.startsAt, updated.endsAt),
+      updated.openHouseId ? null : calendarEvent(listing ?? null, contact ?? { firstName: null, lastName: null, email: null, phone: null }, updated.startsAt, updated.endsAt),
     );
     if (externalEventId !== updated.externalEventId) {
       await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, updated.id));
@@ -413,8 +572,10 @@ export const rescheduleAppointment = defineTool({
       const { noteClientAction } = await import("../planner/agent");
       await noteClientAction(ctx, updated.id, { kind: "rescheduled", from: previousStart });
     }
-    await alertOccupants(ctx, updated.id, { kind: "rescheduled", from: previousStart });
-    await alertAgent(ctx, updated.id, { kind: "rescheduled", from: previousStart });
+    if (!updated.openHouseId) {
+      await alertOccupants(ctx, updated.id, { kind: "rescheduled", from: previousStart });
+      await alertAgent(ctx, updated.id, { kind: "rescheduled", from: previousStart });
+    }
     return { appointmentId: updated.id, startsAt: updated.startsAt, endsAt: updated.endsAt };
   },
 });

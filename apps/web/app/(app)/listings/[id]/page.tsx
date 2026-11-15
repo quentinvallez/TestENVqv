@@ -3,13 +3,14 @@ import { runTool, tools } from "@viewing/core";
 import { CalendarDays, ExternalLink, FileText, ImagePlus, KeyRound, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/copy-link";
-import { addOccupantAction, assignAgentAction, setListingAccessAction, suggestToMatchesAction, updateOccupantAction } from "../../actions";
+import { addOccupantAction, assignAgentAction, cancelOpenHouseAction, planOpenHouseAction, setListingAccessAction, suggestToMatchesAction, updateOccupantAction } from "../../actions";
 import { OccupantForm } from "./occupant-form";
+import { OpenHouseForm } from "./open-house-form";
 import { AgentPicker } from "./agent-picker";
 import { ListingPhoto } from "@/components/listing-photo";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Panel, Pill, StatusDot, Tabs } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
-import { address, formatDateTime, formatDay, formatPrice, formatRelative, fullName } from "@/lib/format";
+import { address, formatDateTime, formatDay, formatPrice, formatRelative, formatTime, fullName } from "@/lib/format";
 import { appointmentStatusMeta, leadStageMeta, listingStatusMeta, propertyTypeLabel, sourceLabel } from "@/lib/labels";
 
 const tabIds = ["viewings", "owner", "leads", "details", "advertising", "staging", "notes"] as const;
@@ -31,6 +32,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   ]);
   if (!listing) notFound();
   const occupancy = tab === "owner" ? await runTool(tools.listListingOccupants, ctx, { listingId: listing.id }) : null;
+  const openHouses = tab === "viewings" && listing.status === "active" ? await runTool(tools.listOpenHouses, ctx, { listingId: listing.id }) : [];
 
   const base = `/listings/${listing.id}`;
   const street = address(listing.street, listing.houseNumber, listing.city);
@@ -43,6 +45,13 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         actions={
           bookable && (
             <>
+              <Link
+                href={`/appointments/new?listingId=${listing.id}`}
+                className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover"
+              >
+                <span className="sm:hidden">Book</span>
+                <span className="hidden sm:inline">Book for a client</span>
+              </Link>
               <CopyLinkButton path={`/book/${listing.id}`} label="Copy booking link" />
               <Link
                 href={`/demo-site/${listing.agencyId}/${listing.id}`}
@@ -115,15 +124,78 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
         />
 
         <div className="px-5 py-5">
+          {tab === "viewings" && bookable && (
+            <Panel className="mb-4">
+              <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+                <div className="min-w-0">
+                  <div className="font-medium">Open house</div>
+                  <p className="mt-0.5 text-[12px] text-muted">One block of time at the house with room for many visitors, booked in short time slots on your website, the booking link and in the times the planner offers.</p>
+                </div>
+              </div>
+              {openHouses.map((o) => (
+                <div key={o.id} className="border-b border-line px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-medium tabular-nums">
+                      {formatDay(o.startsAt)} · {formatTime(o.startsAt)}–{formatTime(o.endsAt)}
+                    </span>
+                    <span className="text-[12px] text-muted">
+                      {o.slotMinutes ? `${o.perSlot} per ${o.slotMinutes} min` : "come any time"} · {o.booked} of {o.capacity} booked
+                      {o.exclusive ? " · only this is offered" : ""}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[12px] text-muted">
+                      <Avatar name={o.agent.name} color={o.agent.color} size={16} />
+                      {o.agent.name}
+                    </span>
+                    {o.booked === 0 && (
+                      <form action={cancelOpenHouseAction.bind(null, listing.id, o.id)} className="ml-auto">
+                        <button className="py-1 text-[12px] text-muted hover:text-danger">Cancel</button>
+                      </form>
+                    )}
+                  </div>
+                  {o.note && <p className="mt-1 text-[12px] text-muted">{o.note}</p>}
+                  {o.visitors.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[12px] text-muted">Visitor list ({o.visitors.length})</summary>
+                      <ul className="mt-2 divide-y divide-line rounded-md border border-line">
+                        {o.visitors.map((v) => (
+                          <li key={v.appointmentId} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2">
+                            <span className="w-12 tabular-nums">{formatTime(v.startsAt)}</span>
+                            <Link href={`/contacts/${v.contactId}`} className="font-medium hover:underline">
+                              {fullName(v.firstName, v.lastName)}
+                            </Link>
+                            <span className="text-[12px] text-muted">{[v.phone, v.email].filter(Boolean).join(" · ")}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              ))}
+              <details className="px-4 py-3">
+                <summary className="cursor-pointer font-medium">Plan an open house</summary>
+                <div className="mt-3">
+                  <OpenHouseForm
+                    action={planOpenHouseAction.bind(null, listing.id)}
+                    agents={agents.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name }))}
+                    defaultAgentId={listing.agentId}
+                  />
+                </div>
+              </details>
+            </Panel>
+          )}
+
           {tab === "viewings" && (
             <Panel className="divide-y divide-line">
               {listing.appointments.length === 0 && (
-                <EmptyState icon={<CalendarDays className="size-5" />} title="No viewings yet" description="Viewings booked through the widget or the planner appear here." />
+                <EmptyState icon={<CalendarDays className="size-5" />} title="No viewings yet" description="Viewings booked on your website, by the planner or by phone appear here." />
               )}
               {listing.appointments.map((apt) => (
                 <div key={apt.id} className="flex items-center gap-4 px-4 py-3">
                   <div className="w-[150px] shrink-0 tabular-nums">{formatDateTime(apt.startsAt)}</div>
-                  <div className="min-w-0 flex-1 truncate font-medium">{fullName(apt.contact?.firstName, apt.contact?.lastName)}</div>
+                  <div className="min-w-0 flex-1 truncate font-medium">
+                    {fullName(apt.contact?.firstName, apt.contact?.lastName)}
+                    {apt.openHouseId && <span className="ml-1.5 text-[12px] font-normal text-muted">open house</span>}
+                  </div>
                   <span className="flex items-center gap-1.5 text-[12px] text-muted">
                     <StatusDot color={appointmentStatusMeta[apt.status].color} />
                     {appointmentStatusMeta[apt.status].label}

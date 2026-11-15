@@ -1,6 +1,6 @@
 "use server";
 
-import { leadStages, PreviewError, runTool, tools } from "@viewing/core";
+import { leadStages, PreviewError, runTool, SlotUnavailableError, tools, zonedTime } from "@viewing/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getToolContext, requireAdmin } from "@/lib/context";
@@ -361,4 +361,106 @@ export async function eraseContactAction(contactId: string) {
   await runTool(tools.eraseContact, await getToolContext(), { contactId });
   revalidatePath("/", "layout");
   redirect("/contacts?erased=1");
+}
+
+/** "2026-12-05" and "14:30" as the instant in Brussels. */
+function localInstant(date: FormDataEntryValue | null, time: FormDataEntryValue | null) {
+  const [year, month, day] = String(date ?? "").split("-").map(Number);
+  const [hour, minute] = String(time ?? "").split(":").map(Number);
+  if (!year || !month || !day || hour === undefined || Number.isNaN(hour)) return null;
+  return zonedTime({ year, month, day, hour, minute: minute ?? 0 });
+}
+
+export type BookForClientState = { error?: string } | undefined;
+
+/** A viewing the agent books for a client, usually while on the phone with them. */
+export async function bookForClientAction(_state: BookForClientState, form: FormData): Promise<BookForClientState> {
+  const ctx = await getToolContext();
+  const text = (key: string) => String(form.get(key) ?? "").trim() || undefined;
+  const listingId = text("listingId");
+  if (!listingId) return { error: "Choose a listing." };
+  const choice = text("slot");
+  const anyTime = choice === "other";
+  const startsAt = anyTime ? localInstant(form.get("otherDate"), form.get("otherTime")) : choice ? new Date(choice) : null;
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { error: anyTime ? "Fill in the date and time you agreed." : "Choose a time." };
+
+  let contact: { firstName: string; lastName?: string; email?: string; phone?: string; language?: "nl" | "fr" | "en" | "de"; whatsappOptIn: boolean };
+  const contactId = text("contactId");
+  if (contactId) {
+    const existing = (await runTool(tools.getContact, ctx, { contactId }))?.contact;
+    if (!existing) return { error: "That client no longer exists." };
+    contact = {
+      firstName: existing.firstName ?? "Client",
+      lastName: existing.lastName ?? undefined,
+      email: existing.email ?? undefined,
+      phone: existing.phone ?? undefined,
+      language: (existing.language as "nl" | "fr" | "en" | "de" | null) ?? undefined,
+      whatsappOptIn: existing.whatsappOptIn,
+    };
+  } else {
+    const firstName = text("firstName");
+    if (!firstName) return { error: "Fill in the client's first name." };
+    const email = text("email")?.toLowerCase();
+    const phone = text("phone");
+    if (!email && !phone) return { error: "Fill in a phone number or an email address." };
+    const language = text("language");
+    contact = {
+      firstName,
+      lastName: text("lastName"),
+      email,
+      phone,
+      language: language === "nl" || language === "fr" || language === "en" || language === "de" ? language : undefined,
+      whatsappOptIn: form.get("whatsapp") === "on" && Boolean(phone),
+    };
+  }
+
+  let booked: { appointmentId: string };
+  try {
+    booked = await runTool(tools.bookViewing, ctx, {
+      listingId,
+      agentId: text("agentId"),
+      startsAt,
+      anyTime,
+      contact,
+      message: text("note"),
+      source: text("source") === "manual" ? "manual" : "phone",
+      confirmToClient: form.get("confirm") === "on",
+    });
+  } catch (error) {
+    if (error instanceof SlotUnavailableError) return { error: "That time was just taken. Choose another one." };
+    return { error: error instanceof Error ? error.message : "The viewing couldn't be booked." };
+  }
+  revalidatePath("/", "layout");
+  redirect(`/appointments?booked=${booked.appointmentId}`);
+}
+
+export type OpenHouseState = { planned?: boolean; error?: string } | undefined;
+
+export async function planOpenHouseAction(listingId: string, _state: OpenHouseState, form: FormData): Promise<OpenHouseState> {
+  const startsAt = localInstant(form.get("date"), form.get("start"));
+  const endsAt = localInstant(form.get("date"), form.get("end"));
+  if (!startsAt || !endsAt) return { error: "Fill in the date, start and end." };
+  const slotMinutes = Number(form.get("slotMinutes") ?? 15);
+  try {
+    await runTool(tools.planOpenHouse, await getToolContext(), {
+      listingId,
+      agentId: String(form.get("agentId") ?? "") || undefined,
+      startsAt,
+      endsAt,
+      slotMinutes: slotMinutes as 0 | 10 | 15 | 20 | 30 | 60,
+      perSlot: Number(form.get("perSlot") ?? 4),
+      exclusive: form.get("exclusive") === "on",
+      note: String(form.get("note") ?? "").trim() || undefined,
+    });
+  } catch (error) {
+    const issue = (error as { issues?: { message: string }[] }).issues?.[0]?.message;
+    return { error: issue ?? (error instanceof Error ? error.message : "The open house couldn't be planned.") };
+  }
+  revalidatePath(`/listings/${listingId}`);
+  return { planned: true };
+}
+
+export async function cancelOpenHouseAction(listingId: string, openHouseId: string) {
+  await runTool(tools.cancelOpenHouse, await getToolContext(), { openHouseId });
+  revalidatePath(`/listings/${listingId}`);
 }

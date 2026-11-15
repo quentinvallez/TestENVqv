@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { zonedTime } from "../time";
-import { computeSlots, expandWindows, type WorkingHours } from "./availability";
+import { computeSlots, expandWindows, openHouseSlots, type WorkingHours } from "./availability";
 
 const weekdays9to12: WorkingHours[] = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 12 * 60 }));
 const brussels = (day: number, hour: number, minute = 0, month = 10) => zonedTime({ year: 2026, month, day, hour, minute });
@@ -103,5 +103,34 @@ describe("expandWindows", () => {
     const saturdays = expandWindows([{ weekday: 6, startMinute: 600, endMinute: 720 }], brussels(23, 0), brussels(2, 0, 0, 11));
     expect(saturdays.map((w) => w.start.toISOString())).toEqual(["2026-10-24T08:00:00.000Z", "2026-10-31T09:00:00.000Z"]);
     expect(times(saturdays)).toEqual(["10:00", "10:00"]);
+  });
+});
+
+describe("openHouseSlots", () => {
+  const block = { id: "ohs_1", startsAt: new Date("2026-12-05T09:00:00Z"), endsAt: new Date("2026-12-05T10:00:00Z"), slotMinutes: 15, perSlot: 2 };
+  const now = new Date("2026-12-01T09:00:00Z");
+
+  it("splits the block into time slots with room for several visitors", () => {
+    const slots = openHouseSlots(block, [], { now });
+    expect(slots.map((s) => s.start.toISOString())).toEqual(["2026-12-05T09:00:00.000Z", "2026-12-05T09:15:00.000Z", "2026-12-05T09:30:00.000Z", "2026-12-05T09:45:00.000Z"]);
+    expect(slots.every((s) => s.spotsLeft === 2 && s.openHouseId === "ohs_1")).toBe(true);
+  });
+
+  it("drops full slots and counts what is left", () => {
+    const booked = [new Date("2026-12-05T09:00:00Z"), new Date("2026-12-05T09:00:00Z"), new Date("2026-12-05T09:15:00Z")];
+    const slots = openHouseSlots(block, booked, { now });
+    expect(slots[0]).toMatchObject({ start: new Date("2026-12-05T09:15:00Z"), spotsLeft: 1 });
+    expect(slots).toHaveLength(3);
+  });
+
+  it("without time slots offers the whole block until shortly before the end", () => {
+    const walkIn = { ...block, slotMinutes: 0, perSlot: 3 };
+    expect(openHouseSlots(walkIn, [block.startsAt], { now })).toEqual([{ start: block.startsAt, end: block.endsAt, openHouseId: "ohs_1", spotsLeft: 2 }]);
+    expect(openHouseSlots(walkIn, [], { now: new Date("2026-12-05T09:20:00Z") })).toHaveLength(1);
+    expect(openHouseSlots(walkIn, [], { now: new Date("2026-12-05T09:50:00Z") })).toHaveLength(0);
+  });
+
+  it("leaves out slots that start too soon", () => {
+    expect(openHouseSlots(block, [], { now: new Date("2026-12-05T08:50:00Z") }).map((s) => s.start.toISOString())).toEqual(["2026-12-05T09:30:00.000Z", "2026-12-05T09:45:00.000Z"]);
   });
 });

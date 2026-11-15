@@ -91,3 +91,38 @@ export function expandWindows(windows: WorkingHours[], from: Date, to: Date, tim
   }
   return out;
 }
+
+export type OpenHouseBlock = {
+  id: string;
+  startsAt: Date;
+  endsAt: Date;
+  /** 0 = one place for the whole block (walk-in), else time slots of this length. */
+  slotMinutes: number;
+  /** Visitors per time slot, or in all without time slots. */
+  perSlot: number;
+};
+
+export type OpenHouseSlot = Interval & { openHouseId: string; spotsLeft: number };
+
+/**
+ * The time slots of an open house that still have room, given the start times
+ * of the visitors already booked. Pure, like computeSlots.
+ */
+export function openHouseSlots(block: OpenHouseBlock, bookedStarts: Date[], options: { now?: Date; minNoticeMinutes?: number } = {}): OpenHouseSlot[] {
+  const { now = new Date(), minNoticeMinutes = 30 } = options;
+  const earliest = now.getTime() + minNoticeMinutes * MINUTE;
+  const start = block.startsAt.getTime();
+  const end = block.endsAt.getTime();
+  const length = block.slotMinutes > 0 ? block.slotMinutes * MINUTE : end - start;
+  const taken = new Map<number, number>();
+  for (const b of bookedStarts) taken.set(b.getTime(), (taken.get(b.getTime()) ?? 0) + 1);
+  const out: OpenHouseSlot[] = [];
+  for (let t = start; t + length <= end; t += length) {
+    const spotsLeft = block.perSlot - (taken.get(t) ?? 0);
+    // Without time slots, a visitor can still sign up while it runs, up to 15 minutes before the end.
+    const tooLate = block.slotMinutes > 0 ? t < earliest : end - 15 * MINUTE < now.getTime();
+    if (spotsLeft <= 0 || tooLate) continue;
+    out.push({ start: new Date(t), end: new Date(t + length), openHouseId: block.id, spotsLeft });
+  }
+  return out;
+}

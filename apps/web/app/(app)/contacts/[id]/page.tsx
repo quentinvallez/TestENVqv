@@ -40,7 +40,17 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Contacts", href: "/contacts" }, { label: name }]} />
+      <PageHeader
+        crumbs={[{ label: "Contacts", href: "/contacts" }, { label: name }]}
+        actions={
+          <Link
+            href={`/appointments/new?contactId=${contact.id}${contact.leads.find((l) => l.listing?.status === "active")?.listingId ? `&listingId=${contact.leads.find((l) => l.listing?.status === "active")!.listingId}` : ""}`}
+            className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover"
+          >
+            Book a viewing
+          </Link>
+        }
+      />
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto grid max-w-[1100px] gap-6 px-5 py-6 lg:grid-cols-[1fr_320px]">
           <div className="min-w-0">

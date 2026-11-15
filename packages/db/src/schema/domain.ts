@@ -499,6 +499,37 @@ export const leads = pgTable(
 
 export type AppointmentStatus = "scheduled" | "confirmed" | "cancelled" | "completed" | "no_show";
 
+/**
+ * An open house (kijkdag): the agent is at a listing for a block of time and
+ * many visitors come, booked in short time slots with room for several each.
+ */
+export const openHouses = pgTable(
+  "open_houses",
+  {
+    id: id("ohs"),
+    agencyId: agencyId(),
+    listingId: text()
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    agentId: text()
+      .notNull()
+      .references(() => agents.id, { onDelete: "restrict" }),
+    startsAt: timestamp({ withTimezone: true }).notNull(),
+    endsAt: timestamp({ withTimezone: true }).notNull(),
+    /** Length of each time slot; 0 = no time slots, visitors pick the whole block (walk-in). */
+    slotMinutes: smallint().notNull().default(15),
+    /** Visitors per time slot (or in all, without time slots). */
+    perSlot: smallint().notNull().default(4),
+    /** Until it is over, visitors can only book the open house, not other times for this listing. */
+    exclusive: boolean().notNull().default(true),
+    status: text().$type<"planned" | "cancelled">().notNull().default("planned"),
+    note: text(),
+    externalEventId: text(), // one event in the agent's calendar for the whole block
+    ...timestamps,
+  },
+  (t) => [index().on(t.listingId, t.startsAt), index().on(t.agentId, t.startsAt)],
+);
+
 export const appointments = pgTable(
   "appointments",
   {
@@ -510,6 +541,8 @@ export const appointments = pgTable(
     listingId: text().references(() => listings.id, { onDelete: "set null" }),
     contactId: text().references(() => contacts.id, { onDelete: "set null" }),
     leadId: text().references(() => leads.id, { onDelete: "set null" }),
+    /** Set when the viewing is a visitor's place at an open house. */
+    openHouseId: text().references(() => openHouses.id, { onDelete: "set null" }),
     type: text().$type<"viewing" | "valuation" | "call" | "other">().notNull().default("viewing"),
     status: text().$type<AppointmentStatus>().notNull().default("scheduled"),
     startsAt: timestamp({ withTimezone: true }).notNull(),

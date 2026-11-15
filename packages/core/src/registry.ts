@@ -16,6 +16,7 @@ import { channelsStatus, connectCalendar, connectWhatsApp, disconnectCalendar, l
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import { createWidgetPreview, deleteWidgetPreview, listWidgetPreviews, noteWidgetPreview } from "./tools/previews";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
+import { cancelOpenHouse, listOpenHouses, planOpenHouse } from "./tools/open-houses";
 import { addListingOccupant, getOccupantPage, listListingOccupants, reportOccupantProblem, requestViewing, setListingAccess, setOccupantAvailability, updateListingOccupant } from "./tools/occupants";
 import type { Tool } from "./tool";
 
@@ -56,6 +57,9 @@ export const tools = {
   dashboardSummary,
   availableSlots,
   bookViewing,
+  planOpenHouse,
+  listOpenHouses,
+  cancelOpenHouse,
   cancelAppointment,
   rescheduleAppointment,
   getAgentAvailability,
