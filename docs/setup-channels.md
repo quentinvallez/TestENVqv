@@ -82,6 +82,11 @@ WhatsApp allows free text only within 24 hours of the client's last message. Aft
 
 Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`), French (`fr`) and English (`en`), with exactly these names and variables:
 
+**booking_confirmed** (category Utility). Sent when a client books or moves a viewing (or a valuation visit) on the website and ticked "confirmation on WhatsApp". Variables: 1 first name, 2 date and time, 3 address, 4 agent name, 5 link to move or cancel. Meta doesn't accept a variable at the very end, so keep the closing words.
+- nl: Dag {{1}}, uw afspraak op {{2}} is bevestigd. Adres: {{3}}. U wordt ontvangen door {{4}}. Verplaatsen of annuleren kan via {{5}}. Tot dan!
+- fr: Bonjour {{1}}, votre rendez-vous du {{2}} est confirmé. Adresse : {{3}}. Vous serez reçu(e) par {{4}}. Pour déplacer ou annuler : {{5}}. À bientôt !
+- en: Hi {{1}}, your appointment on {{2}} is confirmed. Address: {{3}}. You'll meet {{4}}. To move or cancel: {{5}}. See you then!
+
 **viewing_reminder** (category Utility). Variables: 1 first name, 2 address, 3 date and time, 4 agent name.
 - nl: Dag {{1}}, een herinnering aan uw bezoek aan {{2}} op {{3}} met {{4}}. Past het toch niet? Antwoord gerust op dit bericht.
 - fr: Bonjour {{1}}, petit rappel de votre visite de {{2}} le {{3}} avec {{4}}. Un empêchement ? Répondez simplement à ce message.

@@ -312,6 +312,51 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
   });
 
+  it("confirms a website booking on WhatsApp with the approved template when the client asked for it, and by email too", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async (url: string) =>
+      String(url).includes("graph.facebook.com") ? new Response(JSON.stringify({ messages: [{ id: "wamid.confirm1" }] }), { status: 200 }) : new Response("{}", { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { publicContext } = await import("../public");
+    const [listing] = await db.select().from(schema.listings).where(and(eq(schema.listings.agencyId, agencyId), eq(schema.listings.reference, "ANT-1042")));
+    const { slots } = await runTool(tools.availableSlots, ctx, { listingId: listing!.id });
+    const booked = await runTool(tools.bookViewing, publicContext(agencyId), {
+      listingId: listing!.id,
+      startsAt: slots[4]!.start,
+      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true },
+    });
+    const call = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]).find(([url]) => url.includes("graph.facebook.com"));
+    const payload = JSON.parse(call![1].body as string);
+    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "nl" } } });
+    const params = payload.template.components[0].parameters.map((p: { text: string }) => p.text);
+    expect(params).toHaveLength(5);
+    expect(params[0]).toBe("Mira");
+    expect(params[4]).toMatch(/\/a\/[^/]+$/);
+    const [message] = await db.select().from(schema.messages).where(eq(schema.messages.externalId, "wamid.confirm1"));
+    expect(message).toMatchObject({ delivery: "sent" });
+    expect(message!.metadata).toMatchObject({ kind: "booking_confirmation", template: "booking_confirmed" });
+
+    // The same confirmation by email, linked to the WhatsApp message.
+    const mails = fetchMock.mock.calls.filter((c) => String(c[0]).includes("mailgun"));
+    const confirmation = mails.map((c) => (c as unknown as [string, RequestInit])[1].body as URLSearchParams).find((f) => f.get("to")?.includes("mira@example.be"));
+    expect(confirmation).toBeTruthy();
+    const [copy] = await db.select().from(schema.messages).where(eq(schema.messages.id, message!.metadata.emailCopy as string));
+    expect(copy).toMatchObject({ delivery: "sent", body: message!.body });
+    expect(copy!.metadata).toMatchObject({ copyOf: message!.id, kind: "booking_confirmation" });
+
+    // WhatsApp failing later doesn't send the email a second time.
+    const before = fetchMock.mock.calls.length;
+    await runTool(tools.receiveWhatsApp, ctx, { messages: [], statuses: [{ id: "wamid.confirm1", status: "failed", error: "Message undeliverable" }] });
+    expect(fetchMock.mock.calls.length).toBe(before);
+    const [after] = await db.select().from(schema.messages).where(eq(schema.messages.id, message!.id));
+    expect(after!.metadata.recoveredBy).toBe(copy!.id);
+    await runTool(tools.cancelAppointment, ctx, { appointmentId: booked.appointmentId });
+  });
+
   it("emails the agent when a client books on the website, without a connected mailbox", async () => {
     const { publicContext } = await import("../public");
     const client = publicContext(agencyId);

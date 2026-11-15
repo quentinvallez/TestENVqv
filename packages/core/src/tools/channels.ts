@@ -257,6 +257,11 @@ async function resendByEmail(ctx: ToolContext, messageId: string, error: string 
   });
   const contact = message?.conversation.contact;
   if (!message || message.direction !== "outbound" || message.metadata?.recoveredBy || !contact?.email) return null;
+  // Already went by email too: point to that copy instead of sending it twice.
+  if (typeof message.metadata?.emailCopy === "string") {
+    await ctx.db.update(messages).set({ metadata: { ...message.metadata, recoveredBy: message.metadata.emailCopy } }).where(eq(messages.id, message.id));
+    return null;
+  }
   const email = await conversationFor(ctx, {
     contactId: contact.id,
     channel: "email",
