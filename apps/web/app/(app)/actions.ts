@@ -3,7 +3,7 @@
 import { leadStages, PreviewError, runTool, tools } from "@viewing/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getToolContext } from "@/lib/context";
+import { getToolContext, requireAdmin } from "@/lib/context";
 
 export async function seedDemoAction() {
   await runTool(tools.seedDemoData, await getToolContext(), {});
@@ -87,6 +87,7 @@ export async function suggestToMatchesAction(listingId: string) {
 }
 
 export async function setValuationLauncherAction(on: boolean) {
+  await requireAdmin();
   await runTool(tools.updateWidgetSettings, await getToolContext(), { valuationLauncher: on });
   revalidatePath("/widget");
 }
@@ -124,6 +125,7 @@ export async function saveAgentAction(_state: AgentFormState, form: FormData): P
 export type WhatsAppState = { error?: string; saved?: boolean } | undefined;
 
 export async function connectWhatsAppAction(_state: WhatsAppState, form: FormData): Promise<WhatsAppState> {
+  await requireAdmin();
   try {
     await runTool(tools.connectWhatsApp, await getToolContext(), {
       phoneNumberId: String(form.get("phoneNumberId") ?? ""),
@@ -138,6 +140,7 @@ export async function connectWhatsAppAction(_state: WhatsAppState, form: FormDat
 }
 
 export async function disconnectWhatsAppAction() {
+  await requireAdmin();
   await runTool(tools.connectWhatsApp, await getToolContext(), { disconnect: true });
   revalidatePath("/settings");
 }
@@ -159,16 +162,19 @@ export async function updateAutomationsAction(change: {
   replyToPortalLeadsAutomatically?: boolean;
   sendBookingConfirmationsAutomatically?: boolean;
 }) {
+  await requireAdmin();
   await runTool(tools.updateAutomationSettings, await getToolContext(), change);
   revalidatePath("/settings");
 }
 
 export async function setNudgeDaysAction(form: FormData) {
+  await requireAdmin();
   await runTool(tools.updateAutomationSettings, await getToolContext(), { nudgeAfterDays: Number(form.get("nudgeAfterDays")) });
   revalidatePath("/settings");
 }
 
 export async function runAutomationsAction() {
+  await requireAdmin();
   await runTool(tools.runAutomationsNow, await getToolContext(), {});
   revalidatePath("/", "layout");
 }
@@ -249,6 +255,7 @@ export async function importMissingListingAction(_state: MissingListingState, fo
 }
 
 export async function setBookingLauncherAction(on: boolean) {
+  await requireAdmin();
   await runTool(tools.updateWidgetSettings, await getToolContext(), { bookingLauncher: on });
   revalidatePath("/widget");
 }
@@ -318,6 +325,7 @@ export type ForwardingState = { error?: string; done?: boolean } | undefined;
 
 /** One click in Settings → Portal leads: the rule in the agent's Outlook, created or removed. */
 export async function portalForwardingAction(agentId: string, remove: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  await requireAdmin();
   try {
     const ctx = await getToolContext();
     if (remove) await runTool(tools.removePortalForwarding, ctx, { agentId });
@@ -331,6 +339,7 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
 }
 
 export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
+  await requireAdmin();
   try {
     await runTool(tools.setLeadCopyAddress, await getToolContext(), { address: String(form.get("address") ?? "") });
   } catch {

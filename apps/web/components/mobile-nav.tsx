@@ -17,7 +17,7 @@ const tabs = [
 ];
 
 /** Bottom tab bar on phones, with everything else behind "More". */
-export function MobileTabBar({ agencyName, userName, inboxCount }: { agencyName: string; userName: string; inboxCount: number }) {
+export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { agencyName: string; userName: string; myAgentId: string | null; inboxCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -91,7 +91,14 @@ export function MobileTabBar({ agencyName, userName, inboxCount }: { agencyName:
                 ))}
             </div>
             <div className="mx-4 mt-2 flex items-center justify-between border-t border-line pt-3 text-muted">
-              <span className="truncate">{userName}</span>
+              {myAgentId ? (
+                <Link href={`/agents/${myAgentId}`} className="flex h-10 min-w-0 items-center gap-2">
+                  <span className="truncate text-fg">{userName}</span>
+                  <span className="shrink-0 text-[12px]">· My page</span>
+                </Link>
+              ) : (
+                <span className="truncate">{userName}</span>
+              )}
               <button
                 onClick={async () => {
                   await authClient.signOut();

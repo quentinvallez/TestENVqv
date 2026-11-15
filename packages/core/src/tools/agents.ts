@@ -1,5 +1,6 @@
 import { and, asc, eq, schema, sql } from "@viewing/db";
 import { z } from "zod";
+import { agentLogins, type AgentLogin } from "./team";
 import { recordEvent } from "../events";
 import { defineTool } from "../tool";
 
@@ -11,7 +12,7 @@ export const listAgents = defineTool({
   mutates: false,
   input: z.object({}),
   run: async (ctx) => {
-    return ctx.db
+    const rows = await ctx.db
       .select({
         id: agents.id,
         name: agents.name,
@@ -29,6 +30,8 @@ export const listAgents = defineTool({
       .leftJoin(offices, eq(offices.id, agents.officeId))
       .where(and(eq(agents.agencyId, ctx.agencyId)))
       .orderBy(asc(agents.name));
+    const logins = await agentLogins(ctx);
+    return rows.map((row) => ({ ...row, login: logins.get(row.id) ?? ({ status: "none" } as AgentLogin) }));
   },
 });
 

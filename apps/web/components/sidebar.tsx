@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { navSections } from "./nav";
 import { openCommandMenu } from "./command-menu";
 
-export function Sidebar({ agencyName, userName, inboxCount }: { agencyName: string; userName: string; inboxCount: number }) {
+export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agencyName: string; userName: string; myAgentId: string | null; inboxCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -61,11 +61,18 @@ export function Sidebar({ agencyName, userName, inboxCount }: { agencyName: stri
         ))}
       </nav>
 
-      <div className="flex items-center gap-2 border-t border-line px-2 pt-3 text-muted">
-        <span className="flex size-6 items-center justify-center rounded-full bg-hover text-[11px] font-medium text-fg">
-          {userName.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="flex-1 truncate">{userName}</span>
+      <div className="flex items-center gap-1 border-t border-line pt-3 text-muted">
+        <Link
+          href={myAgentId ? `/agents/${myAgentId}` : "#"}
+          title="My page: hours, mailbox and viewings"
+          className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1", myAgentId ? "hover:bg-hover hover:text-fg" : "pointer-events-none")}
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-medium text-fg">
+            {userName.slice(0, 1).toUpperCase()}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{userName}</span>
+          {myAgentId && <span className="shrink-0 text-[11px] text-faint">My page</span>}
+        </Link>
         <button onClick={signOut} title="Log out" className="rounded p-1 hover:bg-hover hover:text-fg">
           <LogOut className="size-3.5" />
         </button>

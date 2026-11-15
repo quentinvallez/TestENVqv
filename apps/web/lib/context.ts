@@ -1,5 +1,5 @@
 import "server-only";
-import { db, eq, schema } from "@viewing/db";
+import { and, db, eq, schema } from "@viewing/db";
 import type { ToolContext } from "@viewing/core";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -24,8 +24,21 @@ export const getSession = cache(async () => {
 
   const agency = await db.query.organization.findFirst({ where: eq(schema.organization.id, agencyId) });
   if (!agency) redirect("/onboarding");
-  return { user: session.user, agency };
+  const [membership] = await db
+    .select({ role: schema.member.role })
+    .from(schema.member)
+    .where(and(eq(schema.member.userId, session.user.id), eq(schema.member.organizationId, agency.id)));
+  if (!membership) redirect("/onboarding");
+  const role = membership.role as "owner" | "admin" | "member";
+  return { user: session.user, agency, role, isAdmin: role === "owner" || role === "admin" };
 });
+
+/** For actions only the agency's owner and admins may take: settings and logins. */
+export async function requireAdmin() {
+  const session = await getSession();
+  if (!session.isAdmin) throw new Error("Only admins can change this.");
+  return session;
+}
 
 /** Tool context for the signed-in user, scoped to their agency. */
 export async function getToolContext(): Promise<ToolContext> {
