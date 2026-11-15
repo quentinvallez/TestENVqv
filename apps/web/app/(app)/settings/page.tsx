@@ -294,9 +294,9 @@ export default async function SettingsPage() {
               ))}
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="font-medium">Confirmation after a booking</div>
+                  <div className="font-medium">Confirmation after a booking or cancellation</div>
                   <p className="mt-0.5 max-w-xl text-muted">
-                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. Fixed text in their language, no AI.
+                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. When they cancel, they get new times and the booking link in case they still want to come. Fixed text in their language, no AI.
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-muted">Sending:</span>

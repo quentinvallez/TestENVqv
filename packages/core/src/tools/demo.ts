@@ -412,6 +412,29 @@ export const seedDemoData = defineTool({
       });
     }
 
+    // The same visitor's side: they cancelled with their link and got new times on their own.
+    {
+      const apt = aptOf(4, "cancelled");
+      const contact = contactRows.find((c) => c.id === apt.contactId)!;
+      const lang = toLang(contact.language);
+      const listing = listingOf(apt.listingId);
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(apt.agentId) };
+      threads.push({
+        contactId: contact.id,
+        leadIndex: 4,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel: "email",
+        subject: listing.title ?? undefined,
+        category: "cancellation",
+        summary: "Cancelled with their link; new times sent.",
+        lines: [
+          { from: "system", hoursAgo: 3, kind: "client_action", body: `Cancelled the viewing at ${place(listing)} (${formatSlot(apt.startsAt, "en")}) using their booking link.` },
+          { from: "planner", hoursAgo: 2.95, kind: "cancellation_reply", body: fixed(lang, "cancelled_by_client", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) },
+        ],
+      });
+    }
+
     // A visitor cancelled with their link: the owner who lives there is told on their own.
     {
       const apt = aptOf(4, "cancelled");
