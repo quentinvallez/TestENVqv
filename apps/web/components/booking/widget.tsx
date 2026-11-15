@@ -27,6 +27,7 @@ export function BookingWidget({
   awaitingOccupant = false,
   occupied = false,
   privacyUrl,
+  openHouses = [],
   action,
 }: {
   lang: WidgetLang;
@@ -41,6 +42,8 @@ export function BookingWidget({
   occupied?: boolean;
   /** The agency's privacy notice for clients. */
   privacyUrl?: string;
+  /** Upcoming open houses at this listing, shown as a banner above the times. */
+  openHouses?: { when: string; placesLeft: number }[];
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = widgetText[lang];
@@ -51,6 +54,11 @@ export function BookingWidget({
   const firstName = agentName.split(" ")[0] ?? agentName;
   // Without any free time, visitors leave their details instead of picking one.
   const requesting = days.length === 0;
+  // Open house slots: others come at the same time, so say so instead of the usual length.
+  const allSlots = days.flatMap((d) => d.slots);
+  const allOpenHouse = allSlots.length > 0 && allSlots.every((s) => s.openHouse);
+  const pickedOpenHouse = Boolean(allSlots.find((s) => s.value === slot)?.openHouse);
+  const withLine = allOpenHouse || pickedOpenHouse ? t.openHouse(agentName) : t.with(slotMinutes, agentName);
 
   // Let a parent page size the iframe to the content.
   useEffect(() => {
@@ -84,7 +92,7 @@ export function BookingWidget({
         </span>
         <h3 className="mt-3 text-[16px] font-semibold">{t.doneTitle}</h3>
         <p className="mt-1 font-medium">{state.booked.when}</p>
-        <p className="mt-1 text-muted">{t.with(slotMinutes, agentName)}</p>
+        <p className="mt-1 text-muted">{withLine}</p>
         <p className="mt-4 max-w-xs text-muted">{t.doneText}</p>
         <a href={state.booked.manageUrl} target="_top" className="mt-3 font-medium text-[var(--brand)] underline-offset-2 hover:underline">
           {t.manage}
@@ -111,10 +119,27 @@ export function BookingWidget({
       </div>
 
       <section className={stepClass(1)}>
+        {openHouses.length > 0 && (
+          <div role="note" className="mb-4 rounded-lg border border-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_8%,var(--panel))] px-3.5 py-3">
+            <div className="flex items-center gap-2 font-semibold text-[var(--brand)]">
+              <CalendarCheck className="size-4 shrink-0" />
+              {t.openHouseTitle}
+            </div>
+            <ul className="mt-1.5 flex flex-col gap-0.5">
+              {openHouses.map((o) => (
+                <li key={o.when} className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <span className="font-medium">{o.when}</span>
+                  <span className="text-[12px] text-muted">{o.placesLeft > 0 ? t.openHousePlaces(o.placesLeft) : t.openHouseFull}</span>
+                </li>
+              ))}
+            </ul>
+            {openHouses.some((o) => o.placesLeft > 0) && <p className="mt-1.5 text-[12px] text-muted">{t.openHouseBook}</p>}
+          </div>
+        )}
         <h3 className="mb-1 font-medium">{t.step1}</h3>
         <p className="mb-3 flex items-center gap-1.5 text-[12px] text-muted">
           <CalendarCheck className="size-3.5" />
-          {t.with(slotMinutes, agentName)}
+          {withLine}
         </p>
         {requesting ? (
           <p className="rounded-lg border border-line px-4 py-6 text-center text-muted">{awaitingOccupant ? t.awaitingOwner : t.noSlotsRequest}</p>

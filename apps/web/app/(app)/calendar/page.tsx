@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AGENCY_TIMEZONE, runTool, startOfZonedDay, tools } from "@viewing/core";
-import { ChevronLeft, ChevronRight, Navigation, Phone } from "lucide-react";
+import { ChevronLeft, ChevronRight, Navigation, Phone, Plus } from "lucide-react";
 import { Avatar, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
@@ -28,7 +28,26 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const days = Array.from({ length: 7 }, (_, i) => startOfZonedDay(now, i - weekdayIndex + week * 7));
   const from = days[0]!;
   const to = startOfZonedDay(now, 7 - weekdayIndex + week * 7);
-  const appointments = await runTool(tools.listAppointments, await getToolContext(), { from, to });
+  const ctx = await getToolContext();
+  const [all, openHouses] = await Promise.all([runTool(tools.listAppointments, ctx, { from, to }), runTool(tools.listOpenHouses, ctx, { from, to })]);
+  // An open house shows as one block with its visitor count, not one card per visitor.
+  const shows = openHouses.map((o) => ({
+    id: o.id,
+    startsAt: o.startsAt,
+    endsAt: o.endsAt,
+    listingId: o.listing.id,
+    contactId: null,
+    contactFirstName: "Open house",
+    contactLastName: `· ${o.booked}/${o.capacity}`,
+    contactPhone: null,
+    listingStreet: o.listing.street,
+    listingHouseNumber: o.listing.houseNumber,
+    listingCity: o.listing.city,
+    location: null,
+    agentName: o.agent.name,
+    agentColor: o.agent.color,
+  }));
+  const appointments = [...all.filter((a) => !a.openHouseId), ...shows].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   const today = startOfZonedDay(now).getTime();
   // Phones show one day at a time: today in the current week, else Monday.
   const todayIndex = days.findIndex((d) => d.getTime() === today);
@@ -48,6 +67,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         actions={
           <div className="flex items-center gap-1">
             <span className="mr-2 hidden text-muted md:inline">{rangeLabel}</span>
+            <Link href="/appointments/new" className="mr-1 flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 font-medium text-primary-fg hover:opacity-90">
+              <Plus className="size-3.5" />
+              <span className="hidden sm:inline">Book a viewing</span>
+              <span className="sm:hidden">Book</span>
+            </Link>
             <Link href={`/calendar?week=${week - 1}`} className="flex size-7 items-center justify-center rounded-md border border-line hover:bg-hover">
               <ChevronLeft className="size-4" />
             </Link>
@@ -99,7 +123,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                       {apt.agentName.split(" ")[0]}
                     </span>
                   </div>
-                  <Link href={apt.contactId ? `/contacts/${apt.contactId}` : "#"} className="mt-1 block font-medium">
+                  <Link href={apt.contactId ? `/contacts/${apt.contactId}` : apt.listingId ? `/listings/${apt.listingId}` : "#"} className="mt-1 block font-medium">
                     {fullName(apt.contactFirstName, apt.contactLastName)}
                   </Link>
                   <div className="text-muted">{place}</div>

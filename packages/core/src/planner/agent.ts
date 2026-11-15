@@ -520,7 +520,8 @@ export async function draftFollowUp(ctx: ToolContext, appointmentId: string, opt
   return { proposalId: proposal.id, conversationId: conversation.id, sent: null };
 }
 
-export type ClientAction = { kind: "booked" } | { kind: "cancelled" } | { kind: "rescheduled"; from: Date };
+/** What the client did; `by` marks a booking the agency made for them, e.g. on the phone. */
+export type ClientAction = { kind: "booked"; by?: "phone" | "staff" } | { kind: "cancelled" } | { kind: "rescheduled"; from: Date };
 
 /**
  * When a client books through the widget, or moves or cancels through their
@@ -535,13 +536,21 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   });
   if (!appointment?.contact) return null;
   const contact = appointment.contact;
+  const byAgency = action.kind === "booked" ? action.by : undefined;
+  // Nowhere to send a confirmation: a caller who gave only a phone number and no WhatsApp.
+  if (byAgency && !contact.email && !(contact.whatsappOptIn && contact.phone)) return null;
   const conversation = await conversationFor(ctx, { contactId: contact.id, leadId: appointment.leadId, agentId: appointment.agentId, subject: appointment.listing?.title ?? null });
 
   const isValuation = appointment.type === "valuation";
   const place = addressOf(appointment.listing) || appointment.location || "";
   const when = (d: Date) => formatSlot(d, "en");
   const note = {
-    booked: () => (isValuation ? `Booked a valuation visit at ${place} for ${when(appointment.startsAt)}.` : `Booked a viewing at ${place} for ${when(appointment.startsAt)} on the website.`),
+    booked: () =>
+      isValuation
+        ? `Booked a valuation visit at ${place} for ${when(appointment.startsAt)}.`
+        : byAgency
+          ? `${appointment.agent?.name ?? "The agency"} booked a viewing at ${place} for ${when(appointment.startsAt)}${byAgency === "phone" ? " on the phone" : ""}.`
+          : `Booked a ${appointment.openHouseId ? "place at the open house" : "viewing"} at ${place} for ${when(appointment.startsAt)} on the website.`,
     cancelled: () => `Cancelled the ${isValuation ? "valuation visit" : "viewing"} at ${place} (${when(appointment.startsAt)}) using their booking link.`,
     rescheduled: () => `Moved the ${isValuation ? "valuation visit" : "viewing"} at ${place} from ${when((action as { from: Date }).from)} to ${when(appointment.startsAt)} using their booking link.`,
   }[action.kind]();
@@ -562,12 +571,13 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       summary: isValuation
         ? { booked: "Booked a valuation visit.", cancelled: "Cancelled the valuation visit.", rescheduled: "Moved the valuation visit." }[action.kind]
         : {
-        booked: "Booked a viewing on the website.",
+        booked: byAgency === "phone" ? "Booked a viewing on the phone." : byAgency ? "Viewing booked by the agency." : appointment.openHouseId ? "Booked a place at the open house." : "Booked a viewing on the website.",
         cancelled: "Cancelled their viewing via the booking link.",
         rescheduled: "Moved their viewing via the booking link.",
       }[action.kind],
       status: "open",
-      unread: true,
+      // The agent made this booking themselves: nothing new for them to read.
+      unread: !byAgency,
       lastMessageAt: message!.sentAt,
       listingId: appointment.listingId ?? conversation.listingId,
       agentId: appointment.agentId,
@@ -631,9 +641,14 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   }
   // A confirmation of what the client just did goes out on its own (fixed text) unless the agency approves them first.
   // After a cancellation, the new times (and booking link) go out the same way.
-  const confirm = plan ? await confirmationsAutomatic(ctx) : false;
+  // A booking the agent made with "send confirmation" ticked goes out whatever the setting: they asked for it.
+  const confirm = plan ? Boolean(byAgency) || (await confirmationsAutomatic(ctx)) : false;
   const cancelled = action.kind === "cancelled";
-  const sentNote = cancelled ? `${note} New times sent on its own (Settings → Automations).` : `${note} Confirmation sent on its own (Settings → Automations).`;
+  const sentNote = byAgency
+    ? `${note} Confirmation sent.`
+    : cancelled
+      ? `${note} New times sent on its own (Settings → Automations).`
+      : `${note} Confirmation sent on its own (Settings → Automations).`;
   const proposal = plan
     ? await propose(ctx, thread, confirm ? { ...plan, messageKind: cancelled ? "cancellation_reply" : "booking_confirmation" } : plan, lang, confirm ? sentNote : note, options.useAi ?? true, { fixedText: confirm })
     : null;

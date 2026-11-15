@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { runTool, startOfZonedDay, tools } from "@viewing/core";
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, Plus } from "lucide-react";
 import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
@@ -27,7 +27,8 @@ function Attendance({ apt, now }: { apt: { id: string; status: string; startsAt:
   );
 }
 
-export default async function AppointmentsPage() {
+export default async function AppointmentsPage({ searchParams }: { searchParams: Promise<{ booked?: string }> }) {
+  const { booked } = await searchParams;
   const now = new Date();
   const appointments = await runTool(tools.listAppointments, await getToolContext(), {
     from: startOfZonedDay(now, -14),
@@ -37,8 +38,25 @@ export default async function AppointmentsPage() {
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Appointments" }]} />
+      <PageHeader
+        crumbs={[{ label: "Appointments" }]}
+        actions={
+          <Link href="/appointments/new" className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90">
+            <Plus className="size-3.5" />
+            Book a viewing
+          </Link>
+        }
+      />
       <div className="flex-1 overflow-auto">
+        {booked && (() => {
+          const apt = appointments.find((a) => a.id === booked);
+          return apt ? (
+            <div className="flex items-center gap-2 border-b border-line px-4 py-2.5 md:px-5">
+              <StatusDot color="var(--success)" />
+              Booked: {fullName(apt.contactFirstName, apt.contactLastName)}, {formatDay(apt.startsAt)} at {formatTime(apt.startsAt)} with {apt.agentName}.
+            </div>
+          ) : null;
+        })()}
         {appointments.length === 0 ? (
           <EmptyState icon={<CalendarCheck className="size-5" />} title="No appointments" description="Viewings booked by clients or agents appear here." />
         ) : (
@@ -52,7 +70,10 @@ export default async function AppointmentsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{fullName(apt.contactFirstName, apt.contactLastName)}</div>
-                  <div className="truncate text-[12px] text-muted">{address(apt.listingStreet, apt.listingHouseNumber, apt.listingCity) || apt.location}</div>
+                  <div className="truncate text-[12px] text-muted">
+                    {address(apt.listingStreet, apt.listingHouseNumber, apt.listingCity) || apt.location}
+                    {apt.openHouseId && " · open house"}
+                  </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
                     <StatusDot color={appointmentStatusMeta[apt.status].color} className="size-1.5" />
                     {appointmentStatusMeta[apt.status].label}
@@ -91,6 +112,7 @@ export default async function AppointmentsPage() {
                     ) : (
                       apt.location
                     )}
+                    {apt.openHouseId && <span className="ml-1.5 text-[12px] text-muted">open house</span>}
                   </td>
                   <td className="px-3">
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
