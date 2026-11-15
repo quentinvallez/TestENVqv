@@ -28,6 +28,7 @@ export const defaultAutomationSettings: Required<AutomationSettings> = {
   agentAlerts: true,
   portalLeadCopies: true,
   whatsappInvite: true,
+  repliesToAgent: true,
 };
 
 export function automationSettings(stored: AutomationSettings | null | undefined): Required<AutomationSettings> {

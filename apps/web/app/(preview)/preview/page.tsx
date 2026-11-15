@@ -11,6 +11,7 @@ const text = {
   nl: { title: "Zie de planner op je eigen website", intro: "Vul de website van je kantoor in. We tonen onze planner op je eigen panden, in je eigen kleur. Er wordt niets op je site geplaatst." },
   fr: { title: "Voyez le planificateur sur votre propre site", intro: "Indiquez le site de votre agence. Nous montrons notre planificateur sur vos propres biens, dans votre couleur. Rien n'est placé sur votre site." },
   en: { title: "See the planner on your own website", intro: "Enter your agency's website. We show our planner on your own listings, in your colour. Nothing is put on your site." },
+  de: { title: "Sehen Sie den Planer auf Ihrer eigenen Website", intro: "Geben Sie die Website Ihres Büros ein. Wir zeigen unseren Planer auf Ihren eigenen Immobilien, in Ihrer Farbe. Auf Ihrer Website wird nichts installiert." },
 };
 
 /** Public: an agency asks for a preview of the widget on its own site. */
@@ -21,7 +22,7 @@ export default async function RequestPreviewPage({ searchParams }: { searchParam
     <div className="flex-1 overflow-y-auto px-4 py-10 sm:py-20">
       <div className="mx-auto max-w-[440px]">
         <div className="mb-6 flex justify-end gap-1">
-          {(["nl", "fr", "en"] as const).map((code) => (
+          {(["nl", "fr", "en", "de"] as const).map((code) => (
             <Link key={code} href={`/preview?lang=${code}`} className={`rounded px-1.5 py-0.5 text-[12px] uppercase ${code === lang ? "bg-hover font-medium" : "text-muted"}`}>
               {code}
             </Link>

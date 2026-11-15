@@ -143,6 +143,8 @@ export type AutomationSettings = {
   portalLeadCopies?: boolean;
   /** End client emails with a link to continue on WhatsApp (the client writes first), while they aren't on WhatsApp with us. */
   whatsappInvite?: boolean;
+  /** Client email replies go to the agent's own mailbox; the inbox address only gets a silent copy (no draft), so check-ins stop. On unless turned off. */
+  repliesToAgent?: boolean;
 };
 
 /**
@@ -401,7 +403,7 @@ export const widgetPreviews = pgTable(
     site: text().notNull(),
     name: text(),
     brandColor: text(),
-    language: text().$type<"nl" | "fr" | "en">().notNull().default("nl"),
+    language: text().$type<"nl" | "fr" | "en" | "de">().notNull().default("nl"),
     homeFramable: boolean().notNull().default(false),
     listingFramable: boolean().notNull().default(false),
     listings: jsonb().$type<WidgetPreviewListing[]>().notNull().default([]),

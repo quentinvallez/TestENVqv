@@ -15,7 +15,7 @@ import { reportProblemAction, saveOccupantAvailabilityAction } from "../../occup
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Viewings of your home", robots: { index: false, follow: false } };
 
-const locales = { nl: "nl-BE", fr: "fr-BE", en: "en-GB" } as const;
+const locales = { nl: "nl-BE", fr: "fr-BE", en: "en-GB", de: "de-BE" } as const;
 const localDate = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: AGENCY_TIMEZONE }).format(date);
 
 /** The owner's or tenant's own page, opened from the link the agency sent them. No account. */

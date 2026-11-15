@@ -67,6 +67,13 @@ export default async function SettingsPage() {
         "Emails to clients who aren't on WhatsApp with you yet end with a link that opens WhatsApp with a short message to you. WhatsApp only allows you to write once the client has written first; after that, reminders and follow-ups go by WhatsApp. Needs a WhatsApp number (Settings → Channels).",
     },
     {
+      key: "repliesToAgent",
+      on: automations.repliesToAgent,
+      title: "Client replies go to the agent's mailbox",
+      description:
+        "When a client answers an email, the reply lands in the agent's own Outlook or Gmail, and the agent answers from there. The app keeps a silent copy, only so reminders and check-ins stop for clients who already answered. Turn off to answer replies in the app's inbox instead, with a drafted reply.",
+    },
+    {
       key: "agentAlerts",
       on: automations.agentAlerts,
       title: "Email the agent about bookings",
@@ -113,7 +120,7 @@ export default async function SettingsPage() {
                   <>
                     <p className="mt-1 font-mono text-[12px] break-all">{channels.inboundAddress}</p>
                     <p className="mt-1 text-[12px] text-muted">
-                      Client replies come back here automatically. Immoweb, Zimmo and Immovlan leads sent here become leads for the listing&apos;s agent; see Portal leads below.
+                      Client email replies go to the agent's own mailbox, with a copy here (see Automations to change that). Immoweb, Zimmo and Immovlan leads sent here become leads for the listing&apos;s agent; see Portal leads below.
                       {channels.portalLeads > 0 && ` ${channels.portalLeads} portal leads so far.`}
                     </p>
                   </>

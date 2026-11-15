@@ -1,4 +1,4 @@
-export type WidgetLang = "nl" | "fr" | "en";
+export type WidgetLang = "nl" | "fr" | "en" | "de";
 
 export const widgetText = {
   nl: {
@@ -94,6 +94,37 @@ export const widgetText = {
     privacyOccupant: "The occupants only see your first name, the initial of your last name and the time.",
     chooseFirst: "Choose a time first.",
   },
-};
+  de: {
+    title: "Besichtigung planen",
+    step1: "Wählen Sie einen Termin",
+    step2: "Ein paar kurze Fragen",
+    step2Hint: (agent: string) => `Damit ${agent} sich gut vorbereiten kann.`,
+    step3: "Ihre Angaben",
+    firstName: "Vorname",
+    lastName: "Nachname",
+    email: "E-Mail",
+    phone: "Telefon (für WhatsApp)",
+    message: "Sollten wir noch etwas wissen? (optional)",
+    whatsapp: "Bestätigung und Erinnerung auch über WhatsApp senden",
+    next: "Weiter",
+    back: "Zurück",
+    skip: "Überspringen",
+    confirm: "Besichtigung bestätigen",
+    booking: "Einen Moment…",
+    with: (minutes: number, agent: string) => `${minutes} Min. mit ${agent}`,
+    noSlots: "Keine freien Termine in den kommenden Wochen. Bitte wenden Sie sich an das Büro.",
+    doneTitle: "Ihre Besichtigung ist geplant",
+    doneText: "Über den Link unten können Sie Ihre Besichtigung jederzeit ändern oder absagen.",
+    manage: "Besichtigung ändern oder absagen",
+    privacy: (agency: string) => `Ihre Daten werden nur an ${agency} weitergegeben.`,
+    awaitingOwner: "Die Besichtigungszeiten werden noch mit den Bewohnern abgestimmt. Hinterlassen Sie Ihre Angaben, dann melden wir uns bei Ihnen.",
+    noSlotsRequest: "Keine freien Termine in den kommenden Wochen. Hinterlassen Sie Ihre Angaben, dann melden wir uns bei Ihnen.",
+    request: "Besichtigung anfragen",
+    requestDoneTitle: "Ihre Anfrage wurde gesendet",
+    requestDoneText: (agency: string) => `${agency} meldet sich so schnell wie möglich bei Ihnen, um einen Termin zu vereinbaren.`,
+    privacyOccupant: "Die Bewohner sehen nur Ihren Vornamen, den ersten Buchstaben Ihres Nachnamens und die Uhrzeit.",
+    chooseFirst: "Wählen Sie zuerst einen Termin.",
+  },
+} satisfies Record<WidgetLang, unknown>;
 
-export const toWidgetLang = (value: string | undefined): WidgetLang => (value === "fr" || value === "en" ? value : "nl");
+export const toWidgetLang = (value: string | undefined): WidgetLang => (value === "nl" || value === "fr" || value === "de" ? value : "en");

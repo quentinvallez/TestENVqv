@@ -128,7 +128,14 @@ export type SendInput = {
   alsoEmail?: boolean;
 };
 
+/** Whether client email replies go to the agent's own mailbox (the inbox address only keeps a copy). */
+export async function repliesToAgent(ctx: ToolContext): Promise<boolean> {
+  const [settings] = await ctx.db.select({ automations: schema.agencySettings.automations }).from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, ctx.agencyId));
+  return automationSettings(settings?.automations).repliesToAgent;
+}
+
 /** The "Prefer WhatsApp?" line for a client email, when the agency has a WhatsApp number and keeps the invitation on. */
+
 async function whatsappInviteFor(ctx: ToolContext, contact: { id: string; language: string | null }) {
   const [settings] = await ctx.db.select({ automations: schema.agencySettings.automations }).from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, ctx.agencyId));
   if (!automationSettings(settings?.automations).whatsappInvite) return null;
@@ -193,7 +200,10 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
     }
   } else if (conversation.channel === "email") {
     const mailbox = await agentMailbox(ctx, conversation.agentId);
-    const replyTo = await inboundAddress(ctx);
+    const inbox = await inboundAddress(ctx);
+    // Replies to the agent's own mailbox, with a copy to the inbox address so the app knows the client answered.
+    const agentAddress = mailbox?.accountEmail ?? conversation.agent?.email ?? null;
+    const replyAddresses = (await repliesToAgent(ctx)) && agentAddress ? [agentAddress, inbox].filter((a): a is string => Boolean(a)) : inbox ? [inbox] : [];
     const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, ctx.agencyId), columns: { name: true } });
     const isReply = Boolean(lastFromClient);
     const base = input.subject ?? conversation.subject ?? agency?.name ?? "";
@@ -210,13 +220,12 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
     if (!contact?.email) {
       delivery = "failed";
       error = "no_email";
-    } else if (mailbox || (mailgunConfigured() && replyTo)) {
+    } else if (mailbox || (mailgunConfigured() && inbox)) {
       const senderName = conversation.agent ? `${conversation.agent.name} · ${agency?.name ?? ""}`.trim() : (agency?.name ?? "");
       const email: OutgoingEmail = {
-        from: { name: senderName, address: mailbox ? mailbox.accountEmail : replyTo! },
+        from: { name: senderName, address: mailbox ? mailbox.accountEmail : inbox! },
         to: { name: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || undefined, address: contact.email },
-        // Replies always come back through the forwarding address, so they reach the inbox even if the agent's mailbox isn't forwarded.
-        replyTo: replyTo ?? undefined,
+        replyTo: replyAddresses.length ? replyAddresses.join(", ") : undefined,
         subject,
         text: body,
         messageId,
@@ -239,7 +248,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
                 subject,
                 body: { contentType: "Text", content: body },
                 toRecipients: [{ emailAddress: { address: contact.email, name: email.to.name } }],
-                replyTo: replyTo ? [{ emailAddress: { address: replyTo } }] : [],
+                replyTo: replyAddresses.map((address) => ({ emailAddress: { address } })),
               },
               saveToSentItems: true,
             }),
@@ -253,9 +262,9 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
         delivery = "failed";
         error = e instanceof Error ? e.message : String(e);
         // The agent's own mailbox refused (expired login, revoked access): send from the agency's address instead.
-        if (mailbox && mailgunConfigured() && replyTo) {
+        if (mailbox && mailgunConfigured() && inbox) {
           try {
-            await sendWithMailgun({ ...email, from: { name: email.from.name, address: replyTo } });
+            await sendWithMailgun({ ...email, from: { name: email.from.name, address: inbox } });
             extra.mailboxError = error;
             transport = "mailgun";
             provider = "email";

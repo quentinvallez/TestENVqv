@@ -24,6 +24,7 @@ export function OccupantForm({ defaultRole, action }: { defaultRole: "owner" | "
           <option value="nl">Nederlands</option>
           <option value="fr">Français</option>
           <option value="en">English</option>
+          <option value="de">Deutsch</option>
         </select>
       </div>
       <label className="flex items-center gap-2 text-muted">

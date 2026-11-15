@@ -59,7 +59,7 @@ const script = String.raw`(function () {
 
   function mount(container) {
     var reference = container.getAttribute("data-listing");
-    var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "nl").slice(0, 2);
+    var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "en").slice(0, 2);
     if (!agency || !reference) return;
     fetch(origin + "/api/widget/resolve?agency=" + encodeURIComponent(agency) + "&ref=" + encodeURIComponent(reference))
       .then(function (response) { return response.json(); })
@@ -96,13 +96,13 @@ const script = String.raw`(function () {
 
   // Home valuation for owners: <div data-viewing-valuation></div>
   function mountValuation(container) {
-    var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "nl").slice(0, 2);
+    var lang = (container.getAttribute("data-lang") || document.documentElement.lang || "en").slice(0, 2);
     if (agency) frame(container, origin + "/embed/valuation?agency=" + encodeURIComponent(agency) + "&lang=" + lang);
   }
 
   function pageLang() {
     var scope = current.closest("[lang]");
-    return (current.getAttribute("data-lang") || (scope && scope.lang) || document.documentElement.lang || "nl").slice(0, 2);
+    return (current.getAttribute("data-lang") || (scope && scope.lang) || document.documentElement.lang || "en").slice(0, 2);
   }
 
   // Floating button at the bottom right, in the agency's colour: the valuation

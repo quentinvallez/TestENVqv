@@ -77,11 +77,28 @@ const text = {
     perMonth: "/month",
     sketch: "Simplified view of your website: it doesn't allow being shown inside another page. Live, the button sits on your own page.",
   },
+  de: {
+    preview: "Vorschau",
+    notLive: (host: string) => `So sieht der Planer auf ${host} aus. Noch nicht live: Eine Buchung hier plant und versendet nichts.`,
+    home: "Startseite",
+    question: (place: string) => `Fragen zu ${place}?`,
+    orPlan: "Oder eine Besichtigung planen?",
+    hint: (who: string) => `Wählen Sie direkt einen Termin im Kalender von ${who}.`,
+    plan: "Besichtigung planen",
+    valuationIntro: "Auf allen anderen Seiten fragen Eigentümer hier eine kostenlose Bewertung ihrer Immobilie an:",
+    valuationSteps: ["Adresse und Art der Immobilie", "Telefonnummer bestätigen", "Schätzung auf Basis von Statbel und Ihren eigenen Verkäufen", "Der Eigentümer landet als Lead in Ihrem Posteingang"],
+    picture: "Bild der Website: Diese Seite lässt sich nicht in einem anderen Fenster anzeigen.",
+    desktop: "Computer",
+    phone: "Telefon",
+    underOffer: "Unter Option",
+    perMonth: "/Monat",
+    sketch: "Vereinfachte Ansicht Ihrer Website: Sie lässt sich nicht in einem anderen Fenster anzeigen. Live erscheint die Schaltfläche auf Ihrer eigenen Seite.",
+  },
 } satisfies Record<WidgetLang, unknown>;
 
 const place = (l: Listing) => [l.street, l.houseNumber].filter(Boolean).join(" ") || l.title || l.city || "";
 const money = (n: number | null, lang: WidgetLang) =>
-  n == null ? null : new Intl.NumberFormat({ nl: "nl-BE", fr: "fr-BE", en: "en-GB" }[lang], { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+  n == null ? null : new Intl.NumberFormat({ nl: "nl-BE", fr: "fr-BE", en: "en-GB", de: "de-BE" }[lang], { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 
 export function PreviewStage({
   lang,
@@ -176,7 +193,7 @@ export function PreviewStage({
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-1">
-          {(["nl", "fr", "en"] as const).map((code) => (
+          {(["nl", "fr", "en", "de"] as const).map((code) => (
             <Link
               key={code}
               href={`/preview/${token}?lang=${code}`}

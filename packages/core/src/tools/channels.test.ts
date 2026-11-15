@@ -90,6 +90,61 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(form.get("subject")).toBe("Uw bezoek");
   });
 
+  it("lists the agents whose client emails don't leave from their own mailbox", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "id");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "secret");
+    vi.stubEnv("CALENDAR_TOKEN_KEY", "a".repeat(64));
+    const team = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.active, true)));
+    await db.insert(schema.calendarConnections).values([
+      { agencyId, agentId: team[0]!.id, provider: "google", accountEmail: "a@example.be", scopes: ["calendar", "mail"], status: "active", credentials: "x" },
+      { agencyId, agentId: team[1]!.id, provider: "microsoft", accountEmail: "b@example.be", scopes: ["calendar", "mail"], status: "expired", credentials: "x" },
+    ]);
+    const result = await runTool(tools.listAgentsWithoutMailbox, ctx, {});
+    expect(result.canConnect).toBe(true);
+    expect(result.agents.map((a) => a.agentId)).not.toContain(team[0]!.id);
+    expect(result.agents.find((a) => a.agentId === team[1]!.id)?.reason).toBe("stopped");
+    expect(result.agents.find((a) => a.agentId === team[2]!.id)?.reason).toBe("not_connected");
+    await db.delete(schema.calendarConnections).where(eq(schema.calendarConnections.agencyId, agencyId));
+  });
+
+  it("sends client replies to the agent's own mailbox and keeps only a silent copy", async () => {
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "<x>" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const [agent] = await db.select().from(schema.agents).where(eq(schema.agents.agencyId, agencyId)).limit(1);
+    const [contact] = await db.insert(schema.contacts).values({ agencyId, firstName: "Jens", email: "jens@example.be" }).returning();
+    const { conversationFor } = await import("../channels");
+    const conversation = await conversationFor(ctx, { contactId: contact!.id, agentId: agent!.id, subject: "Uw bezoek" });
+    const sent = await sendMessage(ctx, { conversationId: conversation.id, body: "Dag Jens" });
+    const form = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as URLSearchParams;
+    expect(form.get("h:Reply-To")).toMatch(new RegExp(`^${agent!.email!.replace(/[.+]/g, "\\$&")}, .+@mail\\.example\\.be$`));
+    const [ours] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
+
+    // The client answers; the copy reaching the inbox address is recorded without a draft or an unread mark.
+    await db.update(schema.conversations).set({ unread: false }).where(eq(schema.conversations.id, conversation.id));
+    const reply = await runTool(tools.receiveEmail, ctx, {
+      from: { name: "Jens", email: "jens@example.be" },
+      subject: "Re: Uw bezoek",
+      text: "Dank u, ik kom graag.",
+      messageId: "<reply-jens@example.be>",
+      inReplyTo: ours!.externalId,
+      useAi: false,
+    });
+    expect(reply).toMatchObject({ kind: "message", copyOnly: true, proposalId: null });
+    const [after] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
+    expect(after!.unread).toBe(false);
+    const [received] = await db.select().from(schema.messages).where(eq(schema.messages.externalId, "<reply-jens@example.be>"));
+    expect(received).toMatchObject({ direction: "inbound", conversationId: conversation.id });
+
+    // Turned off: replies come back to the app only.
+    await runTool(tools.updateAutomationSettings, ctx, { repliesToAgent: false });
+    await sendMessage(ctx, { conversationId: conversation.id, body: "Tot dan" });
+    const second = (fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as URLSearchParams;
+    expect(second.get("h:Reply-To")).toMatch(/^[^,]+@mail\.example\.be$/);
+    await runTool(tools.updateAutomationSettings, ctx, { repliesToAgent: true });
+  });
+
   it("invites email clients to WhatsApp and switches them over once they write first", async () => {
     vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
     vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
@@ -327,11 +382,11 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const booked = await runTool(tools.bookViewing, publicContext(agencyId), {
       listingId: listing!.id,
       startsAt: slots[4]!.start,
-      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true },
+      contact: { firstName: "Mira", email: "mira@example.be", phone: "0471 22 33 44", whatsappOptIn: true, language: "de" },
     });
     const call = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]).find(([url]) => url.includes("graph.facebook.com"));
     const payload = JSON.parse(call![1].body as string);
-    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "nl" } } });
+    expect(payload).toMatchObject({ to: "32471223344", type: "template", template: { name: "booking_confirmed", language: { code: "de" } } });
     const params = payload.template.components[0].parameters.map((p: { text: string }) => p.text);
     expect(params).toHaveLength(5);
     expect(params[0]).toBe("Mira");

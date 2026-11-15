@@ -125,7 +125,7 @@ export const seedDemoData = defineTool({
         [2, 4].map((weekday) => ({ agencyId, listingId: byRef["GNT-2011"]!.id, weekday, startMinute: 15 * 60, endMinute: 18 * 60 })),
       );
 
-      const people: [string, string, string, "nl" | "fr" | "en"][] = [
+      const people: [string, string, string, "nl" | "fr" | "en" | "de"][] = [
         ["Emma", "Claes", "emma.claes@example.com", "nl"],
         ["Lucas", "Maes", "lucas.maes@example.com", "nl"],
         ["Camille", "Lambert", "camille.lambert@example.com", "fr"],

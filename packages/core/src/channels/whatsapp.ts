@@ -9,7 +9,7 @@ import { normalizePhone } from "./phone";
  * environment is used, which is meant for pilots and for valuation codes.
  */
 
-export type WhatsAppTemplate = { name: string; language: "nl" | "fr" | "en"; params: string[] };
+export type WhatsAppTemplate = { name: string; language: "nl" | "fr" | "en" | "de"; params: string[] };
 export type WhatsAppConfig = { phoneNumberId: string; accessToken: string; displayNumber: string | null; own: boolean };
 
 const graph = "https://graph.facebook.com/v21.0";

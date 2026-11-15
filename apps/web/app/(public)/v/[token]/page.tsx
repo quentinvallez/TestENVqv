@@ -17,7 +17,7 @@ const euro = (n: number) => new Intl.NumberFormat("nl-BE", { style: "currency", 
 /** Statbel writes names in capitals ("SINT-MARTENS-LATEM"); show them as "Sint-Martens-Latem". */
 const titleCase = (name: string) => name.toLowerCase().replace(/(^|[\s\-'(])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
 const monthYear = (iso: string, lang: string) =>
-  new Intl.DateTimeFormat({ nl: "nl-BE", fr: "fr-BE", en: "en-GB" }[lang], { month: "short", year: "numeric" }).format(new Date(iso));
+  new Intl.DateTimeFormat({ nl: "nl-BE", fr: "fr-BE", en: "en-GB", de: "de-BE" }[lang], { month: "short", year: "numeric" }).format(new Date(iso));
 
 export default async function ValuationReportPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ lang?: string }> }) {
   const { token } = await params;

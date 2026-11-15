@@ -50,7 +50,7 @@ export type PreviewSite = {
   name: string | null;
   brandColor: string | null;
   siteBuilder: SiteBuilder | null;
-  language: "nl" | "fr" | "en";
+  language: "nl" | "fr" | "en" | "de";
   /** Whether the site lets another page show it in a frame; otherwise the preview shows a page rebuilt from what we read. */
   homeFramable: boolean;
   listingFramable: boolean;
@@ -107,9 +107,9 @@ export function siteName(html: string, site?: string): string | null {
 }
 
 /** The language the page is written in, for the widget's texts. */
-export function pageLanguage(html: string): "nl" | "fr" | "en" {
+export function pageLanguage(html: string): "nl" | "fr" | "en" | "de" {
   const lang = html.match(/<html\b[^>]*\blang\s*=\s*["']?([a-z]{2})/i)?.[1]?.toLowerCase();
-  return lang === "fr" || lang === "en" ? lang : "nl";
+  return lang === "nl" || lang === "fr" || lang === "de" ? lang : "en";
 }
 
 /** Overviews that list what is for sale come first: those listings are the ones a visitor books. */

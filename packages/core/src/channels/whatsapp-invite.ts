@@ -20,12 +20,14 @@ const prefilled: Record<Lang, (ref: string) => string> = {
   nl: (ref) => `Hallo, ik volg liever via WhatsApp. (ref ${ref})`,
   fr: (ref) => `Bonjour, je préfère continuer sur WhatsApp. (ref ${ref})`,
   en: (ref) => `Hi, I'd rather continue on WhatsApp. (ref ${ref})`,
+  de: (ref) => `Hallo, ich schreibe lieber über WhatsApp weiter. (ref ${ref})`,
 };
 
 const invitation: Record<Lang, string> = {
   nl: "Liever via WhatsApp? Stuur ons een bericht, dan helpen we u daar verder:",
   fr: "Vous préférez WhatsApp ? Envoyez-nous un message et nous continuerons là-bas :",
   en: "Prefer WhatsApp? Send us a message and we'll continue there:",
+  de: "Lieber über WhatsApp? Schreiben Sie uns eine Nachricht, dann machen wir dort weiter:",
 };
 
 /** The link that opens WhatsApp to the agency's number with the prefilled message. */

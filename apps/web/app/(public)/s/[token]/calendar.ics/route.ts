@@ -3,8 +3,8 @@ import { occupantAgency, publicContext } from "@viewing/core/public";
 
 export const dynamic = "force-dynamic";
 
-const titles = { nl: "Bezoek", fr: "Visite", en: "Viewing" } as const;
-const calendarNames = { nl: "Bezoeken", fr: "Visites", en: "Viewings" } as const;
+const titles = { nl: "Bezoek", fr: "Visite", en: "Viewing", de: "Besichtigung" } as const;
+const calendarNames = { nl: "Bezoeken", fr: "Visites", en: "Viewings", de: "Besichtigungen" } as const;
 
 /** The viewings of the home as a calendar feed the owner or tenant subscribes to from their phone. */
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {

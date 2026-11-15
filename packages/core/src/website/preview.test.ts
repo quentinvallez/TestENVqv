@@ -29,7 +29,9 @@ describe("widget preview", () => {
     expect(siteName(`<title>Lindeveld Vastgoed | Uw makelaar in Gent</title>`, "https://lindeveld.be/")).toBe("Lindeveld Vastgoed");
     expect(pageLanguage(`<html lang="fr-BE">`)).toBe("fr");
     expect(pageLanguage(`<html class="x" lang="nl">`)).toBe("nl");
-    expect(pageLanguage(`<html>`)).toBe("nl");
+    expect(pageLanguage(`<html lang="de">`)).toBe("de");
+    // Unknown language: English.
+    expect(pageLanguage(`<html>`)).toBe("en");
   });
 
   it("finds listings and for-sale overviews on the home page", () => {

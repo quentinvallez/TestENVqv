@@ -137,7 +137,7 @@ export const requestValuation = defineTool({
     firstName: z.string().trim().min(1).max(80),
     email: z.string().trim().toLowerCase().email().optional(),
     phone: z.string().trim().min(8).max(20),
-    language: z.enum(["nl", "fr", "en"]).default("nl"),
+    language: z.enum(["nl", "fr", "en", "de"]).default("en"),
     consent: z.literal(true),
   }),
   run: async (ctx, input) => {

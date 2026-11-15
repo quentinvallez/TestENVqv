@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
-import { conversationFor, emailAgent, inboundAddress, sendMessage } from "../channels";
+import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { parsePortalEmail } from "../channels/portals";
@@ -33,6 +33,7 @@ const visitNote = {
   nl: (portal: string, where: string) => `Aanvraag via ${portal}: wil ${where} graag bezoeken (geen bericht).`,
   fr: (portal: string, where: string) => `Demande via ${portal} : souhaite visiter ${where} (sans message).`,
   en: (portal: string, where: string) => `Request via ${portal}: would like a viewing of ${where} (no message).`,
+  de: (portal: string, where: string) => `Anfrage über ${portal}: möchte ${where} besichtigen (ohne Nachricht).`,
 };
 
 /**
@@ -80,7 +81,7 @@ export const receivePortalLead = defineTool({
     portalRef: z.string().trim().nullish().describe("The listing's code at the portal, e.g. Immoweb's 8-digit id"),
     agencyReference: z.string().trim().nullish(),
     listingId: z.string().optional().describe("When the caller already knows the listing"),
-    language: z.enum(["nl", "fr", "en"]).nullish(),
+    language: z.enum(["nl", "fr", "en", "de"]).nullish(),
     visitRequested: z.boolean().default(false).describe("The portal marked the request as a visit request"),
     externalId: z.string().max(500).optional(),
     useAi: z.boolean().default(true),
@@ -158,7 +159,7 @@ export const receivePortalLead = defineTool({
       provider: "email",
       from: { name, email: input.email ?? undefined, phone: input.phone ?? undefined },
       subject: `${portalNames[input.portal]}: ${where}`,
-      body: input.message || (input.visitRequested ? visitNote[input.language ?? "nl"](portalNames[input.portal], where) : `Request via ${portalNames[input.portal]} for ${where}, without a message.`),
+      body: input.message || (input.visitRequested ? visitNote[input.language ?? "en"](portalNames[input.portal], where) : `Request via ${portalNames[input.portal]} for ${where}, without a message.`),
       listingId: listing?.id,
       externalId: input.externalId,
       metadata: { portal: input.portal, portalRef: input.portalRef ?? null, leadId: lead!.id },
@@ -218,6 +219,12 @@ export const receiveEmail = defineTool({
 
     const body = (input.strippedText || input.text).trim();
     if (!body) return { kind: "ignored" as const, reason: "empty" };
+    // A reply to one of our emails, which also went to the agent's own mailbox: the agent answers it there.
+    const answers = [input.inReplyTo, ...input.references].filter((id): id is string => Boolean(id));
+    const replyToOurs =
+      answers.length > 0 &&
+      (await repliesToAgent(ctx)) &&
+      Boolean((await ctx.db.select({ id: messages.id }).from(messages).where(and(eq(messages.agencyId, ctx.agencyId), eq(messages.direction, "outbound"), inArray(messages.externalId, answers))).limit(1))[0]);
     const result = await receiveMessage.run(ctx, {
       channel: "email",
       provider: "email",
@@ -225,8 +232,9 @@ export const receiveEmail = defineTool({
       subject: input.subject || undefined,
       body: body.slice(0, 10000),
       externalId: input.messageId ?? undefined,
-      metadata: input.inReplyTo ? { inReplyTo: input.inReplyTo } : undefined,
+      metadata: input.inReplyTo ? { inReplyTo: input.inReplyTo, ...(replyToOurs && { copyOnly: true }) } : undefined,
       useAi: input.useAi,
+      copyOnly: replyToOurs,
     });
     return { kind: "message" as const, ...result };
   },
@@ -555,5 +563,28 @@ export const connectWhatsApp = defineTool({
       data: "disconnect" in input ? {} : { displayNumber: input.displayNumber },
     });
     return { connected: !("disconnect" in input) };
+  },
+});
+
+export const listAgentsWithoutMailbox = defineTool({
+  name: "agents_list_without_mailbox",
+  description:
+    "Active agents whose client emails don't leave from their own Gmail or Outlook: never connected, or the connection stopped working. Their emails go from the agency's inbox address instead.",
+  mutates: false,
+  input: z.object({}),
+  run: async (ctx) => {
+    const team = await ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true))).orderBy(agents.name);
+    const connections = await ctx.db
+      .select({ agentId: calendarConnections.agentId, scopes: calendarConnections.scopes, status: calendarConnections.status })
+      .from(calendarConnections)
+      .where(eq(calendarConnections.agencyId, ctx.agencyId));
+    const missing = team
+      .map((agent) => {
+        const mail = connections.filter((c) => c.agentId === agent.id && c.scopes.includes("mail"));
+        if (mail.some((c) => c.status === "active")) return null;
+        return { agentId: agent.id, name: agent.name, reason: mail.length ? ("stopped" as const) : ("not_connected" as const) };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+    return { agents: missing, total: team.length, canConnect: oauthConfigured("google") || oauthConfigured("microsoft") };
   },
 });

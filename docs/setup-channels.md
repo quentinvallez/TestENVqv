@@ -14,7 +14,7 @@ Until these are set, every message is stored with "Not delivered" and nothing re
 
 ## 1. Email (Mailgun EU)
 
-Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be` (Settings → Channels). Mail sent from the platform uses it as Reply-To, so client replies always land in the inbox, even when an agent sends from Gmail or Outlook. Agents without a connected mailbox send from that address.
+Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be` (Settings → Channels). Agents without a connected mailbox send from that address. Client emails carry Reply-To the agent's own address plus the inbox address, so a reply lands in the agent's Outlook or Gmail and the app keeps a silent copy (no draft) to stop check-ins. With "Client replies go to the agent's mailbox" turned off in Settings, Reply-To is the inbox address only and replies are answered in the app.
 
 1. Create an account at https://signup.mailgun.com. When asked, pick the **EU** region (the region can't be changed later for a domain).
 2. **Sending → Domains → Add new domain**: a subdomain you own, e.g. `mail.yourdomain.be`, region **EU**.
@@ -48,7 +48,7 @@ Other mail from the portals (invoices, newsletters) is ignored. Each lead become
 
 The same client asking twice about the same home adds to the existing lead. A lead whose listing can't be matched still comes in, without a listing.
 
-The parser reads labelled fields ("Naam:", "Nom :", "E-mail:", "Telefoon:", "Message:") in Dutch, French and English. Portals change their emails from time to time; when a lead comes in without a name or listing, send the email (with personal details blurred) so the parser can be adjusted.
+The parser reads labelled fields ("Naam:", "Nom :", "E-mail:", "Telefoon:", "Message:") in Dutch, French, German and English. Portals change their emails from time to time; when a lead comes in without a name or listing, send the email (with personal details blurred) so the parser can be adjusted.
 
 Direct portal integrations (Immoweb's lead API for software partners) can replace the forwarding later; they call the same `portal_leads_receive` tool.
 
@@ -80,71 +80,83 @@ WhatsApp only lets a business start a conversation with someone who agreed to it
 
 WhatsApp allows free text only within 24 hours of the client's last message. After that only pre-approved **templates** can start a conversation. Replies drafted by the planner are almost always inside the window. Reminders and follow-ups use these templates; when the window is closed and no template applies, the message goes by email if we have the client's address.
 
-Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`), French (`fr`) and English (`en`), with exactly these names and variables:
+Create them in **WhatsApp Manager → Message templates**, each in Dutch (`nl`), French (`fr`), English (`en`) and German (`de`), with exactly these names and variables. A client whose language we don't know gets English:
 
 **booking_confirmed** (category Utility). Sent when a client books or moves a viewing (or a valuation visit) on the website and ticked "confirmation on WhatsApp". Variables: 1 first name, 2 date and time, 3 address, 4 agent name, 5 link to move or cancel. Meta doesn't accept a variable at the very end, so keep the closing words.
 - nl: Dag {{1}}, uw afspraak op {{2}} is bevestigd. Adres: {{3}}. U wordt ontvangen door {{4}}. Verplaatsen of annuleren kan via {{5}}. Tot dan!
 - fr: Bonjour {{1}}, votre rendez-vous du {{2}} est confirmé. Adresse : {{3}}. Vous serez reçu(e) par {{4}}. Pour déplacer ou annuler : {{5}}. À bientôt !
 - en: Hi {{1}}, your appointment on {{2}} is confirmed. Address: {{3}}. You'll meet {{4}}. To move or cancel: {{5}}. See you then!
+- de: Guten Tag {{1}}, Ihr Termin am {{2}} ist bestätigt. Adresse: {{3}}. Sie werden von {{4}} empfangen. Verschieben oder absagen können Sie über {{5}}. Bis dann!
 
 **viewing_reminder** (category Utility). Variables: 1 first name, 2 address, 3 date and time, 4 agent name.
 - nl: Dag {{1}}, een herinnering aan uw bezoek aan {{2}} op {{3}} met {{4}}. Past het toch niet? Antwoord gerust op dit bericht.
 - fr: Bonjour {{1}}, petit rappel de votre visite de {{2}} le {{3}} avec {{4}}. Un empêchement ? Répondez simplement à ce message.
 - en: Hi {{1}}, a reminder of your viewing at {{2}} on {{3}} with {{4}}. Can't make it? Just reply to this message.
+- de: Guten Tag {{1}}, eine Erinnerung an Ihre Besichtigung von {{2}} am {{3}} mit {{4}}. Passt es doch nicht? Antworten Sie einfach auf diese Nachricht.
 
 **no_show_rebook** (category Utility). Variables: 1 first name, 2 address.
 - nl: Dag {{1}}, we hebben u gemist bij het bezoek aan {{2}}. Wilt u een nieuw moment plannen? Antwoord gerust op dit bericht.
 - fr: Bonjour {{1}}, nous ne vous avons pas vu à la visite de {{2}}. Souhaitez-vous fixer un nouveau rendez-vous ? Répondez simplement à ce message.
 - en: Hi {{1}}, we missed you at the viewing of {{2}}. Would you like to plan a new time? Just reply to this message.
+- de: Guten Tag {{1}}, wir haben Sie bei der Besichtigung von {{2}} vermisst. Möchten Sie einen neuen Termin vereinbaren? Antworten Sie einfach auf diese Nachricht.
 
 **viewing_cancelled** (category Utility). Sent when a listing with planned viewings goes under option, is sold or rented. Variables: 1 first name, 2 address, 3 date and time.
 - nl: Dag {{1}}, uw bezoek aan {{2}} op {{3}} gaat helaas niet door: het pand is niet langer beschikbaar. Antwoord gerust op dit bericht, dan zoeken we iets anders voor u.
 - fr: Bonjour {{1}}, votre visite de {{2}} le {{3}} est malheureusement annulée : le bien n'est plus disponible. Répondez simplement à ce message et nous chercherons autre chose pour vous.
 - en: Hi {{1}}, your viewing at {{2}} on {{3}} is unfortunately cancelled: the property is no longer available. Just reply to this message and we'll look for something else for you.
+- de: Guten Tag {{1}}, Ihre Besichtigung von {{2}} am {{3}} findet leider nicht statt: Die Immobilie ist nicht mehr verfügbar. Antworten Sie einfach auf diese Nachricht, dann suchen wir etwas anderes für Sie.
 
 **lead_nudge** (Meta will likely classify it as Marketing, which costs more per message). Variables: 1 first name, 2 address.
 - nl: Dag {{1}}, bent u nog geïnteresseerd in {{2}}? We plannen graag een bezoek met u in. Antwoord gerust op dit bericht.
 - fr: Bonjour {{1}}, êtes-vous toujours intéressé(e) par {{2}} ? Nous organisons volontiers une visite. Répondez simplement à ce message.
 - en: Hi {{1}}, are you still interested in {{2}}? We'd be happy to plan a viewing. Just reply to this message.
+- de: Guten Tag {{1}}, sind Sie noch an {{2}} interessiert? Wir planen gerne eine Besichtigung mit Ihnen. Antworten Sie einfach auf diese Nachricht.
 
 ### Templates for owners and tenants
 
 Alerts to the occupants of a listing (see "Owners and tenants" in the README) use these, all category Utility:
 
-**occupant_invite**. Variables: 1 first name, 2 address.
-- nl: Dag {{1}}, wij plannen de bezoeken aan {{2}}. Antwoord op dit bericht om de link te krijgen waarmee u aangeeft wanneer de woning bezocht kan worden.
-- fr: Bonjour {{1}}, nous organisons les visites de {{2}}. Répondez à ce message pour recevoir le lien qui vous permet d'indiquer quand le bien peut être visité.
-- en: Hi {{1}}, we're planning the viewings of {{2}}. Reply to this message to get the link where you say when the home can be visited.
+**occupant_invite**. Variables: 1 first name, 2 address, 3 link to their page.
+- nl: Dag {{1}}, wij plannen de bezoeken aan {{2}}. Via deze link geeft u aan wanneer de woning bezocht kan worden: {{3}} Alvast bedankt!
+- fr: Bonjour {{1}}, nous organisons les visites de {{2}}. Indiquez via ce lien quand le bien peut être visité : {{3}} Merci d'avance !
+- en: Hi {{1}}, we're planning the viewings of {{2}}. Use this link to say when the home can be visited: {{3}} Thank you!
+- de: Guten Tag {{1}}, wir planen die Besichtigungen von {{2}}. Über diesen Link geben Sie an, wann die Immobilie besichtigt werden kann: {{3}} Vielen Dank!
 
-**occupant_nudge**. Variables: 1 first name, 2 address.
-- nl: Dag {{1}}, we hebben nog geen momenten ontvangen waarop {{2}} bezocht kan worden. Antwoord op dit bericht om uw link opnieuw te krijgen.
-- fr: Bonjour {{1}}, nous n'avons pas encore reçu les moments où {{2}} peut être visité. Répondez à ce message pour recevoir à nouveau votre lien.
-- en: Hi {{1}}, we haven't received any times yet when {{2}} can be visited. Reply to this message to get your link again.
+**occupant_nudge**. Variables: 1 first name, 2 address, 3 link to their page.
+- nl: Dag {{1}}, we hebben nog geen momenten ontvangen waarop {{2}} bezocht kan worden. U kunt ze hier doorgeven: {{3}} Alvast bedankt!
+- fr: Bonjour {{1}}, nous n'avons pas encore reçu les moments où {{2}} peut être visité. Vous pouvez les indiquer ici : {{3}} Merci d'avance !
+- en: Hi {{1}}, we haven't received any times yet when {{2}} can be visited. You can add them here: {{3}} Thank you!
+- de: Guten Tag {{1}}, wir haben noch keine Zeiten erhalten, zu denen {{2}} besichtigt werden kann. Sie können sie hier angeben: {{3}} Vielen Dank!
 
 **occupant_viewing_booked**. Variables: 1 first name, 2 address, 3 date and time, 4 visitor (first name and initial).
 - nl: Dag {{1}}, er is een bezoek gepland aan {{2}} op {{3}} ({{4}}).
 - fr: Bonjour {{1}}, une visite de {{2}} est prévue le {{3}} ({{4}}).
 - en: Hi {{1}}, a viewing of {{2}} is booked for {{3}} ({{4}}).
+- de: Guten Tag {{1}}, eine Besichtigung von {{2}} ist für {{3}} geplant ({{4}}).
 
 **occupant_viewing_moved**. Variables: 1 first name, 2 address, 3 old date and time, 4 new date and time.
 - nl: Dag {{1}}, het bezoek aan {{2}} van {{3}} is verplaatst naar {{4}}.
 - fr: Bonjour {{1}}, la visite de {{2}} prévue le {{3}} est déplacée au {{4}}.
 - en: Hi {{1}}, the viewing of {{2}} on {{3}} has moved to {{4}}.
+- de: Guten Tag {{1}}, die Besichtigung von {{2}} am {{3}} wurde auf {{4}} verschoben.
 
 **occupant_viewing_cancelled**. Variables: 1 first name, 2 address, 3 date and time.
 - nl: Dag {{1}}, het bezoek aan {{2}} van {{3}} gaat niet door.
 - fr: Bonjour {{1}}, la visite de {{2}} prévue le {{3}} est annulée.
 - en: Hi {{1}}, the viewing of {{2}} on {{3}} is cancelled.
+- de: Guten Tag {{1}}, die Besichtigung von {{2}} am {{3}} findet nicht statt.
 
 **occupant_digest**. Variables: 1 first name, 2 address, 3 times (e.g. "10:00, 10:30").
 - nl: Dag {{1}}, morgen zijn er bezoeken aan {{2}} om {{3}}.
 - fr: Bonjour {{1}}, demain, des visites de {{2}} sont prévues à {{3}}.
 - en: Hi {{1}}, tomorrow there are viewings of {{2}} at {{3}}.
+- de: Guten Tag {{1}}, morgen finden Besichtigungen von {{2}} um {{3}} statt.
 
-**viewing_move_request** (to a visitor whose viewing the occupants can't receive). Variables: 1 first name, 2 address, 3 date and time.
-- nl: Dag {{1}}, de bewoners van {{2}} kunnen u helaas niet ontvangen op {{3}}. Antwoord op dit bericht, dan zoeken we samen een ander moment.
-- fr: Bonjour {{1}}, les occupants de {{2}} ne pourront malheureusement pas vous recevoir le {{3}}. Répondez à ce message et nous trouverons un autre moment ensemble.
-- en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Reply to this message and we'll find another time together.
+**viewing_move_request** (to a visitor whose viewing the occupants can't receive). Variables: 1 first name, 2 address, 3 date and time, 4 link to pick another time.
+- nl: Dag {{1}}, de bewoners van {{2}} kunnen u helaas niet ontvangen op {{3}}. Kies hier een ander moment: {{4}} Excuses voor het ongemak.
+- fr: Bonjour {{1}}, les occupants de {{2}} ne pourront malheureusement pas vous recevoir le {{3}}. Choisissez un autre moment ici : {{4}} Désolés pour le désagrément.
+- en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Pick another time here: {{4}} Sorry for the inconvenience.
+- de: Guten Tag {{1}}, die Bewohner von {{2}} können Sie am {{3}} leider nicht empfangen. Wählen Sie hier einen anderen Termin: {{4}} Entschuldigen Sie die Unannehmlichkeiten.
 
 ## For developers
 

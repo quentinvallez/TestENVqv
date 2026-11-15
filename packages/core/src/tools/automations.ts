@@ -57,6 +57,7 @@ export const updateAutomationSettings = defineTool({
     sendOccupantAlertsAutomatically: z.boolean().optional(),
     agentAlerts: z.boolean().optional(),
     whatsappInvite: z.boolean().optional().describe("End client emails with a link to continue on WhatsApp, where the client writes first"),
+    repliesToAgent: z.boolean().optional().describe("Send client email replies to the agent's own mailbox (the inbox address keeps a silent copy) instead of answering them in the app"),
     portalLeadCopies: z.boolean().optional().describe("Email each portal lead to the listing's agent (when the portals send leads straight to the inbox address)"),
     replyToPortalLeadsAutomatically: z.boolean().optional(),
     sendBookingConfirmationsAutomatically: z.boolean().optional().describe("Confirm a booking or move the client made on the website on their own (fixed text) instead of waiting for approval"),

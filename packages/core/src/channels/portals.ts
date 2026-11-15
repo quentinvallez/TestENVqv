@@ -19,7 +19,7 @@ export type PortalLead = {
   portalRef: string | null;
   /** The agency's own reference, when the portal repeats it. */
   agencyReference: string | null;
-  language: "nl" | "fr" | "en" | null;
+  language: "nl" | "fr" | "en" | "de" | null;
   /** The portal's subject or request type says the client asks for a visit ("Aanvraag bezoek", "Demande de visite"). */
   visitRequested: boolean;
 };
@@ -46,6 +46,7 @@ const labels = {
 const visitWords = /\b(bezoek\w*|bezichtig\w*|visite[rs]?|viewing|visit)\b/i;
 
 const french = /\b(nom|prénom|téléphone|votre|demande|bien|visite|référence)\b/i;
+const german = /\b(vorname|nachname|telefon|nachricht|anfrage|besichtigung|immobilie|ihre)\b/i;
 const dutch = /\b(naam|voornaam|telefoon|bericht|aanvraag|pand|bezoek|referentie|uw)\b/i;
 
 function detectPortal(email: InboundEmail): Portal | null {
@@ -143,7 +144,7 @@ export function parsePortalEmail(email: InboundEmail): PortalLead | null {
     message,
     portalRef: portalRefFrom(portal, text, first(fields, labels.portalRef)),
     agencyReference: first(fields, labels.reference),
-    language: french.test(sample) ? "fr" : dutch.test(sample) ? "nl" : /\b(name|phone|message|request)\b/i.test(sample) ? "en" : null,
+    language: french.test(sample) ? "fr" : german.test(sample) ? "de" : dutch.test(sample) ? "nl" : /\b(name|phone|message|request)\b/i.test(sample) ? "en" : null,
     visitRequested,
   };
 }

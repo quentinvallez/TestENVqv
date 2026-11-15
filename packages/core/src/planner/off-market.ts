@@ -71,7 +71,7 @@ export async function draftOffMarketNotices(ctx: ToolContext, listingId: string,
     const when = formatSlot(apt.startsAt, lang);
     const body = composeMessage({
       lang,
-      body: `${offMarketTemplates[reason][lang]({ name: apt.contact.firstName ?? "", address: address || { nl: "Het pand", fr: "Le bien", en: "The property" }[lang], agentName, other: when })}\n\n${(lines.length ? offMarketClosing.similar : offMarketClosing.none)[lang]}`,
+      body: `${offMarketTemplates[reason][lang]({ name: apt.contact.firstName ?? "", address: address || { nl: "Het pand", fr: "Le bien", en: "The property", de: "Die Immobilie" }[lang], agentName, other: when })}\n\n${(lines.length ? offMarketClosing.similar : offMarketClosing.none)[lang]}`,
       lines,
       signature: signature(lang, agentName, agency?.name ?? "", conversation.channel),
     });
