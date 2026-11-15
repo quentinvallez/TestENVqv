@@ -565,3 +565,26 @@ export const connectWhatsApp = defineTool({
     return { connected: !("disconnect" in input) };
   },
 });
+
+export const listAgentsWithoutMailbox = defineTool({
+  name: "agents_list_without_mailbox",
+  description:
+    "Active agents whose client emails don't leave from their own Gmail or Outlook: never connected, or the connection stopped working. Their emails go from the agency's inbox address instead.",
+  mutates: false,
+  input: z.object({}),
+  run: async (ctx) => {
+    const team = await ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true))).orderBy(agents.name);
+    const connections = await ctx.db
+      .select({ agentId: calendarConnections.agentId, scopes: calendarConnections.scopes, status: calendarConnections.status })
+      .from(calendarConnections)
+      .where(eq(calendarConnections.agencyId, ctx.agencyId));
+    const missing = team
+      .map((agent) => {
+        const mail = connections.filter((c) => c.agentId === agent.id && c.scopes.includes("mail"));
+        if (mail.some((c) => c.status === "active")) return null;
+        return { agentId: agent.id, name: agent.name, reason: mail.length ? ("stopped" as const) : ("not_connected" as const) };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+    return { agents: missing, total: team.length, canConnect: oauthConfigured("google") || oauthConfigured("microsoft") };
+  },
+});

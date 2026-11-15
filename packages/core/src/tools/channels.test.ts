@@ -90,6 +90,23 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(form.get("subject")).toBe("Uw bezoek");
   });
 
+  it("lists the agents whose client emails don't leave from their own mailbox", async () => {
+    vi.stubEnv("GOOGLE_CLIENT_ID", "id");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "secret");
+    vi.stubEnv("CALENDAR_TOKEN_KEY", "a".repeat(64));
+    const team = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.active, true)));
+    await db.insert(schema.calendarConnections).values([
+      { agencyId, agentId: team[0]!.id, provider: "google", accountEmail: "a@example.be", scopes: ["calendar", "mail"], status: "active", credentials: "x" },
+      { agencyId, agentId: team[1]!.id, provider: "microsoft", accountEmail: "b@example.be", scopes: ["calendar", "mail"], status: "expired", credentials: "x" },
+    ]);
+    const result = await runTool(tools.listAgentsWithoutMailbox, ctx, {});
+    expect(result.canConnect).toBe(true);
+    expect(result.agents.map((a) => a.agentId)).not.toContain(team[0]!.id);
+    expect(result.agents.find((a) => a.agentId === team[1]!.id)?.reason).toBe("stopped");
+    expect(result.agents.find((a) => a.agentId === team[2]!.id)?.reason).toBe("not_connected");
+    await db.delete(schema.calendarConnections).where(eq(schema.calendarConnections.agencyId, agencyId));
+  });
+
   it("sends client replies to the agent's own mailbox and keeps only a silent copy", async () => {
     vi.stubEnv("MAILGUN_API_KEY", "key-test");
     vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
