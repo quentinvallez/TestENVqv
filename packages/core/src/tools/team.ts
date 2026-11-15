@@ -133,9 +133,54 @@ export const unlinkAgentLogin = defineTool({
   },
 });
 
-/** The agent record of a logged-in user, for "my page". */
-export async function agentForUser(ctx: ToolContext, userId: string) {
-  const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.userId, userId)));
-  return agent?.id ?? null;
-}
+export const getMyAgent = defineTool({
+  name: "team_get_my_agent",
+  description: "The agent record of the logged-in user, for their own page (hours, mailbox, viewings).",
+  mutates: false,
+  input: z.object({}),
+  run: async (ctx) => {
+    if (ctx.actor.type !== "user" || !ctx.actor.id) return { agentId: null };
+    const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.userId, ctx.actor.id)));
+    return { agentId: agent?.id ?? null };
+  },
+});
+
+const resetSubjects: Record<Lang, string> = {
+  nl: "Kies een nieuw wachtwoord",
+  fr: "Choisissez un nouveau mot de passe",
+  en: "Choose a new password",
+  de: "Wählen Sie ein neues Passwort",
+};
+
+const resetBodies: Record<Lang, (v: { name: string; agency: string; link: string }) => string> = {
+  nl: (v) =>
+    `Dag ${v.name},\n\nU vroeg een nieuw wachtwoord aan voor ${v.agency}. Kies het hier: ${v.link}\n\nDe link is 1 uur geldig. Vroeg u dit niet aan? Dan hoeft u niets te doen; uw wachtwoord blijft hetzelfde.`,
+  fr: (v) =>
+    `Bonjour ${v.name},\n\nVous avez demandé un nouveau mot de passe pour ${v.agency}. Choisissez-le ici : ${v.link}\n\nLe lien est valable 1 heure. Vous n'avez rien demandé ? Ne faites rien ; votre mot de passe reste le même.`,
+  en: (v) =>
+    `Hi ${v.name},\n\nYou asked for a new password for ${v.agency}. Choose it here: ${v.link}\n\nThe link works for 1 hour. Didn't ask for this? Then do nothing; your password stays the same.`,
+  de: (v) =>
+    `Guten Tag ${v.name},\n\nSie haben ein neues Passwort für ${v.agency} angefordert. Wählen Sie es hier: ${v.link}\n\nDer Link ist 1 Stunde gültig. Haben Sie das nicht angefordert? Dann müssen Sie nichts tun; Ihr Passwort bleibt gleich.`,
+};
+
+export const sendPasswordReset = defineTool({
+  name: "team_send_password_reset",
+  description: "Email a login of the agency the link to choose a new password, in the agent's language.",
+  mutates: true,
+  input: z.object({ userId: z.string(), email: z.string(), name: z.string().optional(), link: z.string() }),
+  run: async (ctx, input) => {
+    const [login] = await ctx.db.select({ id: member.id }).from(member).where(and(eq(member.organizationId, ctx.agencyId), eq(member.userId, input.userId)));
+    if (!login) throw new Error("Not a login of this agency");
+    const [agent] = await ctx.db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.agencyId, ctx.agencyId), sql`(${agents.userId} = ${input.userId} or lower(${agents.email}) = ${input.email.toLowerCase()})`));
+    const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, ctx.agencyId), columns: { name: true } });
+    const lang = toLang(agent?.languages[0]);
+    const name = (agent?.name ?? input.name ?? "").split(" ")[0] ?? "";
+    const sent = await emailAgent(ctx, { agentId: agent?.id ?? null, to: input.email, subject: resetSubjects[lang], text: resetBodies[lang]({ name, agency: agency?.name ?? "", link: input.link }) });
+    await recordEvent(ctx, { type: "team.password_reset_sent", subjectType: "user", subjectId: input.userId, data: { delivery: sent.delivery } });
+    return { delivery: sent.delivery, error: sent.error ?? null };
+  },
+});
 

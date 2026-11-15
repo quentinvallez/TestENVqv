@@ -33,7 +33,7 @@ async function createAgency(name: string) {
   if (error) throw new Error(error.message);
 }
 
-export function AuthForm({ mode }: { mode: "login" | "signup" | "onboarding" }) {
+export function AuthForm({ mode, notice }: { mode: "login" | "signup" | "onboarding"; notice?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -79,6 +79,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "onboarding" }) 
       </div>
       {mode === "signup" && <Field label="Your name" name="name" required autoComplete="name" placeholder="Sofie Peeters" />}
       {mode !== "login" && <Field label="Agency name" name="agency" required placeholder="Immo Peeters" />}
+      {notice && <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-success">{notice}</p>}
       {mode !== "onboarding" && (
         <>
           <Field label="Work email" name="email" type="email" required autoComplete="email" placeholder="you@agency.be" />
@@ -90,6 +91,11 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "onboarding" }) 
             minLength={8}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
+          {mode === "login" && (
+            <Link href="/forgot-password" className="-mt-2 self-end text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">
+              Forgot password?
+            </Link>
+          )}
         </>
       )}
       {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{error}</p>}

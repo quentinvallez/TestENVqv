@@ -37,7 +37,7 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 
 ## Team and logins
 
-- Logins are Better Auth organization members (`member`, `invitation`); an agent record is tied to its login by `agents.userId`, matched by email on accept (`team_*` tools in `tools/team.ts`). Admins (`owner`/`admin`) invite agents from the agent page (link at `/invite/<id>`, emailed in the agent's language via `emailAgent`, valid 7 days), change roles and remove logins; removing a login keeps the agent and their viewings. Agents (`member`) can't change settings: server actions that change settings start with `requireAdmin()`.
+- Logins are Better Auth organization members (`member`, `invitation`); an agent record is tied to its login by `agents.userId`, matched by email on accept (`team_*` tools in `tools/team.ts`). Admins (`owner`/`admin`) invite agents from the agent page (link at `/invite/<id>`, emailed in the agent's language via `emailAgent`, valid 7 days), change roles and remove logins; removing a login keeps the agent and their viewings. Agents (`member`) can't change settings: server actions that change settings start with `requireAdmin()`. "Forgot password" (`/forgot-password`, `/reset-password`) emails a 1-hour link through `team_send_password_reset` (the login's agency via `agencyOfUser`); `team_get_my_agent` gives the menu's "My page" link.
 
 ## Owners and tenants
 

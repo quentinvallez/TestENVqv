@@ -232,3 +232,14 @@ export async function invitationForLink(invitationId: string) {
     state: invitation.status !== "pending" ? (invitation.status as "accepted" | "rejected" | "canceled") : invitation.expiresAt.getTime() < Date.now() ? ("expired" as const) : ("pending" as const),
   };
 }
+
+/** The agency a login belongs to (its oldest membership), for emails sent before anyone is logged in. */
+export async function agencyOfUser(userId: string) {
+  const [row] = await db
+    .select({ agencyId: schema.member.organizationId })
+    .from(schema.member)
+    .where(eq(schema.member.userId, userId))
+    .orderBy(schema.member.createdAt)
+    .limit(1);
+  return row?.agencyId ?? null;
+}

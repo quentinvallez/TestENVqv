@@ -1,5 +1,6 @@
 import { db, schema } from "@viewing/db";
 import { runTool, tools, type ToolContext } from "@viewing/core";
+import { agencyOfUser } from "@viewing/core/public";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
@@ -14,7 +15,19 @@ const vercelOrigins = [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL, pr
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   trustedOrigins: vercelOrigins,
-  emailAndPassword: { enabled: true, minPasswordLength: 8 },
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 8,
+    // "Forgot password": the link works for an hour and logs out every other session once used.
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      const agencyId = await agencyOfUser(user.id);
+      if (!agencyId) return console.error("Password reset for a login without an agency", user.id);
+      const ctx: ToolContext = { db, agencyId, actor: { type: "system", id: null } };
+      await runTool(tools.sendPasswordReset, ctx, { userId: user.id, email: user.email, name: user.name, link: url });
+    },
+  },
   session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   plugins: [
     organization({

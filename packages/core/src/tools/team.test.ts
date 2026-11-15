@@ -1,5 +1,6 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { agencyOfUser } from "../public";
 import { tools } from "../registry";
 import { runTool, type ToolContext } from "../tool";
 
@@ -60,6 +61,26 @@ describe.skipIf(!process.env.DATABASE_URL)("team logins", () => {
     await runTool(tools.unlinkAgentLogin, ctx, { agentId: agent!.id });
     const [after] = await db.select().from(schema.agents).where(and(eq(schema.agents.agencyId, agencyId), eq(schema.agents.id, agent!.id)));
     expect(after!.userId).toBeNull();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("emails a login of the agency the link to choose a new password, in the agent's language", async () => {
+    vi.stubEnv("MAILGUN_API_KEY", "key-test");
+    vi.stubEnv("MAILGUN_DOMAIN", "mail.example.be");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "<x>" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await agencyOfUser(ownerId)).toBe(agencyId);
+    await db.insert(schema.agents).values({ agencyId, userId: ownerId, name: "Marc Owner", email: `${ownerId}@example.be`, languages: ["nl"] });
+    const link = "http://localhost/api/auth/reset-password/tok?callbackURL=%2Freset-password";
+    const sent = await runTool(tools.sendPasswordReset, ctx, { userId: ownerId, email: `${ownerId}@example.be`, link });
+    expect(sent.delivery).toBe("sent");
+    const form = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as URLSearchParams;
+    expect(form.get("subject")).toBe("Kies een nieuw wachtwoord");
+    expect(form.get("text")).toContain("Dag Marc");
+    expect(form.get("text")).toContain(link);
+    // Someone who isn't a login of this agency gets nothing.
+    await expect(runTool(tools.sendPasswordReset, ctx, { userId: newId("usr"), email: "x@example.be", link })).rejects.toThrow();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });

@@ -20,7 +20,7 @@ import { addListingOccupant, getOccupantPage, listListingOccupants, reportOccupa
 import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
-import { getAgentLogin, linkAgentLogin, sendInvitationEmail, unlinkAgentLogin } from "./tools/team";
+import { getAgentLogin, getMyAgent, linkAgentLogin, sendInvitationEmail, sendPasswordReset, unlinkAgentLogin } from "./tools/team";
 export const tools = {
   listListings,
   getWidgetSettings,
@@ -95,6 +95,8 @@ export const tools = {
   channelsStatus,
   listAgentsWithoutMailbox,
   getAgentLogin,
+  getMyAgent,
+  sendPasswordReset,
   sendInvitationEmail,
   linkAgentLogin,
   unlinkAgentLogin,
