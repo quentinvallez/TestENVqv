@@ -1,8 +1,5 @@
 import { schema } from "@viewing/db";
-import { Inngest } from "inngest";
 import type { ToolContext } from "./tool";
-
-export const inngest = new Inngest({ id: "viewing" });
 
 type EventInput = {
   type: string;
@@ -11,10 +8,7 @@ type EventInput = {
   data?: Record<string, unknown>;
 };
 
-/**
- * Appends to the event log and publishes the event so agent workflows can react.
- * Publishing is skipped until Inngest is configured for the environment.
- */
+/** Appends to the event log (the activity feed and the agents' memory). */
 export async function recordEvent(ctx: ToolContext, event: EventInput) {
   const [row] = await ctx.db
     .insert(schema.events)
@@ -29,11 +23,5 @@ export async function recordEvent(ctx: ToolContext, event: EventInput) {
     })
     .returning();
 
-  if (process.env.INNGEST_EVENT_KEY || process.env.INNGEST_DEV) {
-    await inngest.send({
-      name: event.type,
-      data: { eventId: row!.id, agencyId: ctx.agencyId, subjectId: event.subjectId, ...event.data },
-    });
-  }
   return row!;
 }
