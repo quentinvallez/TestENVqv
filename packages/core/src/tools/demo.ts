@@ -1,7 +1,9 @@
 import { and, eq, inArray, isNull, notExists, schema, sql } from "@viewing/db";
 import type { Language } from "@viewing/db/schema";
 import { z } from "zod";
-import { draftFollowUp, handleConversation } from "../planner/agent";
+import { absoluteUrl, pickSpreadSlots } from "../planner/agent";
+import { composeMessage, detailLabels, formatSlot, linkLabels, occupantLabels, occupantSubject, occupantTemplates, signature, templates, toLang, type Lang } from "../planner/language";
+import { availableSlots } from "./booking";
 import { runTool } from "../tool";
 import { requestValuation, verifyValuation } from "./valuations";
 import { zonedDay, zonedTime } from "../time";
@@ -155,12 +157,12 @@ export const seedDemoData = defineTool({
         .returning();
 
       type Stage = "new" | "invited" | "booked" | "visited" | "follow_up" | "offer";
-      const leadPlan: [number, string, Stage, "immoweb" | "zimmo" | "website", string][] = [
-        [0, "ANT-1042", "new", "immoweb", "Is het appartement nog beschikbaar? Graag een bezoek."],
-        [1, "ANT-1043", "new", "immoweb", "Wij zijn geïnteresseerd en willen graag komen kijken."],
-        [2, "GNT-2011", "new", "zimmo", "Bonjour, je souhaiterais visiter ce bien."],
-        [3, "ANT-1051", "invited", "immoweb", "Vanaf wanneer is het penthouse beschikbaar?"],
-        [4, "GNT-2020", "invited", "website", "Graag meer info over de tuin en de EPC."],
+      const leadPlan: [number, string, Stage, "immoweb" | "zimmo" | "immovlan" | "website", string][] = [
+        [0, "ANT-1042", "invited", "immoweb", "Is het appartement nog beschikbaar? Graag een bezoek."],
+        [1, "ANT-1043", "invited", "immoweb", "Wij zijn geïnteresseerd en willen graag komen kijken."],
+        [2, "GNT-2011", "invited", "zimmo", "Bonjour, je souhaiterais visiter ce bien."],
+        [3, "ANT-1051", "invited", "immovlan", "Is het penthouse nog te huur? Ik zou het graag bezichtigen."],
+        [4, "GNT-2011", "invited", "website", "Graag meer info over de tuin en de EPC."],
         [5, "ANT-1042", "booked", "immoweb", "Je voudrais visiter samedi si possible."],
         [6, "GNT-2014", "booked", "website", "Hi, I'd like to see the studio this week."],
         [7, "ANT-1043", "booked", "immoweb", "Kan ik dinsdag na 17u langskomen?"],
@@ -187,13 +189,14 @@ export const seedDemoData = defineTool({
 
       // Viewings spread over the coming days at office-hour times.
       const at = (dayOffset: number, hour: number, minute = 0) => zonedTime({ ...zonedDay(new Date(), dayOffset), hour, minute });
-      const appointmentPlan: [number, number, number, number, "scheduled" | "confirmed" | "completed"][] = [
+      const appointmentPlan: [number, number, number, number, "scheduled" | "confirmed" | "completed" | "no_show" | "cancelled"][] = [
         [5, 0, 10, 0, "confirmed"],
         [6, 0, 14, 30, "confirmed"],
         [7, 1, 17, 30, "scheduled"],
         [5, 2, 11, 0, "scheduled"],
         [8, -2, 15, 0, "completed"],
-        [11, -1, 10, 30, "completed"],
+        [11, -1, 10, 30, "no_show"],
+        [4, 2, 16, 0, "cancelled"],
         [9, 3, 16, 0, "confirmed"],
       ];
       const appointmentRows = await tx
@@ -255,134 +258,267 @@ export const seedDemoData = defineTool({
         await tx.update(leads).set({ qualification }).where(eq(leads.id, leadRows[index]!.id));
       }
 
-      return { leadRows, appointmentRows, listingRows, contactRows };
+      return { leadRows, appointmentRows, listingRows, contactRows, owner: owner! };
     });
 
-    // Conversations as they would arrive in the agents' Outlook and Gmail mailboxes and the business WhatsApp.
+    // The inbox shows what the planner does on its own: portal leads with the automatic reply, website bookings with
+    // their confirmation, and the reminders, follow-ups, new times after a no-show, check-ins and owner alerts it sent.
+    // Rows are written directly (never through sendMessage), so loading the demo never emails or texts anyone.
     const hoursAgo = (h: number) => new Date(Date.now() - h * 3600 * 1000);
-    const { leadRows, appointmentRows, contactRows } = seeded;
-    type Seed = {
-      lead: number;
-      channel: "email" | "whatsapp";
-      provider: "outlook" | "gmail" | "whatsapp_business";
-      subject?: string;
-      messages: { direction: "inbound" | "outbound"; body: string; hoursAgo: number }[];
-      status?: "open" | "waiting" | "done";
-      category?: "confirmation" | "viewing_request";
-    };
-    const threads: Seed[] = [
-      {
-        lead: 0,
-        channel: "email",
-        provider: "outlook",
-        subject: "Immoweb – Contactaanvraag voor ANT-1042, Cogels-Osylei 38",
-        messages: [{ direction: "inbound", hoursAgo: 2, body: "Goedemiddag,\n\nIs het appartement aan de Cogels-Osylei nog beschikbaar? We zouden het graag eens komen bekijken, bij voorkeur volgende week.\n\nGroeten,\nEmma Claes" }],
-      },
-      {
-        lead: 2,
-        channel: "email",
-        provider: "gmail",
-        subject: "Question – maison Coupure Links 55",
-        messages: [{ direction: "inbound", hoursAgo: 5, body: "Bonjour,\n\nLa maison Coupure Links dispose-t-elle d'un jardin ? Et quel est le score PEB exact ?\n\nMerci d'avance,\nCamille Lambert" }],
-      },
-      {
-        lead: 7,
-        channel: "whatsapp",
-        provider: "whatsapp_business",
-        messages: [
-          { direction: "outbound", hoursAgo: 26, body: "Hallo Louis, uw bezoek aan Grote Steenweg 112 is bevestigd. Tot dan! – Sofie, Immo" },
-          { direction: "inbound", hoursAgo: 1, body: "Sorry, ik kan toch niet komen. Kan het volgende week?" },
-        ],
-      },
-      {
-        lead: 9,
-        channel: "whatsapp",
-        provider: "whatsapp_business",
-        messages: [
-          { direction: "outbound", hoursAgo: 50, body: "Bonjour Victor, merci pour cette deuxième visite de la villa à Brasschaat !" },
-          { direction: "inbound", hoursAgo: 3, body: "Bonjour Thomas, nous avons adoré la villa. Nous aimerions faire une offre, comment procède-t-on ?" },
-        ],
-      },
-      {
-        lead: 11,
-        channel: "email",
-        provider: "gmail",
-        subject: "Re: Votre visite Hundelgemsesteenweg 480",
-        messages: [{ direction: "inbound", hoursAgo: 20, body: "Bonjour Maxime,\n\nMerci pour la visite. La maison est très belle mais un peu trop petite pour nous, malheureusement.\n\nJules Martin" }],
-      },
-      {
-        lead: 6,
-        channel: "whatsapp",
-        provider: "whatsapp_business",
-        status: "done",
-        category: "confirmation",
-        messages: [
-          { direction: "outbound", hoursAgo: 30, body: "Hi Olivia, your viewing of the studio on Kortrijksesteenweg is confirmed. See you then! – Lien" },
-          { direction: "inbound", hoursAgo: 29, body: "Great, thanks! See you then." },
-        ],
-      },
-      {
-        lead: 3,
-        channel: "email",
-        provider: "outlook",
-        status: "waiting",
-        category: "viewing_request",
-        subject: "Uw aanvraag: penthouse Londenstraat 7",
-        messages: [{ direction: "outbound", hoursAgo: 40, body: "Beste Noah,\n\nBedankt voor uw interesse in het penthouse aan de Londenstraat. U kunt hier zelf een moment kiezen voor een bezoek.\n\nMet vriendelijke groeten,\nThomas Janssens" }],
-      },
-    ];
+    const { leadRows, appointmentRows, contactRows, listingRows, owner } = seeded;
+    const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, agencyId), columns: { name: true } });
+    const agencyName = agency?.name ?? "";
+    const agentRows = await ctx.db.select({ id: agents.id, name: agents.name }).from(agents).where(eq(agents.agencyId, agencyId));
+    const agentName = (id: string | null) => agentRows.find((a) => a.id === id)?.name ?? agencyName;
+    const listingOf = (id: string | null) => listingRows.find((l) => l.id === id)!;
+    const place = (l: { street: string | null; houseNumber: string | null; city: string | null }) => `${[l.street, l.houseNumber].filter(Boolean).join(" ")}, ${l.city}`;
+    const freeTimes = async (listingId: string) => pickSpreadSlots((await runTool(availableSlots, ctx, { listingId, days: 14 })).slots);
+    const aptOf = (leadIndex: number, status?: string) => appointmentRows.find((a) => a.leadId === leadRows[leadIndex]!.id && (!status || a.status === status))!;
 
-    const toHandle: string[] = [];
+    type Line =
+      | { from: "client"; hoursAgo: number; body: string; portal?: string }
+      | { from: "system"; hoursAgo: number; body: string; intent?: string; kind?: string }
+      | { from: "planner"; hoursAgo: number; body: string; kind: string; template?: string };
+    type Seed = {
+      contactId: string;
+      leadIndex?: number;
+      listingId: string | null;
+      agentId: string | null;
+      channel: "email" | "whatsapp";
+      subject?: string;
+      category: "viewing_request" | "booking" | "confirmation" | "feedback" | "cancellation";
+      summary: string;
+      unread?: boolean;
+      lines: Line[];
+    };
+
+    /** The fixed text the planner sends for this kind of message, exactly as composeMessage builds it. */
+    const fixed = (lang: Lang, key: string, v: { name: string; address: string; agentName: string; other?: string }, channel: "email" | "whatsapp", extra: { slots?: Date[]; details?: { label: string; value: string }[]; link?: { url: string; label: string } } = {}) =>
+      composeMessage({ lang, body: templates[key]![lang](v), ...extra, signature: signature(lang, v.agentName, agencyName, channel === "email" ? "email" : "whatsapp") });
+
+    const threads: Seed[] = [];
+    // Portal leads asking to visit an active listing, answered at once with free times and the booking link.
+    const portalLeads: [number, string, number, string, string][] = [
+      [1, "Immoweb", 0.4, "Immoweb – Contactaanvraag voor ANT-1043, Grote Steenweg 112", "Goedendag,\n\nWij zijn geïnteresseerd in de woning aan de Grote Steenweg en willen graag eens komen kijken. Liefst op een weekdag na 17u.\n\nMet vriendelijke groeten,\nLucas Maes\n0471 11 23 32"],
+      [0, "Immoweb", 2, "Immoweb – Contactaanvraag voor ANT-1042, Cogels-Osylei 38", "Goedemiddag,\n\nIs het appartement aan de Cogels-Osylei nog beschikbaar? We zouden het graag eens komen bekijken, bij voorkeur volgende week.\n\nGroeten,\nEmma Claes"],
+      [2, "Zimmo", 5, "Zimmo – Nouvelle demande pour GNT-2011, Coupure Links 55", "Bonjour,\n\nJe souhaiterais visiter la maison Coupure Links. Je suis disponible en fin d'après-midi.\n\nMerci,\nCamille Lambert"],
+      [3, "Immovlan", 100, "Immovlan – Aanvraag voor ANT-1051, Londenstraat 7", "Hallo,\n\nIs het penthouse nog te huur? Ik zou het graag bezichtigen.\n\nNoah Wouters"],
+    ];
+    for (const [leadIndex, portal, ago, subject, body] of portalLeads) {
+      const lead = leadRows[leadIndex]!;
+      const contact = contactRows.find((c) => c.id === lead.contactId)!;
+      const lang = toLang(contact.language);
+      const listing = listingOf(lead.listingId);
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(lead.agentId) };
+      const lines: Line[] = [
+        { from: "client", hoursAgo: ago, body, portal: portal.toLowerCase() },
+        { from: "planner", hoursAgo: ago - 0.02, kind: "portal_reply", body: fixed(lang, "viewing_request", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) },
+      ];
+      // No answer after a few days: the planner checks in once, with fresh times.
+      if (ago > 72) {
+        lines.push({ from: "planner", hoursAgo: ago - 72, kind: "nudge", body: fixed(lang, "nudge_invited", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) });
+      }
+      threads.push({
+        contactId: contact.id,
+        leadIndex,
+        listingId: listing.id,
+        agentId: lead.agentId,
+        channel: "email",
+        subject,
+        category: "viewing_request",
+        summary: ago > 72 ? `${portal} lead; booking link sent, checked in after 3 days without an answer.` : `${portal} lead asking to visit; free times and the booking link sent.`,
+        unread: ago < 1,
+        lines,
+      });
+    }
+
+    // Website bookings, each confirmed on its own (WhatsApp when the client asked for it), and the reminder the day before.
+    const bookings: [number, number, boolean][] = [
+      [6, 30, false],
+      [7, 40, true],
+    ];
+    for (const [leadIndex, ago, withReminder] of bookings) {
+      const lead = leadRows[leadIndex]!;
+      const contact = contactRows.find((c) => c.id === lead.contactId)!;
+      const lang = toLang(contact.language);
+      const apt = aptOf(leadIndex);
+      const listing = listingOf(apt.listingId);
+      const channel = contact.whatsappOptIn ? "whatsapp" : "email";
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(apt.agentId) };
+      const details = [
+        { label: detailLabels.when[lang], value: formatSlot(apt.startsAt, lang) },
+        { label: detailLabels.where[lang], value: apt.location ?? place(listing) },
+        { label: detailLabels.with[lang], value: vars.agentName },
+      ];
+      const change = { url: absoluteUrl(`/a/${apt.manageToken}`), label: linkLabels.change[lang] };
+      const lines: Line[] = [
+        { from: "system", hoursAgo: ago, intent: "booking", body: `Booked a viewing at ${place(listing)} for ${formatSlot(apt.startsAt, "en")} on the website.` },
+        { from: "planner", hoursAgo: ago - 0.01, kind: "booking_confirmation", template: channel === "whatsapp" ? "booking_confirmed" : undefined, body: fixed(lang, "booking_confirmation", vars, channel, { details, link: change }) },
+      ];
+      if (withReminder) lines.push({ from: "planner", hoursAgo: 1, kind: "reminder", template: "viewing_reminder", body: fixed(lang, "reminder", vars, channel, { details, link: change }) });
+      threads.push({
+        contactId: contact.id,
+        leadIndex,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel,
+        subject: channel === "email" ? listing.title ?? undefined : undefined,
+        category: "booking",
+        summary: withReminder ? "Booked on the website; confirmed and reminded the day before." : "Booked on the website; confirmation sent.",
+        lines,
+      });
+    }
+
+    // The day after a viewing: the follow-up.
+    {
+      const apt = aptOf(8, "completed");
+      const contact = contactRows.find((c) => c.id === apt.contactId)!;
+      const lang = toLang(contact.language);
+      const listing = listingOf(apt.listingId);
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(apt.agentId) };
+      threads.push({
+        contactId: contact.id,
+        leadIndex: 8,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel: contact.whatsappOptIn ? "whatsapp" : "email",
+        subject: contact.whatsappOptIn ? undefined : "Uw bezoek",
+        category: "feedback",
+        summary: "Viewed two days ago; follow-up sent the next day.",
+        lines: [{ from: "planner", hoursAgo: 20, kind: "follow_up", body: fixed(lang, "follow_up", vars, contact.whatsappOptIn ? "whatsapp" : "email") }],
+      });
+    }
+
+    // A client who didn't come: the agent marked it, the planner offered new times.
+    {
+      const apt = aptOf(11, "no_show");
+      const contact = contactRows.find((c) => c.id === apt.contactId)!;
+      const lang = toLang(contact.language);
+      const listing = listingOf(apt.listingId);
+      const channel = contact.whatsappOptIn ? "whatsapp" : "email";
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(apt.agentId) };
+      threads.push({
+        contactId: contact.id,
+        leadIndex: 11,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel,
+        category: "cancellation",
+        summary: "Didn't come to the viewing; new times sent.",
+        lines: [
+          { from: "system", hoursAgo: 22, kind: "no_show", body: `Didn't show up for the viewing on ${formatSlot(apt.startsAt, "en")}.` },
+          { from: "planner", hoursAgo: 21.9, kind: "no_show", template: channel === "whatsapp" ? "no_show_rebook" : undefined, body: fixed(lang, "no_show", vars, channel, { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) },
+        ],
+      });
+    }
+
+    // The same visitor's side: they cancelled with their link and got new times on their own.
+    {
+      const apt = aptOf(4, "cancelled");
+      const contact = contactRows.find((c) => c.id === apt.contactId)!;
+      const lang = toLang(contact.language);
+      const listing = listingOf(apt.listingId);
+      const vars = { name: contact.firstName ?? "", address: place(listing), agentName: agentName(apt.agentId) };
+      threads.push({
+        contactId: contact.id,
+        leadIndex: 4,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel: "email",
+        subject: listing.title ?? undefined,
+        category: "cancellation",
+        summary: "Cancelled with their link; new times sent.",
+        lines: [
+          { from: "system", hoursAgo: 3, kind: "client_action", body: `Cancelled the viewing at ${place(listing)} (${formatSlot(apt.startsAt, "en")}) using their booking link.` },
+          { from: "planner", hoursAgo: 2.95, kind: "cancellation_reply", body: fixed(lang, "cancelled_by_client", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) },
+        ],
+      });
+    }
+
+    // A visitor cancelled with their link: the owner who lives there is told on their own.
+    {
+      const apt = aptOf(4, "cancelled");
+      const listing = listingOf(apt.listingId);
+      const occupant = await ctx.db.query.listingOccupants.findFirst({ where: and(eq(schema.listingOccupants.agencyId, agencyId), eq(schema.listingOccupants.contactId, owner.id)) });
+      const lang = toLang(owner.language);
+      const name = agentName(apt.agentId);
+      threads.push({
+        contactId: owner.id,
+        listingId: listing.id,
+        agentId: apt.agentId,
+        channel: "email",
+        subject: occupantSubject.cancelled[lang],
+        category: "cancellation",
+        summary: "A visitor cancelled; the owner was told.",
+        lines: [
+          {
+            from: "planner",
+            hoursAgo: 3,
+            kind: "occupant_cancelled",
+            body: composeMessage({
+              lang,
+              body: occupantTemplates.cancelled[lang]({ name: owner.firstName ?? "", address: place(listing), agentName: name, other: formatSlot(apt.startsAt, lang) }),
+              link: { url: absoluteUrl(`/s/${occupant!.token}`), label: occupantLabels.page[lang] },
+              signature: signature(lang, name, agencyName, "email"),
+            }),
+          },
+        ],
+      });
+    }
+
+    const transportOf = (channel: "email" | "whatsapp", agentId: string | null) =>
+      channel === "whatsapp" ? "whatsapp_cloud" : agentRows.findIndex((a) => a.id === agentId) % 2 === 0 ? "outlook" : "gmail";
     for (const thread of threads) {
-      const lead = leadRows[thread.lead]!;
-      const last = thread.messages[thread.messages.length - 1]!;
+      const last = thread.lines[thread.lines.length - 1]!;
+      const transport = transportOf(thread.channel, thread.agentId);
       const [conversation] = await ctx.db
         .insert(conversations)
         .values({
           agencyId,
-          contactId: lead.contactId,
-          leadId: lead.id,
-          listingId: lead.listingId,
-          agentId: lead.agentId,
+          contactId: thread.contactId,
+          leadId: thread.leadIndex !== undefined ? leadRows[thread.leadIndex]!.id : null,
+          listingId: thread.listingId,
+          agentId: thread.agentId,
           channel: thread.channel,
-          provider: thread.provider,
+          provider: thread.channel === "whatsapp" ? "whatsapp_business" : (transport as "outlook" | "gmail"),
           subject: thread.subject,
-          status: thread.status ?? "open",
+          status: "waiting",
           category: thread.category,
-          priority: thread.status === "done" ? "low" : "normal",
-          unread: last.direction === "inbound" && thread.status !== "done",
+          summary: thread.summary,
+          priority: "normal",
+          unread: thread.unread ?? false,
           lastMessageAt: hoursAgo(last.hoursAgo),
         })
         .returning();
       await ctx.db.insert(messages).values(
-        thread.messages.map((m) => ({
+        thread.lines.map((line) => ({
           agencyId,
           conversationId: conversation!.id,
-          direction: m.direction,
-          body: m.body,
-          subject: thread.subject,
-          authorType: m.direction === "inbound" ? ("contact" as const) : ("user" as const),
-          delivery: m.direction === "outbound" ? ("simulated" as const) : null,
-          sentAt: hoursAgo(m.hoursAgo),
+          direction: line.from === "planner" ? ("outbound" as const) : ("inbound" as const),
+          authorType: line.from === "client" ? ("contact" as const) : line.from === "system" ? ("system" as const) : ("agent" as const),
+          // Demo rows show as sent so the inbox looks like a connected agency; nothing actually left the platform.
+          delivery: line.from === "planner" ? ("sent" as const) : null,
+          subject: thread.channel === "email" ? thread.subject : null,
+          body: line.body,
+          intent: line.from === "system" ? (line.intent ?? null) : null,
+          metadata:
+            line.from === "planner"
+              ? { kind: line.kind, transport, demo: true, ...(line.template && thread.channel === "whatsapp" && { template: line.template }) }
+              : line.from === "client"
+                ? { ...(line.portal && { portal: line.portal }) }
+                : { ...(line.kind && { kind: line.kind }) },
+          sentAt: hoursAgo(line.hoursAgo),
         })),
       );
-      await ctx.db.insert(events).values({
-        agencyId,
-        type: "message.received",
-        subjectType: "conversation",
-        subjectId: conversation!.id,
-        actorType: "contact",
-        data: { channel: thread.channel },
-        createdAt: hoursAgo(last.hoursAgo),
-      });
-      if (last.direction === "inbound" && thread.status !== "done") toHandle.push(conversation!.id);
     }
 
-    // The planner reads each new message and drafts a reply, as it does for real mail. Templates keep seeding fast.
-    const plannerCtx = { ...ctx, actor: { type: "agent" as const, id: "planner" } };
-    for (const conversationId of toHandle) await handleConversation(plannerCtx, conversationId, { useAi: false });
-    const viewedYesterday = appointmentRows.find((a) => a.status === "completed" && a.contactId === contactRows[8]!.id);
-    if (viewedYesterday) await draftFollowUp(plannerCtx, viewedYesterday.id, { useAi: false });
+    // The jobs see these as done, so they don't send them again.
+    const reminded = aptOf(7);
+    await ctx.db.insert(automationRuns).values([
+      { agencyId, rule: "reminder" as const, subjectType: "appointment", subjectId: reminded.id, dueKey: reminded.startsAt.toISOString(), outcome: "sent" as const, detail: { demo: true } },
+      { agencyId, rule: "follow_up" as const, subjectType: "appointment", subjectId: aptOf(8, "completed").id, dueKey: "after_viewing", outcome: "sent" as const, detail: { demo: true } },
+      { agencyId, rule: "no_show" as const, subjectType: "appointment", subjectId: aptOf(11, "no_show").id, dueKey: aptOf(11, "no_show").startsAt.toISOString(), outcome: "sent" as const, detail: { demo: true } },
+    ]);
 
     // An owner who asked for an estimate on the demo website yesterday.
     const valuation = await runTool(requestValuation, { ...ctx, actor: { type: "contact", id: null } }, {
@@ -399,6 +535,12 @@ export const seedDemoData = defineTool({
     });
     if (valuation.demoCode) {
       await runTool(verifyValuation, { ...ctx, actor: { type: "contact", id: null } }, { token: valuation.token, code: valuation.demoCode, useAi: false });
+    }
+    // The seller lead stays on the board; its draft follow-up stays out of the demo inbox, which only shows what was sent on its own.
+    const [requested] = await ctx.db.select({ contactId: valuations.contactId }).from(valuations).where(eq(valuations.token, valuation.token));
+    if (requested?.contactId) {
+      await ctx.db.delete(conversations).where(and(eq(conversations.agencyId, agencyId), eq(conversations.contactId, requested.contactId)));
+      await ctx.db.delete(proposals).where(and(eq(proposals.agencyId, agencyId), eq(proposals.status, "pending")));
     }
 
     return { seeded: true, listings: seeded.listingRows.length, leads: leadRows.length, appointments: appointmentRows.length, conversations: threads.length };

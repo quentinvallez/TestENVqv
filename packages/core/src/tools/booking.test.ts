@@ -58,7 +58,7 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     expect(end.slots.some((s) => s.start.getTime() === slots[9]!.start.getTime())).toBe(true);
   });
 
-  it("puts a cancellation through the client's link in the inbox with new times", async () => {
+  it("answers a cancellation through the client's link on its own with new times, or drafts it when the agency approves them first", async () => {
     const { slots } = await runTool(tools.availableSlots, ctx, { listingId });
     const booked = await runTool(tools.bookViewing, ctx, { listingId, startsAt: slots[12]!.start, contact: contact(6) });
     const clientCtx: ToolContext = { ...ctx, actor: { type: "contact", id: null } };
@@ -67,10 +67,23 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     const { items } = await runTool(tools.listInbox, ctx, { folder: "changes" });
     const conversation = items.find((c) => c.contact?.email === "test6@example.com");
     expect(conversation?.category).toBe("cancellation");
-    expect(conversation?.pendingDraft).not.toBeNull();
+    expect(conversation?.pendingDraft).toBeNull();
+    const sent = await db.query.messages.findMany({
+      where: (m, { and, eq }) => and(eq(m.direction, "outbound"), eq(m.conversationId, conversation!.id)),
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!).toMatchObject({ delivery: "simulated", metadata: { kind: "cancellation_reply" } });
+    const [proposal] = await db.select().from(schema.proposals).where(eq(schema.proposals.conversationId, conversation!.id));
+    expect(proposal!.status).toBe("executed");
+    expect((proposal!.input as { offeredSlots: unknown[] }).offeredSlots).toHaveLength(3);
+    expect((proposal!.input as { cancelAppointmentId?: string }).cancelAppointmentId).toBeUndefined();
+
+    await runTool(tools.updateAutomationSettings, ctx, { sendBookingConfirmationsAutomatically: false });
+    const again = await runTool(tools.bookViewing, ctx, { listingId, startsAt: slots[13]!.start, contact: contact(6) });
+    await runTool(tools.cancelAppointment, clientCtx, { appointmentId: again.appointmentId });
     const full = await runTool(tools.getConversation, ctx, { conversationId: conversation!.id });
     expect(full?.draft?.input.offeredSlots).toHaveLength(3);
-    expect(full?.draft?.input.cancelAppointmentId).toBeUndefined();
+    await runTool(tools.updateAutomationSettings, ctx, { sendBookingConfirmationsAutomatically: true });
   });
 
   it("confirms a website booking on its own, and drafts the confirmation of a move when the agency approves them first", async () => {

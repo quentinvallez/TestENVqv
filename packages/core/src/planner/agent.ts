@@ -630,9 +630,12 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
     };
   }
   // A confirmation of what the client just did goes out on its own (fixed text) unless the agency approves them first.
-  const confirm = action.kind !== "cancelled" && plan ? await confirmationsAutomatic(ctx) : false;
+  // After a cancellation, the new times (and booking link) go out the same way.
+  const confirm = plan ? await confirmationsAutomatic(ctx) : false;
+  const cancelled = action.kind === "cancelled";
+  const sentNote = cancelled ? `${note} New times sent on its own (Settings → Automations).` : `${note} Confirmation sent on its own (Settings → Automations).`;
   const proposal = plan
-    ? await propose(ctx, thread, confirm ? { ...plan, messageKind: "booking_confirmation" } : plan, lang, confirm ? `${note} Confirmation sent on its own (Settings → Automations).` : note, options.useAi ?? true, { fixedText: confirm })
+    ? await propose(ctx, thread, confirm ? { ...plan, messageKind: cancelled ? "cancellation_reply" : "booking_confirmation" } : plan, lang, confirm ? sentNote : note, options.useAi ?? true, { fixedText: confirm })
     : null;
   if (proposal && confirm) {
     const decided = await decideProposal.run({ ...ctx, actor: { type: "agent", id: "planner" } }, { proposalId: proposal.id, decision: "approved" });
@@ -641,7 +644,7 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
   return { conversationId: conversation.id, proposalId: proposal?.id ?? null, confirmed: null };
 }
 
-/** Booking and move confirmations to clients go out automatically unless autonomy.booking_confirmations is "suggest". */
+/** Booking and move confirmations to clients (and new times after they cancel) go out automatically unless autonomy.booking_confirmations is "suggest". */
 export async function confirmationsAutomatic(ctx: ToolContext) {
   return sendsAutomatically(ctx, "booking_confirmations");
 }

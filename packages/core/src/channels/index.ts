@@ -5,7 +5,7 @@ import { authorizedFetch } from "../integrations/oauth";
 import type { ToolContext } from "../tool";
 import { buildMime, mailDomain, mailgunConfigured, newMessageId, sendWithMailgun, type OutgoingEmail } from "./email";
 import { automationSettings } from "../automations/rules";
-import { toLang } from "../planner/language";
+import { type Lang, toLang } from "../planner/language";
 import { sendWhatsApp, serviceWindowMs, whatsappConfig, type WhatsAppTemplate } from "./whatsapp";
 import { whatsappInviteLine } from "./whatsapp-invite";
 
@@ -217,6 +217,11 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       body = `${input.body}\n\n${invite}`;
       extra.whatsappInvite = true;
     }
+    // GDPR: the first email to a client (often a portal lead who never saw our forms) says where the privacy notice is.
+    if (contact?.email && !conversation.messages.some((m) => m.direction === "outbound")) {
+      body = `${body}\n\n${await privacyLine(ctx.agencyId, toLang(contact.language))}`;
+      extra.privacyNotice = true;
+    }
     if (!contact?.email) {
       delivery = "failed";
       error = "no_email";
@@ -393,4 +398,17 @@ export async function emailAgent(ctx: ToolContext, input: AgentEmail): Promise<{
   } catch (e) {
     return { delivery: "failed", transport, to: address, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+const privacyIntro: Record<Lang, string> = {
+  nl: "Hoe we met uw gegevens omgaan:",
+  fr: "Comment nous traitons vos données :",
+  en: "How we handle your data:",
+  de: "Wie wir mit Ihren Daten umgehen:",
+};
+
+/** The line with the agency's privacy notice, in the client's language. */
+async function privacyLine(agencyId: string, lang: Lang) {
+  const { absoluteUrl } = await import("../planner/agent");
+  return `${privacyIntro[lang]} ${absoluteUrl(`/privacy/${agencyId}?lang=${lang}`)}`;
 }

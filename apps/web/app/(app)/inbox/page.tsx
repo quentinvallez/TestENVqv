@@ -182,7 +182,12 @@ const automaticLabel: Record<string, string> = {
   booking_confirmation: "Confirmation · automatic",
   follow_up: "Follow-up · automatic",
   no_show: "New times · automatic",
+  cancellation_reply: "New times · automatic",
   nudge: "Check-in · automatic",
+  occupant_booked: "Owner alert · automatic",
+  occupant_rescheduled: "Owner alert · automatic",
+  occupant_cancelled: "Owner alert · automatic",
+  occupant_digest: "Owner alert · automatic",
 };
 const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) =>
   m.authorType === "agent" && typeof m.metadata.kind === "string" ? (automaticLabel[m.metadata.kind] ?? null) : null;

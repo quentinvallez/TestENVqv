@@ -5,12 +5,14 @@ import { EmptyState, PageHeader, Pill } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { formatRelative, fullName } from "@/lib/format";
 
-export default async function ContactsPage() {
+export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ erased?: string }> }) {
+  const { erased } = await searchParams;
   const contacts = await runTool(tools.listContacts, await getToolContext(), {});
   return (
     <>
       <PageHeader crumbs={[{ label: "Contacts" }]} />
       <div className="flex-1 overflow-auto">
+        {erased && <div className="border-b border-line px-5 py-2.5 text-muted">The client was erased. Their details, messages and valuations are gone; past viewings stay without their name.</div>}
         {contacts.length === 0 ? (
           <EmptyState icon={<UserRound className="size-5" />} title="No contacts yet" description="Everyone who sends a request or books a viewing is added here automatically." />
         ) : (

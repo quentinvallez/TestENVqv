@@ -42,6 +42,7 @@ export default async function BookPage({ params, searchParams }: { params: Promi
           awaitingOccupant={widget.awaitingOccupant}
           occupied={widget.listing.access !== "agent"}
           agencyName={agencyName}
+          privacyUrl={`/privacy/${listing.agencyId}?lang=${lang}`}
           action={bookFromWidgetAction.bind(null, listing.id, lang, widget.agent.id)}
         />
       </div>

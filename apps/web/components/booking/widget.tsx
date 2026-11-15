@@ -26,6 +26,7 @@ export function BookingWidget({
   agencyName,
   awaitingOccupant = false,
   occupied = false,
+  privacyUrl,
   action,
 }: {
   lang: WidgetLang;
@@ -38,6 +39,8 @@ export function BookingWidget({
   awaitingOccupant?: boolean;
   /** Someone lives there and sees who comes, by first name and initial. */
   occupied?: boolean;
+  /** The agency's privacy notice for clients. */
+  privacyUrl?: string;
   action: (state: WidgetState, form: FormData) => Promise<WidgetState>;
 }) {
   const t = widgetText[lang];
@@ -193,6 +196,14 @@ export function BookingWidget({
       <p className="text-center text-[11px] text-faint">
         {t.privacy(agencyName)}
         {occupied && ` ${t.privacyOccupant}`}
+        {privacyUrl && (
+          <>
+            {" "}
+            <a href={privacyUrl} target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-muted">
+              {t.privacyLink}
+            </a>
+          </>
+        )}
       </p>
     </form>
   );

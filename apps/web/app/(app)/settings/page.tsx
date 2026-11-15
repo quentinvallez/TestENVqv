@@ -1,12 +1,12 @@
 import { REMINDER_HOUR, runTool, tools } from "@viewing/core";
 import { db, eq, schema } from "@viewing/db";
-import { BellRing, Palette, Play, Radio, ShieldCheck, Sparkles } from "lucide-react";
+import { BellRing, Lock, Palette, Play, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { ChannelMark } from "@/components/channel";
 import { AiPill, Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { formatRelative } from "@/lib/format";
 import { automationRuleLabel } from "@/lib/labels";
-import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, updateAutomationsAction } from "../actions";
+import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, setRetentionAction, updateAutomationsAction } from "../actions";
 import { CopyText, WhatsAppForm } from "./channels";
 import { PortalLeads } from "./portal-leads";
 
@@ -40,11 +40,13 @@ export default async function SettingsPage() {
   }
   const ctx = await getToolContext();
   const settings = await db.query.agencySettings.findFirst({ where: eq(schema.agencySettings.agencyId, agency.id) });
-  const [channels, automations, runs] = await Promise.all([
+  const [channels, automations, runs, retention] = await Promise.all([
     runTool(tools.channelsStatus, ctx, {}),
     runTool(tools.getAutomationSettings, ctx, {}),
     runTool(tools.listAutomationRuns, ctx, { limit: 8 }),
+    runTool(tools.previewRetention, ctx, {}),
   ]);
+  const { privacyUrl } = retention;
   const sendingMailboxes = channels.mailboxes.filter((m) => m.sends);
   const jobs = [
     {
@@ -292,9 +294,9 @@ export default async function SettingsPage() {
               ))}
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <div className="font-medium">Confirmation after a booking</div>
+                  <div className="font-medium">Confirmation after a booking or cancellation</div>
                   <p className="mt-0.5 max-w-xl text-muted">
-                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. Fixed text in their language, no AI.
+                    When a client books or moves a viewing or valuation visit themselves, they get a confirmation with time, place, agent and the link to change it. When they cancel, they get new times and the booking link in case they still want to come. Fixed text in their language, no AI.
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-muted">Sending:</span>
@@ -338,6 +340,57 @@ export default async function SettingsPage() {
                 ))}
               </Panel>
             )}
+          </section>
+
+          <section>
+            <h2 className="mb-1 flex items-center gap-2 font-medium">
+              <Lock className="size-4 text-muted" />
+              Client data (GDPR)
+            </h2>
+            <p className="mb-2 text-muted">Your agency decides what happens with its clients&apos; data; we process it for you on servers in the EU.</p>
+            <Panel className="divide-y divide-line">
+              <div className="px-4 py-3">
+                <div className="font-medium">Delete inactive clients</div>
+                <p className="mt-0.5 max-w-xl text-muted">
+                  Clients nobody has been in touch with for this long are erased on their own: contact details, interests, messages and valuations. Owners and tenants of a listing and clients with an offer or a deal are kept. Valuation forms whose phone number was never confirmed go after 30 days.
+                </p>
+                <form action={setRetentionAction} className="mt-2 flex flex-wrap items-center gap-2">
+                  <label htmlFor="retentionMonths" className="text-muted">
+                    After
+                  </label>
+                  <select id="retentionMonths" name="retentionMonths" defaultValue={retention.retentionMonths} className="h-8 rounded-md border border-line bg-panel px-2">
+                    {[12, 24, 36, 60].map((m) => (
+                      <option key={m} value={m}>
+                        {m} months without contact
+                      </option>
+                    ))}
+                    <option value={0}>Never</option>
+                  </select>
+                  <Button size="sm" type="submit">
+                    Save
+                  </Button>
+                </form>
+                {retention.retentionMonths > 0 && (
+                  <p className="mt-2 text-[12px] text-muted">
+                    {retention.due === 0 ? "No client is due right now." : `${retention.due} client${retention.due === 1 ? " is" : "s are"} due and will be erased at the next run.`}
+                  </p>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <div className="font-medium">A client asks for their data, or to be forgotten</div>
+                <p className="mt-0.5 max-w-xl text-muted">Open the client under Contacts: &ldquo;Download their data&rdquo; gives a file to send them, and admins can erase the client for good.</p>
+              </div>
+              <div className="px-4 py-3">
+                <div className="font-medium">Privacy notice for your clients</div>
+                <p className="mt-0.5 max-w-xl text-muted">
+                  The booking and valuation forms link to this page, in the client&apos;s language. Clients write to the agency owner's email address for requests. You can link to it from your own privacy policy too.
+                </p>
+                <div className="mt-2">
+                  <span className="mr-2 break-all font-mono text-[12px]">{privacyUrl}</span>
+                  <CopyText text={privacyUrl} />
+                </div>
+              </div>
+            </Panel>
           </section>
 
           <section>

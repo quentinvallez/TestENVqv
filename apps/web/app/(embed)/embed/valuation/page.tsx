@@ -18,7 +18,7 @@ export default async function ValuationEmbedPage({ searchParams }: { searchParam
 
   return (
     <div style={{ "--brand": brand ?? "var(--primary)", "--brand-fg": brand ? "#ffffff" : "var(--primary-fg)" } as React.CSSProperties}>
-      <ValuationWidget lang={lang} agencyName={agency.name} request={requestValuationAction.bind(null, agency.id, lang)} verify={verifyValuationAction.bind(null, lang)} />
+      <ValuationWidget lang={lang} agencyName={agency.name} privacyUrl={`/privacy/${agency.id}?lang=${lang}`} request={requestValuationAction.bind(null, agency.id, lang)} verify={verifyValuationAction.bind(null, lang)} />
     </div>
   );
 }

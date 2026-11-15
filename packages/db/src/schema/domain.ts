@@ -145,6 +145,8 @@ export type AutomationSettings = {
   whatsappInvite?: boolean;
   /** Client email replies go to the agent's own mailbox; the inbox address only gets a silent copy (no draft), so check-ins stop. On unless turned off. */
   repliesToAgent?: boolean;
+  /** GDPR: erase clients nobody has been in touch with for this many months (0 = never). Owners/tenants and clients in a deal are kept. */
+  retentionMonths?: number;
 };
 
 /**

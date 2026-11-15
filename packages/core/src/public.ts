@@ -243,3 +243,30 @@ export async function agencyOfUser(userId: string) {
     .limit(1);
   return row?.agencyId ?? null;
 }
+
+/** What the privacy notice page of an agency shows: who is responsible, how to reach them, how long data is kept. */
+export async function privacyNoticeFacts(agencyId: string) {
+  const agency = await publicAgency(agencyId);
+  if (!agency) return null;
+  const [settings] = await db
+    .select({ websiteUrl: schema.agencySettings.websiteUrl, automations: schema.agencySettings.automations })
+    .from(schema.agencySettings)
+    .where(eq(schema.agencySettings.agencyId, agencyId));
+  const { automationSettings } = await import("./automations/rules");
+  const { inboundAddress } = await import("./channels");
+  // Requests go to a person: the agency's owner, else the inbox address.
+  const [owner] = await db
+    .select({ email: schema.user.email })
+    .from(schema.member)
+    .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+    .where(and(eq(schema.member.organizationId, agencyId), eq(schema.member.role, "owner")))
+    .orderBy(schema.member.createdAt)
+    .limit(1);
+  return {
+    name: agency.name,
+    branding: agency.branding,
+    websiteUrl: settings?.websiteUrl ?? null,
+    contactEmail: owner?.email ?? (await inboundAddress(systemContext(agencyId))),
+    retentionMonths: automationSettings(settings?.automations).retentionMonths,
+  };
+}
