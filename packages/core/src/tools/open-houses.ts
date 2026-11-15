@@ -3,7 +3,7 @@ import { z } from "zod";
 import { syncAppointmentToCalendar } from "../calendar";
 import { recordEvent } from "../events";
 import { defineTool } from "../tool";
-import { activeAgent, lockAgent, lockListing, resolveAgentForListing } from "./booking";
+import { activeAgent, cancelAppointment, lockAgent, lockListing, resolveAgentForListing } from "./booking";
 
 const { appointments, contacts, listings, openHouses } = schema;
 
@@ -138,6 +138,7 @@ export const listOpenHouses = defineTool({
             lastName: contacts.lastName,
             phone: contacts.phone,
             email: contacts.email,
+            whatsappOptIn: contacts.whatsappOptIn,
           })
           .from(appointments)
           .leftJoin(contacts, eq(contacts.id, appointments.contactId))
@@ -168,21 +169,38 @@ export const listOpenHouses = defineTool({
 
 export const cancelOpenHouse = defineTool({
   name: "open_houses_cancel",
-  description: "Cancel an open house nobody has booked yet. With visitors booked, cancel or move their viewings first so each of them hears about it.",
+  description:
+    "Cancel an open house. With visitors booked, notifyVisitors cancels each of their places and tells them by email or WhatsApp, with other free times and the booking link while the listing is on offer; visitors who left only a phone number are returned so the agent can call them.",
   mutates: true,
-  input: z.object({ openHouseId: z.string() }),
+  input: z.object({ openHouseId: z.string(), notifyVisitors: z.boolean().default(false) }),
   run: async (ctx, input) => {
     const [row] = await ctx.db.select().from(openHouses).where(and(eq(openHouses.agencyId, ctx.agencyId), eq(openHouses.id, input.openHouseId)));
     if (!row) throw new Error("Open house not found");
-    if (row.status === "cancelled") return { changed: false };
+    if (row.status === "cancelled") return { changed: false, cancelledVisits: 0, told: 0, toCall: [] };
     const booked = await ctx.db
-      .select({ id: appointments.id })
+      .select({ id: appointments.id, firstName: contacts.firstName, lastName: contacts.lastName, phone: contacts.phone })
       .from(appointments)
+      .leftJoin(contacts, eq(contacts.id, appointments.contactId))
       .where(and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.openHouseId, row.id), inArray(appointments.status, ["scheduled", "confirmed"])));
-    if (booked.length) throw new Error(`${booked.length} ${booked.length === 1 ? "visitor has" : "visitors have"} booked this open house. Cancel or move their viewings first, so each of them hears about it.`);
+    if (booked.length && !input.notifyVisitors) {
+      throw new Error(`${booked.length} ${booked.length === 1 ? "visitor has" : "visitors have"} booked this open house. Cancel it with "tell the visitors", or cancel or move their viewings first.`);
+    }
     await ctx.db.update(openHouses).set({ status: "cancelled", externalEventId: null }).where(eq(openHouses.id, row.id));
-    await recordEvent(ctx, { type: "open_house.cancelled", subjectType: "open_house", subjectId: row.id, data: { listingId: row.listingId } });
+    await recordEvent(ctx, { type: "open_house.cancelled", subjectType: "open_house", subjectId: row.id, data: { listingId: row.listingId, visitors: booked.length } });
     await syncAppointmentToCalendar(ctx, row.agentId, row.externalEventId, null);
-    return { changed: true };
+
+    // Every place goes first, so the new times offered below are the listing's normal times again.
+    for (const visit of booked) {
+      await cancelAppointment.run(ctx, { appointmentId: visit.id, reason: "Open house cancelled by the agency", reopenLead: true });
+    }
+    const { tellOpenHouseCancelled } = await import("../planner/agent");
+    let told = 0;
+    const toCall: { appointmentId: string; name: string; phone: string | null }[] = [];
+    for (const visit of booked) {
+      const sent = await tellOpenHouseCancelled(ctx, visit.id);
+      if (sent) told++;
+      else toCall.push({ appointmentId: visit.id, name: [visit.firstName, visit.lastName].filter(Boolean).join(" ") || "Visitor", phone: visit.phone });
+    }
+    return { changed: true, cancelledVisits: booked.length, told, toCall };
   },
 });

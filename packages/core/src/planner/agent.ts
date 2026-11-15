@@ -774,3 +774,58 @@ export async function draftRecommendation(
   const proposal = await propose(ctx, thread, plan, lang, `Similar to ${place}.`, options.useAi ?? true);
   return { conversationId: conversation.id, proposalId: proposal.id };
 }
+
+/**
+ * The agency cancelled an open house: tell a visitor who had a place there, with other
+ * free times and the booking link while the listing is still on offer. The agent asked
+ * for this by cancelling, so it goes out straight away as the fixed text.
+ */
+export async function tellOpenHouseCancelled(ctx: ToolContext, appointmentId: string) {
+  const appointment = await ctx.db.query.appointments.findFirst({
+    where: and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.id, appointmentId)),
+    with: { contact: true, listing: true, agent: true },
+  });
+  const contact = appointment?.contact;
+  if (!appointment || !contact) return null;
+  // A caller who left only a phone number without WhatsApp can't be reached from here: the agent calls them.
+  if (!contact.email && !(contact.whatsappOptIn && contact.phone)) return null;
+  const conversation = await conversationFor(ctx, { contactId: contact.id, leadId: appointment.leadId, agentId: appointment.agentId, subject: appointment.listing?.title ?? null });
+  const place = addressOf(appointment.listing) || appointment.location || "";
+  const [message] = await ctx.db
+    .insert(messages)
+    .values({
+      agencyId: ctx.agencyId,
+      conversationId: conversation.id,
+      direction: "inbound",
+      authorType: "system",
+      body: `The open house at ${place} was cancelled by the agency, so the place booked for ${formatSlot(appointment.startsAt, "en")} is cancelled.`,
+      intent: "cancellation",
+    })
+    .returning();
+  await ctx.db
+    .update(conversations)
+    .set({ category: "cancellation", summary: "Open house cancelled by the agency.", status: "open", unread: false, lastMessageAt: message!.sentAt, listingId: appointment.listingId ?? conversation.listingId, agentId: appointment.agentId })
+    .where(eq(conversations.id, conversation.id));
+
+  const thread = await loadThread(ctx, conversation.id);
+  const lang = toLang(contact.language);
+  const onOffer = appointment.listing?.status === "active";
+  const slots = onOffer && appointment.listingId ? pickSpreadSlots((await runTool(availableSlots, ctx, { agentId: appointment.agentId, listingId: appointment.listingId, days: 10 })).slots) : [];
+  const link = onOffer && appointment.listingId ? { url: (await bookingUrl(ctx, appointment.listingId)).url, label: linkLabels.book[lang] } : undefined;
+  const when = formatSlot(appointment.startsAt, lang);
+  const plan: DraftPlan = {
+    kind: "reply",
+    purpose: "The agency cancelled the open house the client had a place at.",
+    templateKey: slots.length ? "open_house_cancelled" : link ? "open_house_cancelled_link" : "open_house_cancelled_plain",
+    slots,
+    link,
+    messageKind: "open_house_cancelled",
+    address: place,
+    otherListing: when,
+    whatsappTemplate: { name: "viewing_cancelled", language: lang, params: [contact.firstName ?? "", place, when] },
+    // The WhatsApp template can't carry the new times: they come by email too.
+    alsoEmail: Boolean(slots.length || link),
+    summary: `Tell ${contact.firstName ?? "the client"} the open house is cancelled`,
+  };
+  return proposeAndSend(ctx, thread, plan, lang, "The agent cancelled the open house; every visitor with a place hears about it.");
+}

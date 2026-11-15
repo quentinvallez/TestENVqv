@@ -119,10 +119,32 @@ describe.skipIf(!process.env.DATABASE_URL)("phone bookings and open houses", () 
 
     await expect(runTool(tools.cancelOpenHouse, staff, { openHouseId: planned.openHouseId })).rejects.toThrow(/2 visitors have booked/);
     for (const v of listed!.visitors) await runTool(tools.cancelAppointment, staff, { appointmentId: v.appointmentId });
-    expect(await runTool(tools.cancelOpenHouse, staff, { openHouseId: planned.openHouseId })).toEqual({ changed: true });
+    expect(await runTool(tools.cancelOpenHouse, staff, { openHouseId: planned.openHouseId })).toMatchObject({ changed: true, cancelledVisits: 0 });
     const after = await runTool(tools.availableSlots, visitor, { listingId, days: 21 });
     expect(after.slots.some((s) => "openHouseId" in s)).toBe(false);
     expect(after.slots.length).toBeGreaterThan(4);
+  });
+
+  it("cancels an open house with visitors and tells each of them, with other times", async () => {
+    const start = weekdayAt(18, 10);
+    const end = new Date(start.getTime() + 60 * MINUTE);
+    const planned = await runTool(tools.planOpenHouse, staff, { listingId, startsAt: start, endsAt: end, slotMinutes: 15, perSlot: 2 });
+    const ann = await runTool(tools.bookViewing, visitor, { listingId, startsAt: start, contact: { firstName: "Annick", email: "annick@example.com", language: "nl" } });
+    const dirk = await runTool(tools.bookViewing, staff, { listingId, startsAt: new Date(start.getTime() + 15 * MINUTE), source: "phone", contact: { firstName: "Dirk", phone: "0471 22 33 44" } });
+
+    const result = await runTool(tools.cancelOpenHouse, staff, { openHouseId: planned.openHouseId, notifyVisitors: true });
+    expect(result).toMatchObject({ changed: true, cancelledVisits: 2, told: 1, toCall: [{ appointmentId: dirk.appointmentId, name: "Dirk", phone: "0471 22 33 44" }] });
+
+    const visits = await db.select({ status: schema.appointments.status }).from(schema.appointments).where(eq(schema.appointments.openHouseId, planned.openHouseId));
+    expect(visits.map((v) => v.status)).toEqual(["cancelled", "cancelled"]);
+    const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.contactId, ann.contactId));
+    const sent = await db.select().from(schema.messages).where(and(eq(schema.messages.conversationId, conversation!.id), eq(schema.messages.direction, "outbound")));
+    const notice = sent.find((m) => (m.metadata as { kind?: string } | null)?.kind === "open_house_cancelled");
+    expect(notice?.body).toMatch(/kijkdag .* niet door/);
+    // The listing's usual times again, not the cancelled open house.
+    expect(notice?.body).toMatch(/• /);
+    expect(notice?.body).toContain("/book/");
+    expect((await runTool(tools.listOpenHouses, staff, { listingId })).some((o) => o.id === planned.openHouseId)).toBe(false);
   });
 
   it("offers open house slots next to the usual times when it isn't exclusive, and refuses one that clashes", async () => {

@@ -59,6 +59,14 @@ export function signature(lang: Lang, agentName: string, agencyName: string, cha
 
 type Vars = { name: string; address: string; agentName: string; other?: string };
 
+/** The agency cancelled an open house the client had a place at ("other" is the time they had). */
+const openHouseOff: Record<Lang, (v: Vars) => string> = {
+  nl: (v) => `Beste ${v.name},\n\nHelaas gaat de kijkdag in ${v.address} niet door, en daarmee ook uw bezoek van ${v.other}. Onze excuses daarvoor.`,
+  fr: (v) => `Bonjour ${v.name},\n\nMalheureusement, la journée portes ouvertes de ${v.address} n'aura pas lieu : votre visite du ${v.other} est donc annulée. Toutes nos excuses.`,
+  en: (v) => `Dear ${v.name},\n\nUnfortunately the open house at ${v.address} has been cancelled, and with it your visit on ${v.other}. We're sorry for the inconvenience.`,
+  de: (v) => `Guten Tag ${v.name},\n\nLeider findet der Besichtigungstag in ${v.address} nicht statt und damit auch Ihre Besichtigung am ${v.other}. Wir bitten um Entschuldigung.`,
+};
+
 /** Fallback drafts when Claude is not configured. The AI writes these itself when it is. */
 export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
   viewing_request: {
@@ -176,6 +184,24 @@ export const templates: Record<string, Record<Lang, (v: Vars) => string>> = {
     fr: (v) => `Bonjour ${v.name},\n\nUn petit rappel : ${v.agentName} passera pour l'estimation gratuite de ${v.address}. Si le moment ne vous convient plus, vous pouvez le modifier ou l'annuler via le lien ci-dessous.`,
     en: (v) => `Dear ${v.name},\n\nA quick reminder: ${v.agentName} is coming by for the free valuation of ${v.address}. If the time no longer suits you, you can move or cancel it with the link below.`,
     de: (v) => `Guten Tag ${v.name},\n\nEine kurze Erinnerung: ${v.agentName} kommt für die kostenlose Bewertung von ${v.address} vorbei. Passt der Termin doch nicht mehr? Dann verschieben oder stornieren Sie ihn über den Link unten.`,
+  },
+  open_house_cancelled: {
+    nl: (v) => `${openHouseOff.nl(v)} Wilt u het pand toch bekijken? Deze momenten zijn vrij:`,
+    fr: (v) => `${openHouseOff.fr(v)} Souhaitez-vous tout de même visiter le bien ? Voici les moments disponibles :`,
+    en: (v) => `${openHouseOff.en(v)} Would you still like to see the property? These times are free:`,
+    de: (v) => `${openHouseOff.de(v)} Möchten Sie die Immobilie trotzdem besichtigen? Diese Termine sind frei:`,
+  },
+  open_house_cancelled_link: {
+    nl: (v) => `${openHouseOff.nl(v)} Wilt u het pand toch bekijken? Kies via de link hieronder zelf een ander moment.`,
+    fr: (v) => `${openHouseOff.fr(v)} Souhaitez-vous tout de même visiter le bien ? Choisissez un autre moment via le lien ci-dessous.`,
+    en: (v) => `${openHouseOff.en(v)} Would you still like to see the property? Pick another time with the link below.`,
+    de: (v) => `${openHouseOff.de(v)} Möchten Sie die Immobilie trotzdem besichtigen? Wählen Sie über den Link unten einen anderen Termin.`,
+  },
+  open_house_cancelled_plain: {
+    nl: (v) => `${openHouseOff.nl(v)} We houden u op de hoogte.`,
+    fr: (v) => `${openHouseOff.fr(v)} Nous vous tiendrons au courant.`,
+    en: (v) => `${openHouseOff.en(v)} We'll keep you posted.`,
+    de: (v) => `${openHouseOff.de(v)} Wir halten Sie auf dem Laufenden.`,
   },
   no_show: {
     nl: (v) => `Beste ${v.name},\n\nWe hebben u gemist bij het bezoek aan ${v.address}. Geen probleem, er kan altijd iets tussenkomen. Wilt u het pand nog bekijken? Deze momenten zijn vrij:`,
