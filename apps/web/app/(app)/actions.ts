@@ -460,7 +460,8 @@ export async function planOpenHouseAction(listingId: string, _state: OpenHouseSt
   return { planned: true };
 }
 
-export async function cancelOpenHouseAction(listingId: string, openHouseId: string) {
-  await runTool(tools.cancelOpenHouse, await getToolContext(), { openHouseId });
+export async function cancelOpenHouseAction(listingId: string, openHouseId: string, form: FormData) {
+  const result = await runTool(tools.cancelOpenHouse, await getToolContext(), { openHouseId, notifyVisitors: form.get("notifyVisitors") === "on" });
   revalidatePath(`/listings/${listingId}`);
+  if (result.cancelledVisits) redirect(`/listings/${listingId}?tab=viewings&openHouseCancelled=${result.cancelledVisits}&told=${result.told}`);
 }

@@ -20,9 +20,9 @@ const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2
 const accessLabel = { agent: "The agency has the key", owner: "Lived in by the owner", tenant: "Rented out, tenant lives there" } as const;
 type TabId = (typeof tabIds)[number];
 
-export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function ListingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; openHouseCancelled?: string; told?: string }> }) {
   const { id } = await params;
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, openHouseCancelled, told } = await searchParams;
   const tab: TabId = tabIds.includes(tabParam as TabId) ? (tabParam as TabId) : "viewings";
   const ctx = await getToolContext();
   const [listing, agents, matches] = await Promise.all([
@@ -147,6 +147,12 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                   <p className="mt-0.5 text-[12px] text-muted">One block of time at the house with room for many visitors, booked in short time slots on your website, the booking link and in the times the planner offers.</p>
                 </div>
               </div>
+              {openHouseCancelled && (
+                <p className="border-b border-line px-4 py-2.5 text-[12px]">
+                  Open house cancelled. {Number(told) || 0} of {Number(openHouseCancelled) || 0} visitors were told
+                  {Number(told) < Number(openHouseCancelled) ? "; call the others yourself." : "."}
+                </p>
+              )}
               {openHouses.map((o) => (
                 <div key={o.id} className="border-b border-line px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -167,6 +173,29 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                       </form>
                     )}
                   </div>
+                  {o.booked > 0 && (() => {
+                    const upcoming = o.visitors.filter((v) => v.status === "scheduled" || v.status === "confirmed");
+                    const toCall = upcoming.filter((v) => !v.email && !(v.whatsappOptIn && v.phone));
+                    return (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[12px] text-muted">Cancel this open house</summary>
+                        <form action={cancelOpenHouseAction.bind(null, listing.id, o.id)} className="mt-2 rounded-md border border-line p-3">
+                          <input type="hidden" name="notifyVisitors" value="on" />
+                          <p className="text-[12px]">
+                            This cancels the {upcoming.length === 1 ? "place of the visitor" : `places of all ${upcoming.length} visitors`} and tells each of them by email or WhatsApp, with other free times and the booking link.
+                          </p>
+                          {toCall.length > 0 && (
+                            <p className="mt-2 text-[12px] text-muted">
+                              Call {toCall.length === 1 ? "this visitor" : "these visitors"} yourself, they left only a phone number: {toCall.map((v) => `${fullName(v.firstName, v.lastName)}${v.phone ? ` (${v.phone})` : ""}`).join(", ")}.
+                            </p>
+                          )}
+                          <button className="mt-3 inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium text-danger hover:bg-hover">
+                            Cancel and tell the visitors
+                          </button>
+                        </form>
+                      </details>
+                    );
+                  })()}
                   {o.note && <p className="mt-1 text-[12px] text-muted">{o.note}</p>}
                   {o.visitors.length > 0 && (
                     <details className="mt-2">
