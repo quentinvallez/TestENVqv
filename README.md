@@ -5,7 +5,7 @@ The AI-native platform for real estate agencies, starting with the **planning ag
 ## Architecture in one minute
 
 ```
-apps/web        Next.js back office, API routes, Inngest endpoint
+apps/web        Next.js back office, API routes, cron endpoints
 packages/core   Tool registry: every action in the product, used by UI, API and AI agents
 packages/db     Postgres schema (Drizzle), migrations, client
 ```
@@ -13,8 +13,8 @@ packages/db     Postgres schema (Drizzle), migrations, client
 Five rules keep this AI-native rather than "a database with a chatbot":
 
 1. **Every action is a tool** (`packages/core/src/tools`). Defined once with a zod schema. Pages call tools, and agents will call the same tools. `describeTools()` exports them in the format LLM tool-use and MCP expect.
-2. **Everything is an event** (`recordEvent`). Written to the `events` table and published to Inngest so agent workflows can react. The log is also the activity feed and the agents' memory.
-3. **Agents are durable workflows** (Inngest, `app/api/inngest`), so waits, retries and schedules survive restarts.
+2. **Everything is an event** (`recordEvent`). Written to the `events` table. The log is also the activity feed and the agents' memory.
+3. **Scheduled work runs from Vercel Cron** (`app/api/cron/*`); every job is idempotent, so a missed or repeated run is harmless.
 4. **Humans approve; agencies choose the autonomy.** Agents write `proposals`; `agency_settings.autonomy` decides what runs without approval.
 5. **AI quality is measured.** Traces and evals arrive with the first AI features.
 
@@ -58,7 +58,7 @@ Sign up, then click **Load demo data** on the dashboard.
 
 `packages/core/src/automations` runs on a schedule for every agency: a reminder the evening before each viewing, viewings marked done an hour after they end, a follow-up draft the next day, a draft with new times when an agent marks a no-show, and a check-in when a lead hasn't answered for a few days. Each job happens once per subject (`automation_runs`), so running them often is harmless. Everything is a draft in the inbox, except reminders when the agency turns on "Send reminders automatically" in Settings.
 
-They run through Vercel Cron (`apps/web/vercel.json`, daily at 16:00 UTC, needs `CRON_SECRET`) and, once Inngest is connected, every 15 minutes (`automationsCron`). **Run now** in Settings runs them for your agency at once.
+They run through Vercel Cron (`apps/web/vercel.json`, daily at 16:00 UTC, needs `CRON_SECRET`). **Run now** in Settings runs them for your agency at once.
 
 ## Environments
 
