@@ -1,4 +1,5 @@
 import type { AutomationRule } from "@viewing/db/schema";
+import { bookingUrl } from "../planner/booking-link";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, schema, db, type Database } from "@viewing/db";
 import { conversationFor, sendMessage } from "../channels";
 import { recordEvent } from "../events";
@@ -305,7 +306,7 @@ export async function draftNoShow(ctx: ToolContext, appointmentId: string, optio
       purpose: `The client did not come to the viewing on ${formatSlot(apt.startsAt, "en")}. Say kindly, without any reproach, that we missed them and that things come up, and offer the times below in case they still want to see the property.`,
       templateKey: "no_show",
       slots: pickSpreadSlots(slots),
-      link: apt.listingId ? { url: `/book/${apt.listingId}`, label: linkLabels.book[lang] } : undefined,
+      link: apt.listingId ? { url: (await bookingUrl(ctx, apt.listingId)).url, label: linkLabels.book[lang] } : undefined,
       leadStage: "invited",
       summary: `Offer ${name} new times after the missed viewing`,
     };
@@ -400,7 +401,7 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
               purpose: `The client has not answered our last message for ${days} days. Write a short, friendly check-in, without pressure: ask whether they are still interested and offer the times below. ${nudges > 0 ? "This is the last check-in, so also say we won't keep writing." : ""}`,
               templateKey: "nudge_invited",
               slots,
-              link: { url: `/book/${thread.listing!.id}`, label: linkLabels.book[lang] },
+              link: { url: (await bookingUrl(ctx, thread.listing!.id)).url, label: linkLabels.book[lang] },
               summary: `Check in with ${name}: no answer for ${days} days`,
             }
           : {

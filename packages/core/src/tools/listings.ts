@@ -1,3 +1,4 @@
+import { bookingUrl } from "../planner/booking-link";
 import { and, asc, desc, eq, ilike, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { recordEvent } from "../events";
@@ -139,4 +140,12 @@ export const assignListingAgent = defineTool({
     });
     return { changed: true, leadsMoved: moved.length };
   },
+});
+
+export const listingBookingLink = defineTool({
+  name: "listings_booking_link",
+  description: "Where a client books this listing: its page on the agency's website when the widget runs there, else our own booking page.",
+  mutates: false,
+  input: z.object({ id: z.string() }),
+  run: async (ctx, input) => bookingUrl(ctx, input.id),
 });

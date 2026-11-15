@@ -32,6 +32,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
   ]);
   if (!listing) notFound();
   const occupancy = tab === "owner" ? await runTool(tools.listListingOccupants, ctx, { listingId: listing.id }) : null;
+  const booking = await runTool(tools.listingBookingLink, ctx, { id: listing.id });
   const openHouses = tab === "viewings" && listing.status === "active" ? await runTool(tools.listOpenHouses, ctx, { listingId: listing.id }) : [];
 
   const base = `/listings/${listing.id}`;
@@ -52,22 +53,36 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                 <span className="sm:hidden">Book</span>
                 <span className="hidden sm:inline">Book for a client</span>
               </Link>
-              <CopyLinkButton path={`/book/${listing.id}`} label="Copy booking link" />
-              <Link
-                href={`/demo-site/${listing.agencyId}/${listing.id}`}
-                target="_blank"
-                className="hidden h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover sm:inline-flex"
-              >
-                See on demo website
-              </Link>
-              <Link
-                href={`/book/${listing.id}`}
-                target="_blank"
-                className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"
-              >
-                <span className="sm:hidden">Booking page</span>
-                <span className="hidden sm:inline">Open booking page</span>
-              </Link>
+              <CopyLinkButton path={booking.url} label="Copy booking link" />
+              {booking.onWebsite ? (
+                <a
+                  href={booking.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"
+                >
+                  <span className="sm:hidden">Website</span>
+                  <span className="hidden sm:inline">See on website</span>
+                </a>
+              ) : (
+                <>
+                  <Link
+                    href={`/demo-site/${listing.agencyId}/${listing.id}`}
+                    target="_blank"
+                    className="hidden h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover sm:inline-flex"
+                  >
+                    See on demo website
+                  </Link>
+                  <Link
+                    href={`/book/${listing.id}`}
+                    target="_blank"
+                    className="inline-flex h-7 items-center rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90"
+                  >
+                    <span className="sm:hidden">Booking page</span>
+                    <span className="hidden sm:inline">Open booking page</span>
+                  </Link>
+                </>
+              )}
             </>
           )
         }

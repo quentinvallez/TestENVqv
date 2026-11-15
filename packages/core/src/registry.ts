@@ -5,7 +5,7 @@ import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
 import { resetToDemoData, seedDemoData } from "./tools/demo";
 import { listLeads, moveLeadStage } from "./tools/leads";
-import { assignListingAgent, createListing, getListing, listListings } from "./tools/listings";
+import { assignListingAgent, createListing, getListing, listingBookingLink, listListings } from "./tools/listings";
 import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
 import { decideProposal, listProposals } from "./tools/proposals";
 import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, getAgentAvailability, rescheduleAppointment, setAgentAvailability } from "./tools/booking";
@@ -30,6 +30,7 @@ export const tools = {
   noteWidgetSeen,
   readWebsiteLook,
   getListing,
+  listingBookingLink,
   createListing,
   assignListingAgent,
   listLeads,
