@@ -1,6 +1,8 @@
 import { after } from "next/server";
 import { runTool, tools } from "@viewing/core";
-import { systemContext, widgetPage } from "@viewing/core/public";
+import { publicContext, systemContext, widgetPage } from "@viewing/core/public";
+import { openHouseBanners } from "@/lib/widget-data";
+import { toWidgetLang, widgetText } from "@/lib/widget-i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -28,5 +30,20 @@ export async function GET(request: Request) {
       }
     });
   }
-  return Response.json({ listingId: page.listingId, agents: page.agents }, { headers: { ...cors, "Cache-Control": "public, max-age=60" } });
+  return Response.json({ listingId: page.listingId, agents: page.agents, openHouse: page.listingId ? await nextOpenHouse(agency, page.listingId, params.get("lang")) : null }, { headers: { ...cors, "Cache-Control": "public, max-age=60" } });
+}
+
+/** The next open house with places left, for the floating button while it is closed: "Kijkdag · za 28 nov · 10:00–12:00". */
+async function nextOpenHouse(agencyId: string, listingId: string, langParam: string | null) {
+  try {
+    const lang = toWidgetLang(langParam ?? undefined);
+    const { openHouses } = await runTool(tools.availableSlots, publicContext(agencyId), { listingId, days: 14 });
+    const next = openHouseBanners(openHouses.filter((o) => o.placesLeft > 0), lang)[0];
+    if (!next) return null;
+    const t = widgetText[lang];
+    return { title: t.openHouseTitle, when: next.when, places: t.openHousePlaces(next.placesLeft) };
+  } catch (error) {
+    console.error("Open house for the widget failed", error);
+    return null;
+  }
 }

@@ -8,7 +8,7 @@ import { AGENCY_TIMEZONE } from "@viewing/core/time";
 const locales = { nl: "nl-BE", fr: "fr-BE", en: "en-GB", de: "de-BE" } as const;
 
 /** Upcoming open houses as the visitor reads them: "za 28 nov · 10:00–12:00" and the places left. */
-function openHouseBanners(shows: { startsAt: Date; endsAt: Date; placesLeft: number }[], lang: WidgetLang) {
+export function openHouseBanners(shows: { startsAt: Date; endsAt: Date; placesLeft: number }[], lang: WidgetLang) {
   const day = new Intl.DateTimeFormat(locales[lang], { timeZone: AGENCY_TIMEZONE, weekday: "short", day: "numeric", month: "short" });
   const time = new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, hour: "2-digit", minute: "2-digit" });
   return shows.slice(0, 3).map((o) => ({ when: `${day.format(o.startsAt)} · ${time.format(o.startsAt)}–${time.format(o.endsAt)}`, placesLeft: o.placesLeft }));

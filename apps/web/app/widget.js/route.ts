@@ -213,13 +213,18 @@ const script = String.raw`(function () {
       ".open:focus-visible,.close:focus-visible{outline:2px solid " + brand + ";outline-offset:2px}" +
       ".open svg{width:20px;height:20px;flex:none}" +
       ".panel{position:fixed;z-index:2147483001;right:24px;bottom:24px;width:540px;max-width:calc(100vw - 48px);height:min(880px,calc(100vh - 48px));display:flex;flex-direction:column;overflow:hidden;border-radius:16px;color-scheme:" + (look.dark ? "dark" : "light") + ";background:" + look.bg + ";color:" + look.fg + ";box-shadow:0 16px 56px rgba(0,0,0,.3)}" +
-      ".panel[hidden],.open[hidden]{display:none}" +
+      ".panel[hidden],.open[hidden],.notice[hidden]{display:none}" +
+      ".notice{position:fixed;z-index:2147483000;right:20px;bottom:84px;display:block;max-width:280px;padding:12px 40px 12px 16px;border:1px solid rgba(127,127,127,.25);border-left:4px solid " + brand + ";border-radius:12px;background:" + look.bg + ";color:" + look.fg + ";font:400 14px/1.4 " + font + ";text-align:left;box-shadow:0 6px 24px rgba(0,0,0,.16);cursor:pointer}" +
+      ".notice b{display:block;font-weight:600;font-size:15px;margin-bottom:2px}" +
+      ".notice small{display:block;margin-top:2px;font-size:13px;opacity:.75}" +
+      ".dismiss{position:absolute;top:6px;right:6px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:inherit;font:400 18px/1 system-ui,sans-serif;cursor:pointer}" +
       ".bar{display:flex;align-items:center;justify-content:space-between;gap:8px;height:56px;padding:0 10px 0 20px;border-bottom:1px solid rgba(127,127,127,.25);font-weight:600;font-size:16px;line-height:1.2;font-family:" + (look.heading || font).replace(/[<>{};]/g, "") + "}" +
       ".close{display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:8px;background:transparent;color:inherit;font:400 24px/1 system-ui,sans-serif;cursor:pointer}" +
       "iframe{flex:1;width:100%;border:0;background:transparent}" +
-      "@media (max-width:560px){.open{right:16px;bottom:16px}.panel{inset:0;width:auto;max-width:none;height:100%;border-radius:0}}" +
+      "@media (max-width:560px){.open{right:16px;bottom:16px}.notice{right:16px;bottom:80px;max-width:calc(100vw - 32px)}.panel{inset:0;width:auto;max-width:none;height:100%;border-radius:0}}" +
       "</style>" +
       '<button class="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + options.icon + '</svg><span></span></button>' +
+      '<div class="notice" role="button" tabindex="0" hidden><b></b><span></span><small></small><button class="dismiss" type="button">×</button></div>' +
       '<div class="panel" role="dialog" aria-modal="true" hidden><div class="bar"><span></span><button class="close" type="button">×</button></div></div>';
     var open = root.querySelector(".open");
     var panel = root.querySelector(".panel");
@@ -228,8 +233,18 @@ const script = String.raw`(function () {
     panel.querySelector(".bar span").textContent = options.label;
     panel.setAttribute("aria-label", options.title);
     close.setAttribute("aria-label", config.text.close);
+    var notice = root.querySelector(".notice");
+    var noticeClosed = false;
+    if (options.notice && options.notice.when) {
+      notice.querySelector("b").textContent = options.notice.title;
+      notice.querySelector("span").textContent = options.notice.when;
+      notice.querySelector("small").textContent = options.notice.places || "";
+      notice.querySelector(".dismiss").setAttribute("aria-label", config.text.close);
+      notice.hidden = false;
+    }
     var iframe = null;
     function show() {
+      notice.hidden = true;
       if (!iframe) {
         iframe = document.createElement("iframe");
         iframe.title = options.title;
@@ -243,9 +258,19 @@ const script = String.raw`(function () {
     function hide() {
       panel.hidden = true;
       open.hidden = false;
+      notice.hidden = noticeClosed || !(options.notice && options.notice.when);
       open.focus();
     }
     open.addEventListener("click", show);
+    notice.addEventListener("click", function (event) {
+      if (event.target && event.target.className === "dismiss") {
+        noticeClosed = true;
+        notice.hidden = true;
+        return;
+      }
+      show();
+    });
+    notice.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); show(); } });
     close.addEventListener("click", hide);
     root.addEventListener("keydown", function (event) { if (event.key === "Escape") hide(); });
     if (launcherHost) launcherHost.parentNode.removeChild(launcherHost);
@@ -269,7 +294,7 @@ const script = String.raw`(function () {
     siteConfig = config;
     var page = (launchedFor = pageUrl());
     if (!config || !config.bookingLauncher || current.getAttribute("data-launcher") === "off" || document.querySelector("[data-viewing-widget]")) return valuationLauncher(config);
-    fetch(origin + "/api/widget/page?agency=" + encodeURIComponent(agency) + "&url=" + encodeURIComponent(page))
+    fetch(origin + "/api/widget/page?agency=" + encodeURIComponent(agency) + "&lang=" + pageLang() + "&url=" + encodeURIComponent(page))
       .then(function (response) { return response.ok ? response.json() : {}; })
       .then(function (data) {
         // The visitor moved on to another page while we asked (single-page sites).
@@ -282,6 +307,7 @@ const script = String.raw`(function () {
           title: config.text.booking,
           icon: calendarIcon,
           booking: true,
+          notice: data.openHouse,
           src: origin + "/embed/" + data.listingId + "?lang=" + pageLang() + (agent ? "&agent=" + agent.id : ""),
         });
       })
