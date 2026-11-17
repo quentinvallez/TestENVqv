@@ -8,7 +8,8 @@ import type { SlotDay } from "@/lib/slots";
 import { widgetText, type WidgetLang } from "@/lib/widget-i18n";
 import { SlotPicker } from "./slot-picker";
 
-export type WidgetQuestion = { id: string; question: string; options: { id: string; label: string }[] };
+/** "choice": pick one option; "text": a short free answer. */
+export type WidgetQuestion = { id: string; kind: "choice" | "text"; question: string; options: { id: string; label: string }[] };
 
 const inputClass =
   "h-10 w-full rounded-md border border-line bg-panel px-3 outline-none transition-colors placeholder:text-faint focus:border-[var(--brand)]";
@@ -164,21 +165,31 @@ export function BookingWidget({
             {questions.map((q) => (
               <fieldset key={q.id}>
                 <legend className="mb-1.5">{q.question}</legend>
-                <div className="flex flex-wrap gap-1.5">
-                  {q.options.map((o) => (
-                    <button
-                      type="button"
-                      key={o.id}
-                      onClick={() => setAnswers((a) => ({ ...a, [q.id]: o.id }))}
-                      className={cn(
-                        "rounded-full border px-3 py-1.5 transition-colors",
-                        answers[q.id] === o.id ? "border-[var(--brand)] bg-[var(--brand)] text-[var(--brand-fg)]" : "border-line hover:border-line-strong",
-                      )}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
+                {q.kind === "text" ? (
+                  <input
+                    value={answers[q.id] ?? ""}
+                    maxLength={500}
+                    onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                    aria-label={q.question}
+                    className={inputClass}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {q.options.map((o) => (
+                      <button
+                        type="button"
+                        key={o.id}
+                        onClick={() => setAnswers((a) => ({ ...a, [q.id]: o.id }))}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 transition-colors",
+                          answers[q.id] === o.id ? "border-[var(--brand)] bg-[var(--brand)] text-[var(--brand-fg)]" : "border-line hover:border-line-strong",
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </fieldset>
             ))}
           </div>
@@ -187,7 +198,7 @@ export function BookingWidget({
               {t.back}
             </button>
             <button type="button" onClick={() => setStep(3)} className="h-10 flex-1 rounded-md bg-[var(--brand)] font-medium text-[var(--brand-fg)] hover:opacity-90">
-              {Object.keys(answers).length ? t.next : t.skip}
+              {Object.values(answers).some((v) => v.trim()) ? t.next : t.skip}
             </button>
           </div>
         </section>

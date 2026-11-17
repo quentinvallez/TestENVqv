@@ -1,5 +1,5 @@
 import "server-only";
-import { qualificationQuestions, runTool, tools } from "@viewing/core";
+import { runTool, tools } from "@viewing/core";
 import { bookableListing, publicContext } from "@viewing/core/public";
 import { groupSlotsByDay } from "./slots";
 import type { WidgetLang } from "./widget-i18n";
@@ -18,11 +18,11 @@ export function openHouseBanners(shows: { startsAt: Date; endsAt: Date; placesLe
 export async function loadWidget(listingId: string, lang: WidgetLang, agentId?: string) {
   const found = await bookableListing(listingId);
   if (!found) return null;
-  const { agent, slotMinutes, slots, awaitingOccupant, openHouses } = await runTool(tools.availableSlots, publicContext(found.listing.agencyId), { listingId, agentId, days: 14 });
-  const questions = qualificationQuestions[found.listing.transaction].map((q) => ({
-    id: q.id,
-    question: q.question[lang],
-    options: q.options.map((o) => ({ id: o.id, label: o.label[lang] })),
-  }));
+  const ctx = publicContext(found.listing.agencyId);
+  const [{ agent, slotMinutes, slots, awaitingOccupant, openHouses }, questions] = await Promise.all([
+    runTool(tools.availableSlots, ctx, { listingId, agentId, days: 14 }),
+    // The agency's own questions for this kind of listing (Settings → Booking questions).
+    runTool(tools.bookingQuestionsForWidget, ctx, { transaction: found.listing.transaction, lang }),
+  ]);
   return { ...found, agent, slotMinutes, awaitingOccupant, days: groupSlotsByDay(slots, lang), questions, openHouses: openHouseBanners(openHouses, lang) };
 }

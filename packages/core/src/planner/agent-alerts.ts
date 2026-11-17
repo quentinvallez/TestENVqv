@@ -64,6 +64,7 @@ const labels = {
   client: { nl: "Klant", fr: "Client", en: "Client", de: "Kunde" },
   source: { nl: "Via", fr: "Via", en: "Via", de: "Über" },
   message: { nl: "Bericht", fr: "Message", en: "Message", de: "Nachricht" },
+  answers: { nl: "Antwoorden van de klant", fr: "Réponses du client", en: "The client's answers", de: "Antworten des Kunden" },
   open: { nl: "Bekijk in de planning", fr: "Voir dans le planning", en: "Open in the planner", de: "Im Planer öffnen" },
   footer: {
     nl: "Automatisch bericht. Uitzetten kan in Instellingen → Automatisaties.",
@@ -85,6 +86,8 @@ export function agentAlertText(input: {
   place: string;
   source: string | null;
   note: string | null;
+  /** What the client answered to the booking questions, worded in the agency's language. */
+  answers?: { question: string; answer: string }[];
   link: string;
 }) {
   const { action, type, lang, client } = input;
@@ -104,9 +107,12 @@ export function agentAlertText(input: {
     ]
       .filter(Boolean)
       .join("\n"),
+    input.answers?.length ? [`${labels.answers[lang]}:`, ...input.answers.map((a) => `- ${a.question} → ${a.answer}`)].join("\n") : null,
     `${labels.open[lang]}: ${input.link}`,
     labels.footer[lang],
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return { subject, text };
 }
 
@@ -138,6 +144,7 @@ export async function alertAgent(ctx: ToolContext, appointmentId: string, action
       place: apt.location ?? "",
       source: apt.lead?.source ?? null,
       note: action.kind === "booked" ? (apt.notes ?? null) : null,
+      answers: action.kind === "booked" ? apt.lead?.qualification?.answers : undefined,
       link: absoluteUrl("/appointments"),
     });
     const sent = await emailAgent(ctx, { agentId: apt.agent.id, subject, text });

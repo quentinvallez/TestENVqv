@@ -30,8 +30,25 @@ export type Branding = {
   detectedFrom?: string;
 };
 
+/** Text in the client languages; a missing language falls back to the agency's own, then any other. */
+export type Localized = Partial<Record<Language, string>>;
+
+/**
+ * A question asked in the booking widget before the client leaves their
+ * details: pick one option ("choice") or a short free answer ("text").
+ * Option and question ids stay stable when the text is edited.
+ */
+export type BookingQuestion = {
+  id: string;
+  kind: "choice" | "text";
+  question: Localized;
+  options?: { id: string; label: Localized }[];
+};
+
 /** What widget.js shows on the agency's website besides the placeholders it fills. */
 export type WidgetSettings = {
+  /** The agency's own booking questions per kind of listing. Unset = our default questions. */
+  questions?: { sale?: BookingQuestion[]; rent?: BookingQuestion[] };
   /** Floating "free valuation" button at the bottom right of every page. On unless turned off. */
   valuationLauncher?: boolean;
   /** Floating "book a viewing" button on listing pages found on the website, when the page has no placeholder. On unless turned off. */
