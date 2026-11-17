@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { notFound } from "next/navigation";
-import { demoSlots, qualificationQuestions, runTool, tools } from "@viewing/core";
+import { defaultBookingQuestions, demoSlots, runTool, tools, widgetQuestions } from "@viewing/core";
 import { previewByToken, publicContext } from "@viewing/core/public";
 import { groupSlotsByDay } from "@/lib/slots";
 import { toWidgetLang } from "@/lib/widget-i18n";
@@ -31,7 +31,7 @@ export default async function PreviewPage({ params, searchParams }: { params: Pr
   }
   const days = groupSlotsByDay(demoSlots(preview.id), lang);
   const questions = (transaction: "sale" | "rent") =>
-    qualificationQuestions[transaction].map((q) => ({ id: q.id, question: q.question[lang], options: q.options.map((o) => ({ id: o.id, label: o.label[lang] })) }));
+    widgetQuestions(defaultBookingQuestions[transaction], lang);
 
   return (
     <>

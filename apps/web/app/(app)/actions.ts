@@ -3,6 +3,8 @@
 import { leadStages, PreviewError, runTool, SlotUnavailableError, tools, zonedTime } from "@viewing/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { BookingQuestion } from "@viewing/db/schema";
+import { z } from "zod";
 import { getToolContext, requireAdmin } from "@/lib/context";
 
 export async function seedDemoAction() {
@@ -464,4 +466,19 @@ export async function cancelOpenHouseAction(listingId: string, openHouseId: stri
   const result = await runTool(tools.cancelOpenHouse, await getToolContext(), { openHouseId, notifyVisitors: form.get("notifyVisitors") === "on" });
   revalidatePath(`/listings/${listingId}`);
   if (result.cancelledVisits) redirect(`/listings/${listingId}?tab=viewings&openHouseCancelled=${result.cancelledVisits}&told=${result.told}`);
+}
+
+export type BookingQuestionsState = { error?: string; savedAt?: number; questions?: BookingQuestion[]; custom?: boolean } | undefined;
+
+/** Saves the booking questions for listings for sale or to rent; `null` goes back to our default questions. */
+export async function saveBookingQuestionsAction(transaction: "sale" | "rent", questions: BookingQuestion[] | null): Promise<BookingQuestionsState> {
+  await requireAdmin();
+  try {
+    const saved = await runTool(tools.updateBookingQuestions, await getToolContext(), { transaction, questions });
+    revalidatePath("/settings/questions");
+    return { savedAt: Date.now(), ...saved };
+  } catch (error) {
+    if (error instanceof z.ZodError) return { error: error.issues[0]?.message ?? "Check the questions." };
+    throw error;
+  }
 }

@@ -4,6 +4,7 @@ import { syncAppointmentToCalendar, externalBusy, type CalendarEvent } from "../
 import { recordEvent } from "../events";
 import { computeSlots, expandWindows, openHouseSlots, type Interval, type OpenHouseSlot } from "../planner/availability";
 import { qualify } from "../planner/qualification";
+import { agencyBookingQuestions } from "./booking-questions";
 import { startOfZonedDay } from "../time";
 import { defineTool, type ToolContext } from "../tool";
 import { alertOccupants } from "../planner/occupants";
@@ -17,6 +18,7 @@ const BOOKING_HORIZON_DAYS = 21;
 
 type Agent = typeof agents.$inferSelect;
 type Listing = typeof listings.$inferSelect;
+type Qualification = NonNullable<(typeof leads.$inferSelect)["qualification"]>;
 
 /** The agent responsible for a listing: its own agent, else someone in its office, else anyone active. */
 export async function resolveAgentForListing(ctx: ToolContext, listing: Listing): Promise<Agent> {
@@ -237,12 +239,23 @@ export async function lockListing(ctx: ToolContext, listing: Listing) {
   await ctx.db.execute(sql`select pg_advisory_xact_lock(hashtext(${`listing:${listing.id}`}))`);
 }
 
-function calendarEvent(listing: Listing | null, contact: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null }, start: Date, end: Date): CalendarEvent {
+/**
+ * The viewing as it shows in the agent's own calendar: who comes, how to reach
+ * them, their message and what they answered in the widget. Pure, for tests.
+ */
+export function calendarEvent(
+  listing: Listing | null,
+  contact: { firstName: string | null; lastName: string | null; email: string | null; phone: string | null },
+  start: Date,
+  end: Date,
+  extra: { answers?: Qualification["answers"]; message?: string | null } = {},
+): CalendarEvent {
   const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Client";
   const place = listing ? [[listing.street, listing.houseNumber].filter(Boolean).join(" "), listing.city].filter(Boolean).join(", ") : undefined;
+  const answers = (extra.answers ?? []).map((a) => `${a.question}\n→ ${a.answer}`);
   return {
     title: `Viewing: ${name}${listing ? ` · ${listing.reference}` : ""}`,
-    description: [contact.email, contact.phone].filter(Boolean).join("\n"),
+    description: [[contact.email, contact.phone].filter(Boolean).join("\n"), extra.message?.trim(), answers.join("\n\n")].filter(Boolean).join("\n\n"),
     location: place,
     start,
     end,
@@ -334,7 +347,7 @@ export const bookViewing = defineTool({
     contact: contactInput,
     message: z.string().trim().max(2000).optional(),
     source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
-    qualification: z.record(z.string(), z.string()).optional().describe("Answers to the widget's qualifying questions: question id → option id"),
+    qualification: z.record(z.string(), z.string()).optional().describe("Answers to the booking questions: question id → option id, or the typed answer for a free-text question"),
     anyTime: z.boolean().default(false).describe("Staff only: book a time agreed with the client outside the offered slots, if the agent is free and the home allows it"),
     confirmToClient: z.boolean().default(false).describe("Staff only: send the client the usual booking confirmation, e.g. after a booking by phone"),
   }),
@@ -391,7 +404,11 @@ export const bookViewing = defineTool({
             sql`${leads.stage} not in ('won','lost')`,
           ),
         );
-      const qualification = input.qualification ? qualify(listing.transaction, input.qualification) : undefined;
+      let qualification: Qualification | undefined;
+      if (input.qualification && Object.keys(input.qualification).length) {
+        const { questions, lang } = await agencyBookingQuestions(txCtx, listing.transaction);
+        qualification = qualify(questions, listing.transaction, input.qualification, lang);
+      }
       const [lead] = openLead
         ? await tx
             .update(leads)
@@ -427,7 +444,7 @@ export const bookViewing = defineTool({
         subjectId: appointment!.id,
         data: { listingId: listing.id, agentId: agent.id, leadId: lead!.id, startsAt: slot.start.toISOString(), source: input.source, openHouseId: slot.openHouseId ?? null, anyTime: input.anyTime || undefined },
       });
-      return { appointment: appointment!, listing, agent, contact: contact! };
+      return { appointment: appointment!, listing, agent, contact: contact!, qualification };
     });
 
     // An open house is one event in the agent's calendar, not one per visitor.
@@ -436,7 +453,7 @@ export const bookViewing = defineTool({
         ctx,
         result.agent.id,
         null,
-        calendarEvent(result.listing, result.contact, result.appointment.startsAt, result.appointment.endsAt),
+        calendarEvent(result.listing, result.contact, result.appointment.startsAt, result.appointment.endsAt, { answers: result.qualification?.answers, message: result.appointment.notes }),
       );
       if (externalEventId) {
         await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, result.appointment.id));
@@ -573,11 +590,15 @@ export const rescheduleAppointment = defineTool({
 
     const [listing] = updated.listingId ? await ctx.db.select().from(listings).where(eq(listings.id, updated.listingId)) : [];
     const [contact] = updated.contactId ? await ctx.db.select().from(contacts).where(eq(contacts.id, updated.contactId)) : [];
+    const [lead] = updated.leadId ? await ctx.db.select({ qualification: leads.qualification }).from(leads).where(eq(leads.id, updated.leadId)) : [];
     const externalEventId = await syncAppointmentToCalendar(
       ctx,
       updated.agentId,
       updated.externalEventId,
-      updated.openHouseId ? null : calendarEvent(listing ?? null, contact ?? { firstName: null, lastName: null, email: null, phone: null }, updated.startsAt, updated.endsAt),
+      updated.openHouseId ? null : calendarEvent(listing ?? null, contact ?? { firstName: null, lastName: null, email: null, phone: null }, updated.startsAt, updated.endsAt, {
+            answers: lead?.qualification?.answers,
+            message: updated.notes,
+          }),
     );
     if (externalEventId !== updated.externalEventId) {
       await ctx.db.update(appointments).set({ externalEventId }).where(eq(appointments.id, updated.id));
