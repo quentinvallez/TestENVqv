@@ -2,6 +2,7 @@ import { REMINDER_HOUR, runTool, tools } from "@viewing/core";
 import { db, eq, schema } from "@viewing/db";
 import { BellRing, Lock, Palette, Play, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { ChannelMark } from "@/components/channel";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { AiPill, Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { formatRelative } from "@/lib/format";
@@ -30,6 +31,7 @@ export default async function SettingsPage() {
     return (
       <>
         <PageHeader crumbs={[{ label: "Settings" }]} />
+        <SettingsTabs active="general" />
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-[760px] px-5 py-6">
             <Panel className="px-4 py-3 text-muted">Only the agency&apos;s admins can change settings. Ask an admin if something should be different.</Panel>
@@ -65,7 +67,7 @@ export default async function SettingsPage() {
       key: "noShows",
       on: automations.noShows,
       title: "Message after a no-show",
-      description: "When you mark that a client didn't come (Appointments), the client gets a friendly message with new times to book.",
+      description: "When you mark that a client didn't come (Calendar → List), the client gets a friendly message with new times to book.",
     },
     {
       key: "nudges",
@@ -98,6 +100,7 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader crumbs={[{ label: "Settings" }]} />
+      <SettingsTabs active="general" />
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[760px] flex-col gap-6 px-5 py-6">
           <section>

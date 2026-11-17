@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { emailAgent } from "../channels";
+import { oauthConfigured } from "../integrations/oauth";
 import { recordEvent } from "../events";
 import { absoluteUrl } from "../planner/agent";
 import { type Lang, toLang } from "../planner/language";
@@ -12,7 +13,7 @@ import { defineTool, type ToolContext } from "../tool";
  * email and tie a login to its agent record, matched by email address.
  */
 
-const { agents, member, invitation, user } = schema;
+const { agents, calendarConnections, member, invitation, user } = schema;
 
 export type TeamRole = "owner" | "admin" | "member";
 export type AgentLogin =
@@ -184,3 +185,36 @@ export const sendPasswordReset = defineTool({
   },
 });
 
+
+export type MissingConnection = "login" | "mailbox" | "calendar";
+
+export const listTeamNotConnected = defineTool({
+  name: "team_list_not_connected",
+  description:
+    "Active agents who aren't fully set up: no login yet (never invited, or invited and not accepted), no working Outlook/Gmail for sending client emails, or no connected calendar. Each agent comes with what is missing.",
+  mutates: false,
+  input: z.object({}),
+  run: async (ctx) => {
+    const team = await ctx.db.select({ id: agents.id, name: agents.name, color: agents.color }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.active, true))).orderBy(agents.name);
+    const [logins, connections] = await Promise.all([
+      agentLogins(ctx),
+      ctx.db
+        .select({ agentId: calendarConnections.agentId, scopes: calendarConnections.scopes, status: calendarConnections.status })
+        .from(calendarConnections)
+        .where(eq(calendarConnections.agencyId, ctx.agencyId)),
+    ]);
+    const canConnect = oauthConfigured("google") || oauthConfigured("microsoft");
+    const notConnected = team
+      .map((agent) => {
+        const login = logins.get(agent.id) ?? { status: "none" as const };
+        const mine = connections.filter((c) => c.agentId === agent.id && c.status === "active");
+        const missing: MissingConnection[] = [];
+        if (login.status !== "member") missing.push("login");
+        if (canConnect && !mine.some((c) => c.scopes.includes("mail"))) missing.push("mailbox");
+        if (canConnect && !mine.some((c) => c.scopes.includes("calendar"))) missing.push("calendar");
+        return missing.length ? { agentId: agent.id, name: agent.name, color: agent.color, invited: login.status === "invited", missing } : null;
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+    return { agents: notConnected, total: team.length };
+  },
+});

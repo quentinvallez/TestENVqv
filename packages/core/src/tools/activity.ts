@@ -1,9 +1,8 @@
 import { and, desc, eq, gte, inArray, schema, sql } from "@viewing/db";
 import { z } from "zod";
-import { startOfZonedDay } from "../time";
 import { defineTool } from "../tool";
 
-const { events, leads, appointments, listings, proposals } = schema;
+const { events, appointments, listings } = schema;
 
 export const recentActivity = defineTool({
   name: "activity_recent",
@@ -20,40 +19,33 @@ export const recentActivity = defineTool({
   },
 });
 
+/** Planning time one viewing costs an agency without us: calls, emails, agenda juggling. */
+export const MINUTES_SAVED_PER_VIEWING = 30;
+
 export const dashboardSummary = defineTool({
   name: "dashboard_summary",
-  description: "Key numbers for the agency: new leads this week, viewings today and this week, active listings, pending approvals.",
+  description: `Key numbers for the agency: viewings planned with the tool (all time, cancelled ones left out), how many are still to come, active listings, and the planning time saved (${MINUTES_SAVED_PER_VIEWING} minutes per viewing).`,
   mutates: false,
   input: z.object({}),
   run: async (ctx) => {
     const now = new Date();
-    const startOfDay = startOfZonedDay(now);
-    const endOfDay = startOfZonedDay(now, 1);
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
-    const weekAhead = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
     const count = sql<number>`count(*)::int`;
-    const booked = inArray(appointments.status, ["scheduled", "confirmed"]);
-
-    const [[newLeads], [viewingsToday], [viewingsWeek], [activeListings], [pending]] = await Promise.all([
-      ctx.db.select({ n: count }).from(leads).where(and(eq(leads.agencyId, ctx.agencyId), gte(leads.createdAt, weekAgo))),
+    const planned = and(eq(appointments.agencyId, ctx.agencyId), eq(appointments.type, "viewing"), inArray(appointments.status, ["scheduled", "confirmed", "completed", "no_show"]));
+    const [[total], [upcoming], [activeListings]] = await Promise.all([
+      ctx.db.select({ n: count }).from(appointments).where(planned),
       ctx.db
         .select({ n: count })
         .from(appointments)
-        .where(and(eq(appointments.agencyId, ctx.agencyId), booked, gte(appointments.startsAt, startOfDay), sql`${appointments.startsAt} < ${endOfDay}`)),
-      ctx.db
-        .select({ n: count })
-        .from(appointments)
-        .where(and(eq(appointments.agencyId, ctx.agencyId), booked, gte(appointments.startsAt, now), sql`${appointments.startsAt} < ${weekAhead}`)),
+        .where(and(planned, inArray(appointments.status, ["scheduled", "confirmed"]), gte(appointments.startsAt, now))),
       ctx.db.select({ n: count }).from(listings).where(and(eq(listings.agencyId, ctx.agencyId), inArray(listings.status, ["active", "under_offer"]))),
-      ctx.db.select({ n: count }).from(proposals).where(and(eq(proposals.agencyId, ctx.agencyId), eq(proposals.status, "pending"))),
     ]);
-
+    const viewingsPlanned = total?.n ?? 0;
     return {
-      newLeadsThisWeek: newLeads?.n ?? 0,
-      viewingsToday: viewingsToday?.n ?? 0,
-      viewingsNext7Days: viewingsWeek?.n ?? 0,
+      viewingsPlanned,
+      upcomingViewings: upcoming?.n ?? 0,
+      minutesSaved: viewingsPlanned * MINUTES_SAVED_PER_VIEWING,
+      minutesPerViewing: MINUTES_SAVED_PER_VIEWING,
       activeListings: activeListings?.n ?? 0,
-      pendingApprovals: pending?.n ?? 0,
     };
   },
 });

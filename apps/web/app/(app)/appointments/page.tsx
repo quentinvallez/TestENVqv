@@ -39,7 +39,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
   return (
     <>
       <PageHeader
-        crumbs={[{ label: "Appointments" }]}
+        crumbs={[{ label: "Calendar", href: "/calendar" }, { label: "All viewings" }]}
         actions={
           <Link href="/appointments/new" className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90">
             <Plus className="size-3.5" />

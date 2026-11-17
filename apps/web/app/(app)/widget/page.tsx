@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { runTool, tools } from "@viewing/core";
 import { CalendarPlus, Code2, ExternalLink, House, ListChecks, Sparkles } from "lucide-react";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { Button, PageHeader, Panel, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { address, formatDateTime } from "@/lib/format";
@@ -21,7 +22,8 @@ export default async function WidgetPage() {
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Website & widget" }]} />
+      <PageHeader crumbs={[{ label: "Settings", href: "/settings" }, { label: "Website & widget" }]} />
+      <SettingsTabs active="widget" />
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[860px] px-5 py-6">
           <h1 className="text-[18px] font-semibold tracking-tight">The planner on your website</h1>
