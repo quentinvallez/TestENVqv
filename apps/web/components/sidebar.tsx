@@ -6,13 +6,12 @@ import { useRouter } from "next/navigation";
 import { LogOut, Search } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
-import { navSections } from "./nav";
+import { navItemActive, navSections } from "./nav";
 import { openCommandMenu } from "./command-menu";
 
 export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agencyName: string; userName: string; myAgentId: string | null; inboxCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const signOut = async () => {
     await authClient.signOut();
     router.push("/login");
@@ -46,7 +45,7 @@ export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agenc
                 href={item.href}
                 className={cn(
                   "flex h-8 items-center gap-2.5 rounded-md px-2 transition-colors",
-                  isActive(item.href) ? "bg-hover font-medium text-fg" : "text-muted hover:bg-hover hover:text-fg",
+                  navItemActive(item, pathname) ? "bg-hover font-medium text-fg" : "text-muted hover:bg-hover hover:text-fg",
                 )}
               >
                 <item.icon className="size-4" strokeWidth={1.75} />
@@ -54,7 +53,6 @@ export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agenc
                 {item.href === "/inbox" && inboxCount > 0 && (
                   <span className="rounded bg-ai-soft px-1.5 text-[11px] font-medium text-ai tabular-nums">{inboxCount}</span>
                 )}
-                {item.soon && <span className="text-[10px] text-faint">Soon</span>}
               </Link>
             ))}
           </div>

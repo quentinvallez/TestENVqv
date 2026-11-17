@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AGENCY_TIMEZONE, runTool, startOfZonedDay, tools } from "@viewing/core";
-import { ChevronLeft, ChevronRight, Navigation, Phone, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Navigation, Phone, Plus } from "lucide-react";
 import { Avatar, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
@@ -71,6 +71,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <Plus className="size-3.5" />
               <span className="hidden sm:inline">Book a viewing</span>
               <span className="sm:hidden">Book</span>
+            </Link>
+            <Link href="/appointments" title="All viewings as a list: mark who came, cancel" className="mr-1 flex h-7 items-center gap-1 rounded-md border border-line px-2.5 hover:bg-hover">
+              <List className="size-3.5" />
+              <span className="hidden sm:inline">List</span>
             </Link>
             <Link href={`/calendar?week=${week - 1}`} className="flex size-7 items-center justify-center rounded-md border border-line hover:bg-hover">
               <ChevronLeft className="size-4" />

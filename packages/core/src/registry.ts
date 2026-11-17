@@ -22,7 +22,7 @@ import type { Tool } from "./tool";
 
 /** The registry of every action in the product. */
 import { eraseContact, exportContact, previewRetention } from "./tools/privacy";
-import { getAgentLogin, getMyAgent, linkAgentLogin, sendInvitationEmail, sendPasswordReset, unlinkAgentLogin } from "./tools/team";
+import { getAgentLogin, getMyAgent, linkAgentLogin, listTeamNotConnected, sendInvitationEmail, sendPasswordReset, unlinkAgentLogin } from "./tools/team";
 export const tools = {
   listListings,
   getWidgetSettings,
@@ -56,6 +56,7 @@ export const tools = {
   getContact,
   recentActivity,
   dashboardSummary,
+  listTeamNotConnected,
   availableSlots,
   bookViewing,
   planOpenHouse,

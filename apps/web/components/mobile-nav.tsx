@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, Inbox, KanbanSquare, LayoutGrid, LogOut, Menu, Search, X } from "lucide-react";
+import { Building2, CalendarDays, Inbox, LayoutGrid, LogOut, Menu, Search, X } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
 import { openCommandMenu } from "./command-menu";
-import { navSections } from "./nav";
+import { navItemActive, navSections } from "./nav";
 
 const tabs = [
   { href: "/", label: "Home", icon: LayoutGrid },
   { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/leads", label: "Leads", icon: KanbanSquare },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays, also: ["/appointments"] },
+  { href: "/listings", label: "Listings", icon: Building2 },
 ];
 
 /** Bottom tab bar on phones, with everything else behind "More". */
@@ -21,8 +21,7 @@ export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { 
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
-  const inMore = !tabs.some((t) => isActive(t.href));
+  const inMore = !tabs.some((t) => navItemActive(t, pathname));
 
   useEffect(() => setMoreOpen(false), [pathname]);
 
@@ -33,9 +32,9 @@ export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { 
           <Link
             key={tab.href}
             href={tab.href}
-            className={cn("relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px]", isActive(tab.href) ? "text-fg" : "text-faint")}
+            className={cn("relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px]", navItemActive(tab, pathname) ? "text-fg" : "text-faint")}
           >
-            <tab.icon className="size-5" strokeWidth={isActive(tab.href) ? 2.25 : 1.75} />
+            <tab.icon className="size-5" strokeWidth={navItemActive(tab, pathname) ? 2.25 : 1.75} />
             {tab.label}
             {tab.href === "/inbox" && inboxCount > 0 && (
               <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-ai px-1 text-center text-[10px] leading-4 font-semibold text-white tabular-nums">
@@ -78,12 +77,12 @@ export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { 
             <div className="grid grid-cols-2 gap-1 px-3">
               {navSections
                 .flatMap((s) => s.items)
-                .filter((item) => !tabs.some((t) => t.href === item.href) && !item.soon)
+                .filter((item) => !tabs.some((t) => t.href === item.href))
                 .map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={cn("flex h-12 items-center gap-3 rounded-lg px-3", isActive(item.href) ? "bg-hover font-medium" : "text-muted")}
+                    className={cn("flex h-12 items-center gap-3 rounded-lg px-3", navItemActive(item, pathname) ? "bg-hover font-medium" : "text-muted")}
                   >
                     <item.icon className="size-5" strokeWidth={1.75} />
                     {item.label}
