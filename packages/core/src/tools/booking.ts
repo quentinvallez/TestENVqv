@@ -346,7 +346,7 @@ export const bookViewing = defineTool({
     agentId: z.string().optional().describe("Book with this agent instead of the listing's own, e.g. the agent named on the website page"),
     contact: contactInput,
     message: z.string().trim().max(2000).optional(),
-    source: z.enum(["immoweb", "zimmo", "immovlan", "website", "whatsapp", "phone", "manual"]).default("website"),
+    source: z.enum(["immoweb", "zimmo", "immovlan", "immoscoop", "website", "whatsapp", "phone", "manual"]).default("website"),
     qualification: z.record(z.string(), z.string()).optional().describe("Answers to the booking questions: question id → option id, or the typed answer for a free-text question"),
     anyTime: z.boolean().default(false).describe("Staff only: book a time agreed with the client outside the offered slots, if the agent is free and the home allows it"),
     confirmToClient: z.boolean().default(false).describe("Staff only: send the client the usual booking confirmation, e.g. after a booking by phone"),

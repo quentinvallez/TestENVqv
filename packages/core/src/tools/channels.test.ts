@@ -43,6 +43,28 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(conversation!.draft).not.toBeNull();
   });
 
+  it("shows in the inbox which portal or the website each lead came from", async () => {
+    const source = async (email: string) => (await runTool(tools.listInbox, ctx, { folder: "all" })).items.find((c) => c.contact?.email === email)?.leadSource;
+    expect(await source("ruben.vos@example.be")).toBe("immoweb");
+
+    const scoop = await runTool(tools.receiveEmail, ctx, {
+      from: { name: "Immoscoop", email: "noreply@immoscoop.be" },
+      subject: "Nieuwe aanvraag voor een bezoek",
+      text: "Naam: Lien Wauters\nE-mail: lien@example.be\nUw referentie: GNT-2011",
+      messageId: "<scoop-1@immoscoop.be>",
+      useAi: false,
+    });
+    expect(scoop).toMatchObject({ kind: "portal_lead", portal: "immoscoop" });
+    expect(await source("lien@example.be")).toBe("immoscoop");
+
+    // The same client then books another home in the widget: the conversation follows that lead.
+    const listings = await runTool(tools.listListings, ctx, { status: "active" });
+    const other = listings.find((l) => l.reference !== "GNT-2011")!;
+    const { slots } = await runTool(tools.availableSlots, ctx, { listingId: other.id });
+    await runTool(tools.bookViewing, { ...ctx, actor: { type: "contact", id: null } }, { listingId: other.id, startsAt: slots[0]!.start, contact: { firstName: "Lien", email: "lien@example.be", whatsappOptIn: false } });
+    expect(await source("lien@example.be")).toBe("website");
+  });
+
   it("ignores the same email delivered twice and adds a second request to the same lead", async () => {
     const again = await runTool(tools.receiveEmail, ctx, immowebLead("<lead-1@immoweb.be>"));
     expect(again).toMatchObject({ kind: "portal_lead", duplicate: true });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
-import { parsePortalEmail } from "../channels/portals";
+import { forwardedSender, parsePortalEmail, portalNames, portalOfAddress, portals } from "../channels/portals";
 import { samePhone } from "../channels/phone";
 import { platformWhatsapp } from "../channels/whatsapp";
 import { contactForInviteRef, parseInviteRef } from "../channels/whatsapp-invite";
@@ -11,22 +11,15 @@ import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
 import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/oauth";
 import { defineTool, type ToolContext } from "../tool";
-import { checkSender, forwardingCheckToken, markForwardingCheck, parseGmailForwardingConfirmation, portalDomains, storeGmailForwarding } from "./portal-forwarding";
+import { checkSender, forwardingCheckToken, markForwardingCheck, parseGmailForwardingConfirmation, storeGmailForwarding } from "./portal-forwarding";
 
-/** An address at immoweb.be, zimmo.be or immovlan.be (or a subdomain). */
-const fromPortal = (address: string | null) => Boolean(address && portalDomains.some((d) => new RegExp(`[@.]${d.replace(".", "\\.")}$`, "i").test(address)));
+/** An address at one of the portals' domains (or a subdomain). */
+const fromPortal = (address: string | null) => Boolean(portalOfAddress(address));
 
-/** The original sender of a forwarded mail ("Van: Immoweb <noreply@immoweb.be>" in the first lines), if any. */
-function forwardedSender(text: string): string | null {
-  const line = text.slice(0, 2000).match(/^\s*(?:from|van|de|von)\s*:\s*(.+)$/im)?.[1];
-  return line?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() ?? null;
-}
 import { findOrCreateContact, receiveMessage } from "./conversations";
 
 const { agents, agencySettings, calendarConnections, contacts, leads, listings, messages } = schema;
 
-const portals = ["immoweb", "zimmo", "immovlan"] as const;
-const portalNames = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
 
 /** Stands in for the client's text when they only ticked "I want to visit"; in their language, so the planner answers in it. */
 const visitNote = {

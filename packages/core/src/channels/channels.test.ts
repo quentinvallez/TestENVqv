@@ -172,6 +172,38 @@ describe("portal leads", () => {
     expect(lead).toMatchObject({ portal: "immoweb", email: "tom@example.be", portalRef: "9988776" });
   });
 
+  it("reads an Immoscoop lead", () => {
+    const lead = parsePortalEmail(
+      mail({
+        from: { name: "Immoscoop", email: "noreply@immoscoop.be" },
+        subject: "Nieuwe aanvraag voor een bezoek",
+        text: "Naam: Sara Janssens\nE-mail: sara@example.be\nTelefoon: 0486 12 34 56\nUw referentie: VP-2041",
+      }),
+    );
+    expect(lead).toMatchObject({ portal: "immoscoop", name: "Sara Janssens", email: "sara@example.be", agencyReference: "VP-2041", visitRequested: true });
+  });
+
+  it("takes the portal from the sender, not from what the text mentions", () => {
+    // Zimmo's own mail that also links to Immoweb is still a Zimmo lead.
+    const zimmo = parsePortalEmail(mail({ from: { name: "Zimmo", email: "leads@mail.zimmo.be" }, subject: "Nieuwe aanvraag", text: "Naam: An\nE-mail: an@example.be\nOok op immoweb.be te zien." }));
+    expect(zimmo?.portal).toBe("zimmo");
+    // Forwarded by the agency: the original sender decides, even when the subject names another portal.
+    const forwarded = parsePortalEmail(
+      mail({
+        from: { name: "Vastgoed Peeters", email: "info@vastgoedpeeters.be" },
+        subject: "Fwd: aanvraag (ook op immoweb.be)",
+        text: "---------- Forwarded message ---------\nFrom: Immovlan <contact@immovlan.be>\n\nNaam: Bart\nE-mail: bart@example.be",
+      }),
+    );
+    expect(forwarded?.portal).toBe("immovlan");
+    // A look-alike domain is not the portal.
+    expect(parsePortalEmail(mail({ from: { name: null, email: "leads@immoweb.be.example.com" }, subject: "Uw maandoverzicht", text: "Naam: X\nE-mail: x@example.be" }))).toBeNull();
+  });
+
+  it("doesn't guess when a forwarded text names several portals", () => {
+    expect(parsePortalEmail(mail({ from: { name: null, email: "info@vastgoedpeeters.be" }, subject: "Fwd: aanvraag", text: "Naam: Jo\nE-mail: jo@example.be\nZie immoweb.be en zimmo.be" }))).toBeNull();
+  });
+
   it("ignores ordinary mail and portal newsletters without a client", () => {
     expect(parsePortalEmail(mail({ subject: "Re: bezoek", text: "Zaterdag past, tot dan." }))).toBeNull();
     expect(parsePortalEmail(mail({ from: { name: null, email: "news@immoweb.be" }, subject: "Uw maandoverzicht", text: "Uw zoekertjes kregen 120 views." }))).toBeNull();

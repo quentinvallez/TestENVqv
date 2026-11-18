@@ -6,7 +6,7 @@ import { leadCopyAddressAction, portalForwardingAction, updateAutomationsAction 
 import { CopyText } from "./channels";
 import { CopyAddressForm, ForwardingButton } from "./forwarding-button";
 
-const portalName = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan" } as const;
+const portalName = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan", immoscoop: "Immoscoop" } as const;
 const RECENT = 14 * 24 * 3600 * 1000;
 
 const dotColor: Record<string, string> = {
@@ -66,7 +66,7 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
                 <span className="rounded-full border border-line px-1.5 text-[11px] font-normal text-muted">Recommended</span>
               </div>
               <p className="mt-0.5 max-w-xl text-muted">
-                In your Immoweb, Zimmo and Immovlan accounts, set the email address that receives contact requests to your inbox address above. Nothing to set up in your mailbox: we forward each original portal email to the listing&apos;s agent, so nobody misses a lead, and replying to it goes straight to the client.
+                In your Immoweb, Zimmo, Immovlan and Immoscoop accounts, set the email address that receives contact requests to your inbox address above. Nothing to set up in your mailbox: we forward each original portal email to the listing&apos;s agent, so nobody misses a lead, and replying to it goes straight to the client.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-muted">Forward each portal email to the agent:</span>
@@ -174,7 +174,7 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
             <div className="mt-2 flex max-w-xl flex-col gap-3 text-muted">
               <div>
                 <div className="font-medium text-fg">Outlook</div>
-                Settings → Mail → Rules → Add new rule. Condition: <i>From</i> contains <code>immoweb.be</code>, <code>zimmo.be</code>, <code>immovlan.be</code>. Action: <i>Forward to</i> your inbox address.
+                Settings → Mail → Rules → Add new rule. Condition: <i>From</i> contains <code>immoweb.be</code>, <code>zimmo.be</code>, <code>immovlan.be</code>, <code>immoscoop.be</code>. Action: <i>Forward to</i> your inbox address.
               </div>
               <div>
                 <div className="font-medium text-fg">Microsoft 365 companies</div>
@@ -182,7 +182,7 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
               </div>
               <div>
                 <div className="font-medium text-fg">Gmail</div>
-                Settings → See all settings → Forwarding and POP/IMAP → Add a forwarding address: your inbox address. The confirmation code appears here above. Then Filters → Create a filter: From <code>immoweb.be OR zimmo.be OR immovlan.be</code> → Forward it to that address.
+                Settings → See all settings → Forwarding and POP/IMAP → Add a forwarding address: your inbox address. The confirmation code appears here above. Then Filters → Create a filter: From <code>immoweb.be OR zimmo.be OR immovlan.be OR immoscoop.be</code> → Forward it to that address.
               </div>
             </div>
           </details>

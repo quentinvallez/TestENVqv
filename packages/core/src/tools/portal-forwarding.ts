@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { inboundAddress } from "../channels";
+import { portalDomains, portals } from "../channels/portals";
 import { mailDomain, mailgunConfigured, newMessageId, sendWithMailgun } from "../channels/email";
 import { recordEvent } from "../events";
 import { authorizedFetch, oauthConfigured } from "../integrations/oauth";
@@ -17,7 +18,6 @@ import { defineTool, type ToolContext } from "../tool";
 
 const { agencySettings, agents, calendarConnections, leads } = schema;
 
-export const portalDomains = ["immoweb.be", "zimmo.be", "immovlan.be"] as const;
 export const PORTAL_RULE_NAME = "Portal leads → planner";
 
 /*
@@ -54,7 +54,7 @@ export function forwardingState(rule: PortalRule | null, now = new Date()): Forw
 export const portalLeadsStatus = defineTool({
   name: "portal_leads_status",
   description:
-    "How portal leads reach the agency: its inbox address, the last lead per portal (Immoweb, Zimmo, Immovlan), which agents' Outlook forwards them automatically, and a pending Gmail forwarding confirmation code.",
+    "How portal leads reach the agency: its inbox address, the last lead per portal (Immoweb, Zimmo, Immovlan, Immoscoop), which agents' Outlook forwards them automatically, and a pending Gmail forwarding confirmation code.",
   mutates: false,
   input: z.object({}),
   run: async (ctx) => {
@@ -62,7 +62,7 @@ export const portalLeadsStatus = defineTool({
     const perPortal = await ctx.db
       .select({ portal: leads.source, count: sql<number>`count(*)::int`, lastAt: sql<Date>`max(${leads.createdAt})` })
       .from(leads)
-      .where(and(eq(leads.agencyId, ctx.agencyId), inArray(leads.source, ["immoweb", "zimmo", "immovlan"])))
+      .where(and(eq(leads.agencyId, ctx.agencyId), inArray(leads.source, [...portals])))
       .groupBy(leads.source);
     const [settings] = await ctx.db.select({ channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const connections = await ctx.db
@@ -81,7 +81,7 @@ export const portalLeadsStatus = defineTool({
       .orderBy(agents.name);
     return {
       inboundAddress: address,
-      portals: (["immoweb", "zimmo", "immovlan"] as const).map((portal) => {
+      portals: portals.map((portal) => {
         const row = perPortal.find((p) => p.portal === portal);
         return { portal, count: row?.count ?? 0, lastAt: row?.lastAt ? new Date(row.lastAt) : null };
       }),
@@ -119,7 +119,7 @@ const graphRules = "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messag
 export const setupPortalForwarding = defineTool({
   name: "portal_forwarding_setup",
   description:
-    "Create (or repair) the rule in an agent's Outlook that forwards every email from immoweb.be, zimmo.be and immovlan.be to the agency's inbox address, so portal leads arrive on their own.",
+    "Create (or repair) the rule in an agent's Outlook that forwards every email from immoweb.be, zimmo.be, immovlan.be and immoscoop.be to the agency's inbox address, so portal leads arrive on their own.",
   mutates: true,
   input: z.object({ agentId: z.string() }),
   run: async (ctx, input) => {

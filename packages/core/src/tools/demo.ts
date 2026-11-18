@@ -157,7 +157,7 @@ export const seedDemoData = defineTool({
         .returning();
 
       type Stage = "new" | "invited" | "booked" | "visited" | "follow_up" | "offer";
-      const leadPlan: [number, string, Stage, "immoweb" | "zimmo" | "immovlan" | "website", string][] = [
+      const leadPlan: [number, string, Stage, "immoweb" | "zimmo" | "immovlan" | "immoscoop" | "website", string][] = [
         [0, "ANT-1042", "invited", "immoweb", "Is het appartement nog beschikbaar? Graag een bezoek."],
         [1, "ANT-1043", "invited", "immoweb", "Wij zijn geïnteresseerd en willen graag komen kijken."],
         [2, "GNT-2011", "invited", "zimmo", "Bonjour, je souhaiterais visiter ce bien."],
@@ -169,7 +169,7 @@ export const seedDemoData = defineTool({
         [8, "GNT-2011", "visited", "immoweb", "Bezoek gehad, denken erover na."],
         [9, "ANT-1055", "follow_up", "zimmo", "Nous aimerions une deuxième visite."],
         [10, "ANT-1055", "offer", "website", "Wij willen een bod uitbrengen."],
-        [11, "GNT-2020", "visited", "immoweb", "Merci pour la visite."],
+        [11, "GNT-2020", "visited", "immoscoop", "Merci pour la visite."],
       ];
       const leadRows = await tx
         .insert(leads)

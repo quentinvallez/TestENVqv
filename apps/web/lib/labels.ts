@@ -30,6 +30,7 @@ export const sourceLabel: Record<string, string> = {
   immoweb: "Immoweb",
   zimmo: "Zimmo",
   immovlan: "Immovlan",
+  immoscoop: "Immoscoop",
   website: "Website",
   whatsapp: "WhatsApp",
   phone: "Phone",

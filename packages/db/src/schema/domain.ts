@@ -489,7 +489,7 @@ export type Qualification = {
   temperature?: "hot" | "warm" | "cold";
 };
 
-export type LeadSource = "immoweb" | "zimmo" | "immovlan" | "website" | "whatsapp" | "phone" | "manual" | "valuation";
+export type LeadSource = "immoweb" | "zimmo" | "immovlan" | "immoscoop" | "website" | "whatsapp" | "phone" | "manual" | "valuation";
 /** What the client wants from the agency: buy or rent a listing, or sell their own property. */
 export type LeadIntent = "buy" | "rent" | "sell";
 export type LeadStage = "new" | "invited" | "booked" | "visited" | "follow_up" | "offer" | "won" | "lost";
