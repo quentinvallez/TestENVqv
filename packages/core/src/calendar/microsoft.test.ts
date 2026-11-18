@@ -133,7 +133,7 @@ describe.skipIf(!process.env.DATABASE_URL)("Outlook", () => {
     expect(first).toMatchObject({ ruleId: "rule-1", updated: false });
     const created = calls.find((c) => c.method === "POST" && c.url.endsWith("/messageRules"))!;
     expect(created.body).toMatchObject({
-      conditions: { senderContains: ["immoweb.be", "zimmo.be", "immovlan.be", "forwarding-check@mail.example.be"] },
+      conditions: { senderContains: ["immoweb.be", "zimmo.be", "immovlan.be", "immoscoop.be", "forwarding-check@mail.example.be"] },
       actions: { forwardTo: [{ emailAddress: { address: first.forwardTo } }] },
     });
     expect(first.forwardTo).toMatch(/@mail\.example\.be$/);

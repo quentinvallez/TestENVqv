@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, schema, sql } from "@viewing/db";
+import { and, asc, desc, eq, inArray, schema, sql } from "@viewing/db";
 import type { Language } from "@viewing/db/schema";
 import { z } from "zod";
 import { deliveryRoute, samePhone, sendMessage } from "../channels";
@@ -42,10 +42,20 @@ async function loadInbox(ctx: ToolContext) {
       proposals: { where: eq(proposals.status, "pending"), columns: { id: true, generatedBy: true, kind: true } },
     },
   });
+  // Where each client came from: the source of the conversation's lead, picked as in conversations_get.
+  const contactIds = [...new Set(rows.map((r) => r.contactId).filter((id): id is string => Boolean(id)))];
+  const contactLeads = contactIds.length
+    ? await ctx.db
+        .select({ contactId: leads.contactId, listingId: leads.listingId, source: leads.source })
+        .from(leads)
+        .where(and(eq(leads.agencyId, ctx.agencyId), inArray(leads.contactId, contactIds)))
+        .orderBy(desc(leads.updatedAt))
+    : [];
   return rows.map((row) => ({
     ...row,
     lastMessage: row.messages[0] ?? null,
     pendingDraft: row.proposals[0] ?? null,
+    leadSource: contactLeads.find((l) => l.contactId === row.contactId && (!row.listingId || l.listingId === row.listingId))?.source ?? null,
   }));
 }
 

@@ -74,7 +74,7 @@ const labels = {
   },
 };
 
-const sources: Record<string, string> = { website: "Website", immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan", whatsapp: "WhatsApp", phone: "Phone", manual: "Manual" };
+const sources: Record<string, string> = { website: "Website", immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan", immoscoop: "Immoscoop", whatsapp: "WhatsApp", phone: "Phone", manual: "Manual" };
 
 /** The email to the agent, in their first language. Pure, for tests. */
 export function agentAlertText(input: {

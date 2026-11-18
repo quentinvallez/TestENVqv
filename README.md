@@ -48,7 +48,7 @@ Sign up, then click **Load demo data** on the dashboard.
 ## Channels
 
 - Every outbound message goes through `sendMessage` (`packages/core/src/channels`): the agent's Gmail or Outlook, the agency's inbox address via Mailgun EU, or WhatsApp Cloud API. Without a provider it is stored as "simulated" and shown as not delivered.
-- Client replies, WhatsApp messages and Immoweb/Zimmo/Immovlan lead emails come in through `/api/channels/*` and land in the inbox with a planner draft. Setup: [docs/setup-channels.md](docs/setup-channels.md).
+- Client replies, WhatsApp messages and Immoweb/Zimmo/Immovlan/Immoscoop lead emails come in through `/api/channels/*` and land in the inbox with a planner draft. Setup: [docs/setup-channels.md](docs/setup-channels.md).
 
 ## Widget previews for prospects
 

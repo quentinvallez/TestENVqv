@@ -33,12 +33,12 @@ Every agency gets an inbox address such as `immo-peeters-k3f9@mail.yourdomain.be
 
 Test: in Settings → Channels, copy the inbox address and send it an email from your phone. It should appear in the inbox with a draft reply within a few seconds.
 
-## 2. Portal leads (Immoweb, Zimmo, Immovlan)
+## 2. Portal leads (Immoweb, Zimmo, Immovlan, Immoscoop)
 
-Immoweb, Zimmo and Immovlan email each lead to the address the agency gave them. Settings → Portal leads offers two ways to get those emails to the inbox address:
+Immoweb, Zimmo, Immovlan and Immoscoop email each lead to the address the agency gave them. Settings → Portal leads offers two ways to get those emails to the inbox address:
 
 1. **Portals send to us directly (recommended).** The agency sets the inbox address as the lead email in its portal accounts. Each original portal email is forwarded to the listing's agent (Reply-To the client), or to the agency's copy address when no agent is known. On by default.
-2. **Forward from the mailbox.** Agents who connected Outlook press *Set up forwarding*: we create an inbox rule (Microsoft Graph, `MailboxSettings.ReadWrite`; no access to messages) forwarding mail from `immoweb.be`, `zimmo.be` and `immovlan.be`. Right after, we mail the agent a test from `forwarding-check@<MAILGUN_DOMAIN>` (the rule forwards that address too); Settings shows *Forwarding works* when it comes back, or *blocked* after 15 minutes. Microsoft 365 tenants block external auto-forwarding by default; their admin allows it at security.microsoft.com → Threat policies → Anti-spam → Anti-spam outbound policy → Forwarding rules: On. Organisations where only an admin may approve apps: the agent page shows an admin consent link after a refused connect. Gmail users add a filter themselves; the confirmation code Gmail mails to the inbox address is shown in Settings.
+2. **Forward from the mailbox.** Agents who connected Outlook press *Set up forwarding*: we create an inbox rule (Microsoft Graph, `MailboxSettings.ReadWrite`; no access to messages) forwarding mail from `immoweb.be`, `zimmo.be`, `immovlan.be` and `immoscoop.be`. Right after, we mail the agent a test from `forwarding-check@<MAILGUN_DOMAIN>` (the rule forwards that address too); Settings shows *Forwarding works* when it comes back, or *blocked* after 15 minutes. Microsoft 365 tenants block external auto-forwarding by default; their admin allows it at security.microsoft.com → Threat policies → Anti-spam → Anti-spam outbound policy → Forwarding rules: On. Organisations where only an admin may approve apps: the agent page shows an admin consent link after a refused connect. Gmail users add a filter themselves; the confirmation code Gmail mails to the inbox address is shown in Settings.
 
 Other mail from the portals (invoices, newsletters) is ignored. Each lead becomes:
 

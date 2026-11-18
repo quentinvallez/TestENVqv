@@ -1,13 +1,24 @@
 import type { InboundEmail } from "./inbound-email";
 
 /*
- * Leads from Immoweb, Zimmo and Immovlan arrive as notification emails at the
+ * Leads from Immoweb, Zimmo, Immovlan and Immoscoop arrive as notification emails at the
  * agency (forwarded to the inbox address). The formats differ per portal and
  * change over time, so this reads labelled fields in Dutch, French and English
  * rather than relying on one exact layout.
  */
 
-export type Portal = "immoweb" | "zimmo" | "immovlan";
+export const portals = ["immoweb", "zimmo", "immovlan", "immoscoop"] as const;
+export type Portal = (typeof portals)[number];
+export const portalNames: Record<Portal, string> = { immoweb: "Immoweb", zimmo: "Zimmo", immovlan: "Immovlan", immoscoop: "Immoscoop" };
+/** The portals' own mail domains: their lead emails come from these (or a subdomain). */
+export const portalDomains = ["immoweb.be", "zimmo.be", "immovlan.be", "immoscoop.be"] as const;
+
+/** The portal an email address belongs to: name@immoweb.be or name@mail.immoweb.be, never immoweb.be.example.com. */
+export function portalOfAddress(address: string | null | undefined): Portal | null {
+  const domain = address?.trim().toLowerCase().match(/@([a-z0-9.-]+)>?$/)?.[1];
+  if (!domain) return null;
+  return portals.find((p, i) => domain === portalDomains[i] || domain.endsWith(`.${portalDomains[i]}`)) ?? null;
+}
 
 export type PortalLead = {
   portal: Portal;
@@ -24,10 +35,11 @@ export type PortalLead = {
   visitRequested: boolean;
 };
 
-const portalDomains: Record<Portal, RegExp> = {
+const portalMentions: Record<Portal, RegExp> = {
   immoweb: /immoweb\.be/i,
   zimmo: /zimmo\.be/i,
   immovlan: /immovlan\.be/i,
+  immoscoop: /immoscoop\.be/i,
 };
 
 const labels = {
@@ -39,7 +51,7 @@ const labels = {
   message: ["bericht", "uw bericht", "vraag", "opmerking", "message", "votre message", "commentaire", "question", "comments", "your message"],
   reference: ["referentie", "uw referentie", "ref", "ref.", "référence", "votre référence", "reference", "your reference", "referentie makelaar", "référence agence"],
   requestType: ["type aanvraag", "soort aanvraag", "aanvraag", "type de demande", "demande", "request type", "request", "onderwerp", "objet", "subject"],
-  portalRef: ["immoweb code", "code immoweb", "immoweb id", "id immoweb", "zimmo code", "code zimmo", "immovlan code", "code immovlan", "zoekertje", "annonce", "code"],
+  portalRef: ["immoweb code", "code immoweb", "immoweb id", "id immoweb", "zimmo code", "code zimmo", "immovlan code", "code immovlan", "immoscoop code", "code immoscoop", "zoekertje", "annonce", "code"],
 };
 
 /** A visit request in a subject or request-type field. Only those, never the whole mail: footers say "bezoek onze website". */
@@ -49,16 +61,27 @@ const french = /\b(nom|prénom|téléphone|votre|demande|bien|visite|référence
 const german = /\b(vorname|nachname|telefon|nachricht|anfrage|besichtigung|immobilie|ihre)\b/i;
 const dutch = /\b(naam|voornaam|telefoon|bericht|aanvraag|pand|bezoek|referentie|uw)\b/i;
 
-function detectPortal(email: InboundEmail): Portal | null {
-  const haystacks = [email.from.email, email.replyTo ?? "", email.subject, email.text.slice(0, 4000)];
-  for (const portal of Object.keys(portalDomains) as Portal[]) {
-    // The sender domain decides first; a forwarded mail only mentions the portal in its text.
-    if (portalDomains[portal].test(email.from.email)) return portal;
-  }
-  for (const portal of Object.keys(portalDomains) as Portal[]) {
-    if (haystacks.some((h) => portalDomains[portal].test(h)) && /(aanvraag|demande|request|contact|interesse|intéress|bezoek|visite)/i.test(email.subject + email.text.slice(0, 2000))) return portal;
-  }
-  return null;
+/** The original sender of a forwarded mail ("Van: Immoweb <noreply@immoweb.be>" in its first lines), if any. */
+export function forwardedSender(text: string): string | null {
+  const line = text.slice(0, 2000).match(/^\s*(?:from|van|de|von)\s*:\s*(.+)$/im)?.[1];
+  return line?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() ?? null;
+}
+
+/**
+ * Which portal sent the lead, strongest evidence first: the sender's address
+ * (portals mailing us directly, or a mailbox that redirects), the original
+ * sender of a mail the agency forwarded, the portal's Reply-To, and only then
+ * the portal named in the subject or the text, when it is the only one named.
+ */
+export function detectPortal(email: InboundEmail): Portal | null {
+  const byAddress = portalOfAddress(email.from.email) ?? portalOfAddress(forwardedSender(email.text)) ?? portalOfAddress(email.replyTo);
+  if (byAddress) return byAddress;
+  if (!/(aanvraag|demande|request|contact|interesse|intéress|bezoek|visite)/i.test(email.subject + email.text.slice(0, 2000))) return null;
+  const inSubject = portals.filter((p) => portalMentions[p].test(email.subject));
+  if (inSubject.length === 1) return inSubject[0]!;
+  // A footer or quoted mail can name another portal too: then the text doesn't say which one sent it.
+  const inText = portals.filter((p) => portalMentions[p].test(email.text.slice(0, 4000)));
+  return inText.length === 1 ? inText[0]! : null;
 }
 
 const allLabels = Object.values(labels).flat().sort((a, b) => b.length - a.length);
@@ -112,6 +135,8 @@ function portalRefFrom(portal: Portal, text: string, labelled: string | null): s
     if (url) return url[1]!.toUpperCase();
     return labelled?.match(/\b([A-Z0-9]{5,8})\b/i)?.[1]?.toUpperCase() ?? null;
   }
+  // Immoscoop: no sample email yet, so the listing is matched by the agency's own reference only.
+  if (portal === "immoscoop") return labelled?.trim() || null;
   const url = text.match(/immovlan\.be\/[^\s"'>]*?\/([a-z]{2,4}\d{5,})/i);
   return url?.[1]?.toLowerCase() ?? labelled ?? null;
 }
@@ -128,7 +153,7 @@ export function parsePortalEmail(email: InboundEmail): PortalLead | null {
     ([first(fields, labels.firstName), first(fields, labels.lastName)].filter(Boolean).join(" ") || null);
   const labelledEmail = first(fields, labels.email)?.match(emailPattern)?.[0] ?? null;
   // Portals often put the client in Reply-To; never take the portal's own address for the client.
-  const replyTo = email.replyTo && !Object.values(portalDomains).some((d) => d.test(email.replyTo!)) ? email.replyTo : null;
+  const replyTo = email.replyTo && !portalOfAddress(email.replyTo) ? email.replyTo : null;
   const clientEmail = (labelledEmail ?? replyTo)?.toLowerCase() ?? null;
   const phone = first(fields, labels.phone)?.match(phonePattern)?.[0]?.replace(/[\s./-]/g, "") ?? null;
   const message = first(fields, labels.message);

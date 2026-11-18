@@ -2,6 +2,7 @@ import Link from "next/link";
 import { aiAvailable, inboxFolders, runTool, tools, type InboxFolder } from "@viewing/core";
 import { ArrowLeft, Building2, CalendarCheck2, CalendarX2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
 import { ChannelMark, providerMeta, providerOf } from "@/components/channel";
+import { leadOrigin, LeadSourcePill, type LeadOrigin } from "@/components/lead-source";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
@@ -122,6 +123,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             {items.map((c) => {
               const provider = providerOf(c.provider, c.channel);
               const name = fullName(c.contact?.firstName, c.contact?.lastName);
+              const origin = leadOrigin(c.leadSource);
               return (
                 <Link key={c.id} href={href({ c: c.id })} className={cn("block px-4 py-3 transition-colors hover:bg-hover/60", c.id === selectedId && "bg-hover")}>
                   <div className="flex items-center gap-2">
@@ -141,6 +143,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                     {c.lastMessage?.body}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {origin && <LeadSourcePill origin={origin} />}
                     {c.priority === "high" && c.status !== "done" && (
                       <Pill className="border-danger/30 text-danger">
                         <Flame className="size-3" />
@@ -192,6 +195,12 @@ const automaticLabel: Record<string, string> = {
 const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) =>
   m.authorType === "agent" && typeof m.metadata.kind === "string" ? (automaticLabel[m.metadata.kind] ?? null) : null;
 
+/** The portal a lead email came through, stored on the message when it was taken in. */
+const portalOf = (metadata: Record<string, unknown>): LeadOrigin | null => {
+  const origin = typeof metadata.portal === "string" ? leadOrigin(metadata.portal) : null;
+  return origin === "website" ? null : origin;
+};
+
 type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.run>>>;
 
 function Thread({ conversation: c, back, ai }: { conversation: Conversation; back: string; ai: boolean }) {
@@ -199,6 +208,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
   const channelLabel = providerMeta[provider].label;
   const name = fullName(c.contact?.firstName, c.contact?.lastName);
   const temperature = c.lead?.qualification?.temperature;
+  const origin = leadOrigin(c.lead?.source);
   const draft = c.draft;
   const draftSlots = Array.isArray(draft?.input.offeredSlots) ? (draft.input.offeredSlots as string[]).map((s) => formatDateTime(new Date(s))) : [];
 
@@ -226,6 +236,7 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                 {temperatureMeta[temperature].label}
               </Pill>
             )}
+            {origin && <LeadSourcePill origin={origin} prefix="Via" />}
             {c.lead && (
               <Pill>
                 <StatusDot color={leadStageMeta[c.lead.stage].color} className="size-1.5" />
@@ -290,6 +301,8 @@ function Thread({ conversation: c, back, ai }: { conversation: Conversation; bac
                 <article key={m.id} className={cn("rounded-lg border border-line bg-panel", outbound && "ml-8")}>
                   <header className="flex items-center gap-2 border-b border-line px-4 py-2 text-[12px] text-muted">
                     <span className="font-medium text-fg">{outbound ? (c.agent?.name ?? "Agency") : name}</span>
+                    {/* Only when it differs from the lead shown above: this client also wrote through another portal. */}
+                    {portalOf(m.metadata) && portalOf(m.metadata) !== origin && <LeadSourcePill origin={portalOf(m.metadata)!} prefix="via" className="shrink-0" />}
                     {m.subject && <span className="truncate">· {m.subject}</span>}
                     <span className="ml-auto shrink-0 tabular-nums">{formatDateTime(m.sentAt)}</span>
                   </header>
