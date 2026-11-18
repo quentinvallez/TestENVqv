@@ -3,7 +3,7 @@ import { buildMime } from "./email";
 import { aliasOf, htmlToText, parseAddress, parseMailgunForm, verifyMailgunSignature, type InboundEmail } from "./inbound-email";
 import { normalizePhone, samePhone } from "./phone";
 import { parsePortalEmail } from "./portals";
-import { parseWhatsAppWebhook } from "./whatsapp";
+import { metaErrorText, parseWhatsAppWebhook, whatsappProblem } from "./whatsapp";
 import { createHmac } from "node:crypto";
 
 const mail = (overrides: Partial<InboundEmail>): InboundEmail => ({
@@ -205,5 +205,17 @@ describe("WhatsApp webhook", () => {
       ["Jan", "[image]"],
     ]);
     expect(inbound!.statuses).toEqual([{ id: "wamid.out", status: "failed", error: "Re-engagement message" }]);
+  });
+});
+
+describe("WhatsApp errors", () => {
+  it("keeps Meta's code and details and explains the common ones", () => {
+    const text = metaErrorText({ code: 132001, message: "(#132001) Template name does not exist in the translation", error_data: { details: "template name (booking_confirmed) does not exist in en" } });
+    expect(text).toBe("[132001] (#132001) Template name does not exist in the translation (template name (booking_confirmed) does not exist in en)");
+    expect(whatsappProblem(`WhatsApp 404: ${text}`)).toBe("this template isn't approved in Meta in the client's language (en)");
+    expect(whatsappProblem("WhatsApp 400: [131030] Recipient phone number not in allowed list")).toMatch(/allowed recipients/);
+    expect(whatsappProblem("WhatsApp 401: [190] Error validating access token: Session has expired")).toMatch(/access token/);
+    expect(whatsappProblem("[131042] Business eligibility payment issue")).toMatch(/payment method/);
+    expect(whatsappProblem("Re-engagement message")).toBeNull();
   });
 });

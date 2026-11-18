@@ -12,6 +12,7 @@ export { defaultBookingQuestions, localized, widgetQuestions, MAX_ANSWER_LENGTH 
 export { MAX_QUESTIONS, MAX_OPTIONS } from "./tools/booking-questions";
 export { formatSlot, toLang, type Lang } from "./planner/language";
 export { verificationMethod } from "./tools/valuations";
+export { whatsappProblem } from "./channels/whatsapp";
 export { conversationFor, sendMessage, normalizePhone, type SendInput, type SendResult, type WhatsAppTemplate } from "./channels";
 export { adminConsentUrl, authorizeUrl, needsAdminConsent, oauthConfigured } from "./integrations/oauth";
 export { runAutomationsForAllAgencies, type AutomationSummary } from "./automations/jobs";

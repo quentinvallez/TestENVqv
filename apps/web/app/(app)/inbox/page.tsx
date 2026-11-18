@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { aiAvailable, inboxFolders, runTool, tools, type InboxFolder } from "@viewing/core";
+import { aiAvailable, inboxFolders, runTool, tools, whatsappProblem, type InboxFolder } from "@viewing/core";
 import { ArrowLeft, Building2, CalendarCheck2, CalendarX2, Check, CheckCheck, Flame, Inbox, RotateCcw, Sparkles } from "lucide-react";
 import { ChannelMark, providerMeta, providerOf } from "@/components/channel";
 import { AiPill, Avatar, Button, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
@@ -354,6 +354,15 @@ const failureLabel: Record<string, string> = {
   whatsapp_window_closed: "WhatsApp only allows templates 24 hours after the client's last message",
 };
 
+/** Why a message meant for WhatsApp went by email, in Meta's own words when we don't know the code. */
+function fallbackNote(metadata: Record<string, unknown>) {
+  if (metadata.fallbackReason === "whatsapp_window_closed") return " · WhatsApp needed a template";
+  if (metadata.fallbackReason === "whatsapp_not_connected") return " · WhatsApp isn't connected";
+  const detail = typeof metadata.whatsappError === "string" ? metadata.whatsappError : "";
+  const why = whatsappProblem(detail) ?? (detail.length > 120 ? `${detail.slice(0, 120)}…` : detail);
+  return why ? ` · WhatsApp didn't work: ${why}` : " · WhatsApp didn't work";
+}
+
 /** Whether an outbound message really left: sent, failed (with why) or only stored because the channel isn't connected. */
 function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null; metadata: Record<string, unknown>; channel: "email" | "whatsapp" }) {
   if (!delivery) return null;
@@ -366,13 +375,13 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
       return (
         <span className="flex items-center gap-1.5 text-[11px] text-faint" title={error}>
           <StatusDot color="var(--warning)" />
-          WhatsApp couldn&apos;t deliver this; sent by email instead
+          WhatsApp couldn&apos;t deliver this{whatsappProblem(error) ? ` (${whatsappProblem(error)})` : ""}; sent by email instead
         </span>
       );
     }
     const why = metadata.bounced
       ? `the email bounced${error && error !== "bounced" ? ` (${error.length > 80 ? `${error.slice(0, 80)}…` : error})` : ""}`
-      : (failureLabel[error] ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it"));
+      : (failureLabel[error] ?? whatsappProblem(error) ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it"));
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-danger" title={error}>
         <StatusDot color="var(--danger)" />
@@ -387,7 +396,7 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
       Sent via {transportLabel[String(metadata.transport)] ?? channel}
       {metadata.template ? " template" : ""}
       {status}
-      {metadata.fallbackFrom === "whatsapp" ? (metadata.fallbackReason === "whatsapp_window_closed" ? " · WhatsApp needed a template" : " · WhatsApp didn't work") : ""}
+      {metadata.fallbackFrom === "whatsapp" ? fallbackNote(metadata) : ""}
       {metadata.mailboxError ? " · the agent's mailbox refused it" : ""}
     </span>
   );

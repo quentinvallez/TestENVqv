@@ -48,9 +48,48 @@ export async function sendWhatsApp(config: WhatsAppConfig, to: string, message: 
     headers: { authorization: `Bearer ${config.accessToken}`, "content-type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: normalizePhone(to), ...payload }),
   });
-  const body = (await response.json()) as { messages?: { id: string }[]; error?: { message: string; code: number } };
-  if (!response.ok || !body.messages?.[0]) throw new Error(`WhatsApp ${response.status}: ${body.error?.message ?? "no message id"}`);
+  const body = (await response.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: MetaError };
+  if (!response.ok || !body.messages?.[0]) {
+    const reason = `WhatsApp ${response.status}: ${body.error ? metaErrorText(body.error) : "no message id"}`;
+    // Meta's own words, so the cause shows up in the runtime logs as well as on the message.
+    console.warn("[whatsapp] send refused", { template: "template" in message ? `${message.template.name}/${message.template.language}` : null, reason });
+    throw new Error(reason);
+  }
   return body.messages[0].id;
+}
+
+type MetaError = { code?: number; title?: string; message?: string; error_data?: { details?: string } };
+
+/** "[132001] Template name does not exist in the translation (template name (booking_confirmed) does not exist in en)". */
+export function metaErrorText(error: MetaError): string {
+  const text = error.message ?? error.title ?? "unknown error";
+  const details = error.error_data?.details;
+  return `${error.code ? `[${error.code}] ` : ""}${text}${details && !text.includes(details) ? ` (${details})` : ""}`;
+}
+
+const problems: Record<number, string> = {
+  190: "the WhatsApp access token has expired or was revoked (Vercel: WHATSAPP_ACCESS_TOKEN)",
+  131030: "this number isn't on the test number's list of allowed recipients in Meta",
+  131026: "this number can't receive WhatsApp messages",
+  131042: "Meta needs a payment method on the WhatsApp account",
+  131047: "WhatsApp only allows templates 24 hours after the client's last message",
+  131049: "Meta held the message back to limit marketing messages to this person",
+  131056: "too many messages to this number in a short time",
+  132000: "the template in Meta has a different number of variables",
+  132001: "this template isn't approved in Meta in the client's language",
+  132015: "the template is paused in Meta",
+  132016: "the template is disabled in Meta",
+  133010: "the WhatsApp number isn't registered with the Cloud API yet",
+};
+
+/** A plain sentence for the inbox from a stored WhatsApp error, when we know the Meta code. */
+export function whatsappProblem(error: string | null | undefined): string | null {
+  const code = error?.match(/\[(\d+)\]|#(\d+)/);
+  const known = code ? problems[Number(code[1] ?? code[2])] : undefined;
+  if (!known) return null;
+  // 132001 names the missing language: "does not exist in en".
+  const lang = error!.match(/does not exist in ([a-z]{2}(?:_[A-Z]{2})?)\b/)?.[1];
+  return lang && known.includes("client's language") ? `${known} (${lang})` : known;
 }
 
 export type WhatsAppInbound = {
@@ -66,7 +105,7 @@ type WebhookBody = {
         metadata?: { phone_number_id?: string };
         contacts?: { wa_id: string; profile?: { name?: string } }[];
         messages?: { id: string; from: string; timestamp: string; type: string; text?: { body: string }; button?: { text: string }; interactive?: { button_reply?: { title: string }; list_reply?: { title: string } } }[];
-        statuses?: { id: string; status: string; errors?: { title?: string; message?: string }[] }[];
+        statuses?: { id: string; status: string; errors?: MetaError[] }[];
       };
     }[];
   }[];
@@ -93,7 +132,7 @@ export function parseWhatsAppWebhook(body: unknown): WhatsAppInbound[] {
         })),
         statuses: (value.statuses ?? [])
           .filter((s) => ["sent", "delivered", "read", "failed"].includes(s.status))
-          .map((s) => ({ id: s.id, status: s.status as WhatsAppInbound["statuses"][number]["status"], error: s.errors?.[0]?.message ?? s.errors?.[0]?.title ?? null })),
+          .map((s) => ({ id: s.id, status: s.status as WhatsAppInbound["statuses"][number]["status"], error: s.errors?.[0] ? metaErrorText(s.errors[0]) : null })),
       });
     }
   }
