@@ -13,10 +13,15 @@ export const leadOrigins = {
 export type LeadOrigin = keyof typeof leadOrigins;
 
 /**
- * The portals' own small logos, served from `public/sources/`. A portal without
- * a file here shows its name only; the website never gets a logo.
+ * The portals' own logo marks (cut from their logos, on white so they read in
+ * dark mode too), served from `public/sources/`. The website never gets a logo.
  */
-const logos: Partial<Record<Exclude<LeadOrigin, "website">, string>> = {};
+const logos: Partial<Record<Exclude<LeadOrigin, "website">, string>> = {
+  immoweb: "/sources/immoweb.png",
+  zimmo: "/sources/zimmo.png",
+  immovlan: "/sources/immovlan.png",
+  immoscoop: "/sources/immoscoop.png",
+};
 
 /**
  * A lead's source as an origin: the portal it came from, or "website" for the
@@ -34,8 +39,8 @@ export function LeadSourcePill({ origin, prefix, className }: { origin: LeadOrig
   return (
     <Pill className={cn("text-fg", className)}>
       {logo && (
-        // eslint-disable-next-line @next/next/no-img-element -- a 12px static logo
-        <img src={logo} alt="" width={12} height={12} className="size-3 shrink-0 rounded-[2px] object-contain" />
+        // eslint-disable-next-line @next/next/no-img-element -- a 14px static logo
+        <img src={logo} alt="" width={14} height={14} className="size-3.5 shrink-0 rounded-[3px] bg-white" />
       )}
       {prefix && <span className="font-normal text-muted">{prefix}</span>}
       {leadOrigins[origin].label}
