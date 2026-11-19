@@ -141,6 +141,22 @@ export async function connectWhatsAppAction(_state: WhatsAppState, form: FormDat
   return { saved: true };
 }
 
+export type WhatsAppCheck = Awaited<ReturnType<typeof tools.checkWhatsApp.run>>;
+export type WhatsAppCheckState = { result?: WhatsAppCheck; error?: string } | undefined;
+
+/** Settings → WhatsApp → Check: Meta's view of the number, recent sends and an optional test template. */
+export async function checkWhatsAppAction(_state: WhatsAppCheckState, form: FormData): Promise<WhatsAppCheckState> {
+  await requireAdmin();
+  const phone = String(form.get("phone") ?? "").trim();
+  const language = String(form.get("language") ?? "nl");
+  try {
+    const result = await runTool(tools.checkWhatsApp, await getToolContext(), { phone: phone || undefined, language: ["nl", "fr", "en", "de"].includes(language) ? (language as "nl") : "nl" });
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "The check failed." };
+  }
+}
+
 export async function disconnectWhatsAppAction() {
   await requireAdmin();
   await runTool(tools.connectWhatsApp, await getToolContext(), { disconnect: true });
