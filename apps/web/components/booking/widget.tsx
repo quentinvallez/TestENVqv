@@ -94,7 +94,8 @@ export function BookingWidget({
         <h3 className="mt-3 text-[16px] font-semibold">{t.doneTitle}</h3>
         <p className="mt-1 font-medium">{state.booked.when}</p>
         <p className="mt-1 text-muted">{withLine}</p>
-        <p className="mt-4 max-w-xs text-muted">{t.doneText}</p>
+        <p className="mt-4 max-w-xs text-muted">{t.doneEmail}</p>
+        <p className="mt-2 max-w-xs text-muted">{t.doneText}</p>
         <a href={state.booked.manageUrl} target="_top" className="mt-3 font-medium text-[var(--brand)] underline-offset-2 hover:underline">
           {t.manage}
         </a>

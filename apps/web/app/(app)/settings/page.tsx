@@ -7,8 +7,8 @@ import { AiPill, Button, PageHeader, Panel, Pill, StatusDot } from "@/components
 import { getSession, getToolContext } from "@/lib/context";
 import { formatRelative } from "@/lib/format";
 import { automationRuleLabel } from "@/lib/labels";
-import { connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, setRetentionAction, updateAutomationsAction } from "../actions";
-import { CopyText, WhatsAppForm } from "./channels";
+import { checkWhatsAppAction, connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, setRetentionAction, updateAutomationsAction } from "../actions";
+import { CopyText, WhatsAppCheckForm, WhatsAppForm } from "./channels";
 import { PortalLeads } from "./portal-leads";
 
 const capabilities = [
@@ -179,6 +179,7 @@ export default async function SettingsPage() {
                   ) : channels.canStoreTokens ? (
                     <WhatsAppForm action={connectWhatsAppAction} />
                   ) : null}
+                  {isAdmin && <WhatsAppCheckForm action={checkWhatsAppAction} />}
                 </div>
                 <StatusDot color={channels.whatsapp.status === "none" ? "var(--line-strong)" : "var(--success)"} className="mt-1.5" />
               </div>

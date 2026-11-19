@@ -5,7 +5,7 @@ import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { forwardedSender, parsePortalEmail, portalNames, portalOfAddress, portals } from "../channels/portals";
 import { samePhone } from "../channels/phone";
-import { platformWhatsapp } from "../channels/whatsapp";
+import { metaErrorText, platformWhatsapp, sendWhatsApp, whatsappConfig, whatsappProblem } from "../channels/whatsapp";
 import { contactForInviteRef, parseInviteRef } from "../channels/whatsapp-invite";
 import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
@@ -18,7 +18,7 @@ const fromPortal = (address: string | null) => Boolean(portalOfAddress(address))
 
 import { findOrCreateContact, receiveMessage } from "./conversations";
 
-const { agents, agencySettings, calendarConnections, contacts, leads, listings, messages } = schema;
+const { agents, agencySettings, calendarConnections, contacts, conversations, leads, listings, messages } = schema;
 
 
 /** Stands in for the client's text when they only ticked "I want to visit"; in their language, so the planner answers in it. */
@@ -556,6 +556,87 @@ export const connectWhatsApp = defineTool({
       data: "disconnect" in input ? {} : { displayNumber: input.displayNumber },
     });
     return { connected: !("disconnect" in input) };
+  },
+});
+
+const sampleParams = {
+  nl: ["Quentin", "do 19 nov. om 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
+  fr: ["Quentin", "jeu. 19 nov. à 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
+  en: ["Quentin", "Thu 19 Nov at 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
+  de: ["Quentin", "Do. 19. Nov. um 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
+};
+
+/**
+ * Settings → WhatsApp → Check: what Meta says about the number and token, the
+ * last WhatsApp messages and why any went by email instead, and optionally a
+ * real booking_confirmed template to a phone, with Meta's answer word for word.
+ */
+export const checkWhatsApp = defineTool({
+  name: "channels_check_whatsapp",
+  description:
+    "Check the WhatsApp connection: the number and token as Meta sees them, recent WhatsApp messages with their delivery status and errors, and optionally send the booking_confirmed template to a test phone.",
+  mutates: true,
+  input: z.object({ phone: z.string().trim().max(30).optional(), language: z.enum(["nl", "fr", "en", "de"]).default("nl") }),
+  run: async (ctx, input) => {
+    const config = await whatsappConfig(ctx);
+    const recentSends = await ctx.db
+      .select({ sentAt: messages.sentAt, delivery: messages.delivery, metadata: messages.metadata })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .where(and(eq(messages.agencyId, ctx.agencyId), eq(conversations.channel, "whatsapp"), eq(messages.direction, "outbound")))
+      .orderBy(desc(messages.sentAt))
+      .limit(8);
+    const recentFallbacks = await ctx.db
+      .select({ sentAt: messages.sentAt, metadata: messages.metadata })
+      .from(messages)
+      .where(and(eq(messages.agencyId, ctx.agencyId), sql`${messages.metadata}->>'fallbackFrom' = 'whatsapp'`))
+      .orderBy(desc(messages.sentAt))
+      .limit(8);
+    const text = (v: unknown) => (typeof v === "string" && v ? v : null);
+    const recent = {
+      sent: recentSends.map((m) => {
+        const error = text(m.metadata.error);
+        return { at: m.sentAt.toISOString(), delivery: m.delivery, status: text(m.metadata.status), template: text(m.metadata.template), error, explained: whatsappProblem(error) };
+      }),
+      byEmailInstead: recentFallbacks.map((m) => {
+        const error = text(m.metadata.whatsappError);
+        return { at: m.sentAt.toISOString(), reason: text(m.metadata.fallbackReason), error, explained: whatsappProblem(error) };
+      }),
+    };
+    if (!config) return { connected: false as const, recent };
+
+    const fields = ["display_phone_number", "verified_name", "name_status", "code_verification_status", "quality_rating", "platform_type", "status", "account_mode"];
+    const lookup = async (list: string[]) => {
+      const response = await fetch(`https://graph.facebook.com/v21.0/${config.phoneNumberId}?fields=${list.join(",")}`, { headers: { authorization: `Bearer ${config.accessToken}` } });
+      return { ok: response.ok, body: (await response.json().catch(() => ({}))) as Record<string, unknown> & { error?: { code?: number; message?: string; error_data?: { details?: string } } } };
+    };
+    // Not every field exists on every API version or number: fall back to the two that always do.
+    let number = await lookup(fields);
+    if (!number.ok && number.body.error?.code === 100) number = await lookup(["display_phone_number", "verified_name"]);
+    const numberError = number.ok ? null : number.body.error ? metaErrorText(number.body.error) : "no answer from Meta";
+    const { id: _id, error: _error, ...numberInfo } = number.body;
+
+    let test: { sent: boolean; messageId?: string; error?: string; explained?: string | null } | null = null;
+    if (input.phone) {
+      try {
+        const messageId = await sendWhatsApp(config, input.phone, { template: { name: "booking_confirmed", language: input.language, params: sampleParams[input.language] } });
+        test = { sent: true, messageId };
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        test = { sent: false, error, explained: whatsappProblem(error) };
+      }
+      await recordEvent(ctx, { type: "whatsapp.tested", subjectType: "agency", subjectId: ctx.agencyId, data: { language: input.language, sent: test.sent } });
+    }
+    return {
+      connected: true as const,
+      source: config.own ? ("own" as const) : ("platform" as const),
+      phoneNumberId: config.phoneNumberId,
+      number: number.ok ? numberInfo : null,
+      numberError,
+      numberExplained: whatsappProblem(numberError),
+      test,
+      recent,
+    };
   },
 });
 
