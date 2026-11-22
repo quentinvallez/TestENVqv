@@ -392,6 +392,23 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     await runTool(tools.updateAutomationSettings, ctx, { replyToPortalLeadsAutomatically: false });
   });
 
+  it("sends the WhatsApp check's test confirmation with a real short link, like clients get", async () => {
+    vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
+    vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
+    const fetchMock = vi.fn(async (url: string) =>
+      new Response(JSON.stringify(String(url).includes("/messages") ? { messages: [{ id: "wamid.check1" }] } : { display_phone_number: "+32 470 00 11 22" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runTool(tools.checkWhatsApp, ctx, { phone: "0471 99 88 77", language: "nl" });
+    expect(result).toMatchObject({ connected: true, test: { sent: true } });
+    const call = fetchMock.mock.calls.map((c) => c as unknown as [string, RequestInit]).find(([url]) => url.includes("/messages"));
+    const link = JSON.parse(call![1].body as string).template.components[0].parameters[4].text as string;
+    expect(link).toMatch(/\/l\/[0-9A-Za-z]{10}$/);
+    expect(await expandShortLinks(db, link)).toContain(`/privacy/${agencyId}?lang=nl`);
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
   it("confirms a website booking on WhatsApp with the approved template when the client asked for it, and by email too", async () => {
     vi.stubEnv("WHATSAPP_PHONE_NUMBER_ID", "1055");
     vi.stubEnv("WHATSAPP_ACCESS_TOKEN", "token");
