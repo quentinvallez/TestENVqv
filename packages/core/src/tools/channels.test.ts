@@ -507,7 +507,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(copy.get("to")).toContain("sofie@demo-agency.be");
     expect(copy.get("h:Reply-To")).toMatch(/^lotte\d+@example\.be$/);
     expect(copy.get("text")).toContain("Kan ik dit appartement bezoeken?");
-    expect(copy.get("text")).toContain("/inbox?c=");
+    expect(copy.get("text")).toContain("/requests/led_");
 
     // Forwarded by the agent's own mailbox: they already have it, no copy.
     const before = forms().length;
