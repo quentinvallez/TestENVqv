@@ -58,6 +58,8 @@ Calendar access and `gmail.send` are *sensitive* scopes at Google, not *restrict
 5. **API permissions** → **Add a permission** → *Microsoft Graph* → **Delegated permissions** → tick:
    - `Calendars.ReadWrite`
    - `Mail.Send` (send approved replies from the agent's mailbox)
+   - `MailboxSettings.ReadWrite` (the optional portal-lead forwarding rule)
+   - `Mail.Read` (pick up portal and website lead emails as they arrive; we only open emails from immoweb.be, zimmo.be, immovlan.be, immoscoop.be and the agency's website domain)
    - `offline_access`
    - `User.Read`, `openid`, `email`
    → Add permissions. Do **not** click "Grant admin consent"; each agency gives consent for its own account.

@@ -177,6 +177,10 @@ export const receiveEmail = defineTool({
     inReplyTo: z.string().nullable().default(null),
     references: z.array(z.string()).default([]),
     useAi: z.boolean().default(true),
+    fromMailbox: z
+      .boolean()
+      .default(false)
+      .describe("Read from an agent's own Outlook rather than sent to the inbox address: only a lead is taken in, and the agency already has the original"),
   }),
   run: async (ctx, input) => {
     const recipient = (await inboundAddress(ctx)) ?? "";
@@ -185,12 +189,15 @@ export const receiveEmail = defineTool({
       const { portal, ...lead } = portalLead;
       const result = await receivePortalLead.run(ctx, { portal, ...lead, externalId: input.messageId ?? undefined, useAi: input.useAi });
       // Sent straight by the portal (not forwarded by the agency's own mailbox, which already has it): send the agency its copy.
-      const direct = fromPortal(input.from.email);
+      const direct = fromPortal(input.from.email) && !input.fromMailbox;
       if (direct && !("duplicate" in result && result.duplicate)) {
         await forwardLeadCopy(ctx, { agentId: result.agentId, conversationId: result.conversationId, clientEmail: lead.email }, { subject: input.subject, text: input.text, from: input.from });
       }
       return { kind: "portal_lead" as const, portal, ...result };
     }
+
+    // From an agent's own mailbox we only take in leads: anything else is theirs, not ours to read.
+    if (input.fromMailbox) return { kind: "ignored" as const, reason: "not_a_lead" };
 
     // Our forwarding test, forwarded back by an agent's Outlook rule (not sent straight to us).
     const checkToken = input.from.email !== checkSender() ? forwardingCheckToken(input) : null;
@@ -477,6 +484,15 @@ export const disconnectCalendar = defineTool({
   mutates: true,
   input: z.object({ connectionId: z.string() }),
   run: async (ctx, input) => {
+    const [connection] = await ctx.db
+      .select({ agentId: calendarConnections.agentId, provider: calendarConnections.provider, syncState: calendarConnections.syncState })
+      .from(calendarConnections)
+      .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, input.connectionId)));
+    // Stop Outlook's new-email notifications first, while we still hold the token.
+    if (connection?.provider === "microsoft" && connection.syncState.leadReading) {
+      const { stopMailboxLeads } = await import("./mailbox-leads");
+      await stopMailboxLeads.run(ctx, { agentId: connection.agentId }).catch((error) => console.error("Stopping lead reading failed", error));
+    }
     const [removed] = await ctx.db
       .delete(calendarConnections)
       .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, input.connectionId)))

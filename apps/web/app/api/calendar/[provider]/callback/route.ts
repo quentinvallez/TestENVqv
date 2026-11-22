@@ -32,7 +32,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     return Response.redirect(back, 302);
   }
   try {
-    await runTool(tools.connectCalendar, ctx, { agentId: state.agentId, provider: state.provider, code, redirectUri: redirectUri(request, provider) });
+    const connected = await runTool(tools.connectCalendar, ctx, { agentId: state.agentId, provider: state.provider, code, redirectUri: redirectUri(request, provider) });
+    // Outlook allowed reading lead emails: start right away (replaces the forwarding rule).
+    if (connected.scopes.includes("leads")) {
+      await runTool(tools.startMailboxLeads, ctx, { agentId: state.agentId }).catch((error) => console.error("Starting lead reading failed", error));
+    }
     back.searchParams.set("connect", "ok");
   } catch (error) {
     console.error("Calendar connection failed", error);

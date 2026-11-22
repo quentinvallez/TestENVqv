@@ -261,8 +261,9 @@ export const calendarConnections = pgTable(
     // Encrypted at rest by the integration layer, never stored in plain text.
     credentials: text().notNull(),
     // What the agent allowed: "calendar" (busy times, viewings in their agenda), "mail" (send from their mailbox)
-    // and "rules" (Outlook only: create the mail rule that forwards portal leads; no access to their mail).
-    scopes: jsonb().$type<("calendar" | "mail" | "rules")[]>().notNull().default(["calendar"]),
+    // "rules" (Outlook only: create the mail rule that forwards portal leads; no access to their mail)
+    // and "leads" (Outlook only: read lead emails from the portals and the agency's website as they arrive).
+    scopes: jsonb().$type<("calendar" | "mail" | "rules" | "leads")[]>().notNull().default(["calendar"]),
     syncState: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     status: text().$type<"active" | "expired" | "revoked">().notNull().default("active"),
     ...timestamps,

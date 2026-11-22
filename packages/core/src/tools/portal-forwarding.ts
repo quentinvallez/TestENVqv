@@ -3,10 +3,12 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { inboundAddress } from "../channels";
 import { portalDomains, portals } from "../channels/portals";
+import { websiteDomain } from "../channels/mailbox-leads";
 import { mailDomain, mailgunConfigured, newMessageId, sendWithMailgun } from "../channels/email";
 import { recordEvent } from "../events";
 import { authorizedFetch, oauthConfigured } from "../integrations/oauth";
 import { defineTool, type ToolContext } from "../tool";
+import type { LeadReading } from "./mailbox-leads";
 
 /*
  * Getting Immoweb, Zimmo and Immovlan lead emails from the agency's mailbox to
@@ -64,7 +66,7 @@ export const portalLeadsStatus = defineTool({
       .from(leads)
       .where(and(eq(leads.agencyId, ctx.agencyId), inArray(leads.source, [...portals])))
       .groupBy(leads.source);
-    const [settings] = await ctx.db.select({ channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+    const [settings] = await ctx.db.select({ channels: agencySettings.channels, websiteUrl: agencySettings.websiteUrl }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const connections = await ctx.db
       .select({
         agentId: agents.id,
@@ -96,11 +98,29 @@ export const portalLeadsStatus = defineTool({
         canForward: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
         forwarding: ruleOf(c.syncState),
         forwardingState: forwardingState(ruleOf(c.syncState)),
+        canRead: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("leads"),
+        reading: readingSummary(c.syncState.leadReading as LeadReading | undefined),
       })),
       outlookAvailable: oauthConfigured("microsoft"),
+      /** Contact-form emails from this domain count as leads when we read an agent's Outlook. */
+      websiteDomain: websiteDomain(settings?.websiteUrl),
     };
   },
 });
+
+/** What Settings shows about reading lead emails from an agent's Outlook. */
+function readingSummary(reading: LeadReading | undefined) {
+  if (!reading) return null;
+  return {
+    since: reading.since,
+    lastSyncAt: reading.lastSyncAt ?? null,
+    lastLeadAt: reading.lastLeadAt ?? null,
+    leads: reading.leads ?? 0,
+    // Without notifications the daily check still reads leads, but up to a day late.
+    instant: Boolean(reading.subscriptionId && reading.expiresAt && new Date(reading.expiresAt) > new Date()),
+    error: reading.error ?? null,
+  };
+}
 
 async function outlookConnection(ctx: ToolContext, agentId: string) {
   const [connection] = await ctx.db

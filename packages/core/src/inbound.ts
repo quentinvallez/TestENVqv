@@ -14,6 +14,20 @@ import { contactForInviteRef, parseInviteRef } from "./channels/whatsapp-invite"
 export { parseMailgunForm, verifyMailgunSignature } from "./channels/inbound-email";
 export { parseWhatsAppWebhook } from "./channels/whatsapp";
 
+/**
+ * The mailbox an Outlook new-email notification is about, found by its
+ * subscription id, with the secret we gave Microsoft to check the post is real.
+ */
+export async function mailboxForSubscription(subscriptionId: string): Promise<{ agencyId: string; agentId: string; clientState: string } | null> {
+  if (!subscriptionId) return null;
+  const [row] = await db
+    .select({ agencyId: schema.calendarConnections.agencyId, agentId: schema.calendarConnections.agentId, clientState: sql<string>`${schema.calendarConnections.syncState}->'leadReading'->>'clientState'` })
+    .from(schema.calendarConnections)
+    .where(and(eq(schema.calendarConnections.provider, "microsoft"), sql`${schema.calendarConnections.syncState}->'leadReading'->>'subscriptionId' = ${subscriptionId}`))
+    .limit(1);
+  return row?.clientState ? row : null;
+}
+
 export function inboundContext(agencyId: string, source: "email" | "whatsapp"): ToolContext {
   return { db, agencyId, actor: { type: "system", id: source } };
 }

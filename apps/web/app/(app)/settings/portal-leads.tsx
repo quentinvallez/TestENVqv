@@ -2,7 +2,7 @@ import { runTool, tools, type ToolContext } from "@viewing/core";
 import { Inbox } from "lucide-react";
 import { Button, Panel, StatusDot } from "@/components/ui";
 import { formatRelative } from "@/lib/format";
-import { leadCopyAddressAction, portalForwardingAction, updateAutomationsAction } from "../actions";
+import { leadCopyAddressAction, mailboxLeadsAction, portalForwardingAction, updateAutomationsAction } from "../actions";
 import { CopyText } from "./channels";
 import { CopyAddressForm, ForwardingButton } from "./forwarding-button";
 
@@ -24,7 +24,14 @@ function stateText(state: string | null, since: string) {
   return `Forwarding portal emails since ${formatRelative(new Date(since))}.`;
 }
 
-/** Settings → Portal leads: both ways to get Immoweb, Zimmo and Immovlan leads in, and whether they arrive. */
+function readingText(reading: { since: string; lastSyncAt: string | null; lastLeadAt: string | null; leads: number; instant: boolean; error: string | null }) {
+  if (reading.error) return `Reading failed: ${reading.error.slice(0, 160)}`;
+  const leads = reading.lastLeadAt ? `${reading.leads} lead${reading.leads === 1 ? "" : "s"} read, last ${formatRelative(new Date(reading.lastLeadAt))}` : "No lead emails yet";
+  const when = reading.instant ? "as they arrive" : "once a day (Outlook isn't notifying us right away; try Stop and Start reading)";
+  return `Reading new lead emails ${when}, started ${formatRelative(new Date(reading.since))}. ${leads}.`;
+}
+
+/** Settings → Portal leads: the ways Immoweb, Zimmo, Immovlan and Immoscoop leads come in, and whether they arrive. */
 export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: boolean }) {
   const status = await runTool(tools.portalLeadsStatus, ctx, {});
   const address = status.inboundAddress;
@@ -35,7 +42,7 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
         <Inbox className="size-4 text-muted" />
         Portal leads
       </h2>
-      <p className="mb-2 text-muted">Immoweb, Zimmo and Immovlan email each lead to you. Send those emails on to your inbox address in one of two ways; each lead then becomes a lead for the listing&apos;s agent.</p>
+      <p className="mb-2 text-muted">Immoweb, Zimmo, Immovlan and Immoscoop email each lead to you. With Outlook connected we pick those emails up from your mailbox; with Gmail you forward them to your inbox address. Each lead becomes a viewing request for the listing&apos;s agent.</p>
       <Panel className="divide-y divide-line">
         <div className="flex flex-wrap gap-x-6 gap-y-2 px-4 py-3">
           {status.portals.map((p) => {
@@ -48,6 +55,62 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
               </div>
             );
           })}
+        </div>
+
+
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 font-medium">
+            Read lead emails from Outlook
+            <span className="rounded-full border border-line px-1.5 text-[11px] font-normal text-muted">Recommended</span>
+          </div>
+          <p className="mt-0.5 max-w-xl text-muted">
+            Nothing to set up: as soon as an agent connects Outlook, we pick up new lead emails from their mailbox. We only open emails sent by Immoweb, Zimmo, Immovlan, Immoscoop
+            {status.websiteDomain ? <> and your website ({status.websiteDomain})</> : null}. For every other email we only look at the sender to skip it, and never open it. Emails that arrived before reading started are left alone.
+          </p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {status.mailboxes.filter((m) => m.provider === "microsoft").length === 0 && (
+              <li className="text-muted">
+                No Outlook connected yet. Agents connect it on the{" "}
+                <a href="/agents" className="underline underline-offset-2">
+                  Agents
+                </a>{" "}
+                page. Gmail users use option 2 below.
+              </li>
+            )}
+            {status.mailboxes
+              .filter((m) => m.provider === "microsoft")
+              .map((m) => (
+                <li key={`read-${m.agentId}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <StatusDot color={m.reading && m.active ? (m.reading.error ? "var(--danger)" : m.reading.instant ? "var(--success)" : "var(--warning)") : "var(--line-strong)"} className="mt-1.5" />
+                    <div className="min-w-0">
+                      <div className="truncate">
+                        {m.agentName} <span className="text-muted">· {m.accountEmail}</span>
+                      </div>
+                      <div className="text-[12px] text-muted">
+                        {!m.active
+                          ? "Outlook connection expired: connect again to keep reading leads."
+                          : m.reading
+                            ? readingText(m.reading)
+                            : m.canRead
+                              ? "Not reading lead emails."
+                              : "Connect Outlook again to allow reading lead emails."}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5 sm:flex-col sm:items-end">
+                    {m.active && m.canRead && (
+                      <ForwardingButton action={mailboxLeadsAction.bind(null, m.agentId, Boolean(m.reading))} label={m.reading ? "Stop" : "Start reading"} variant={m.reading ? "secondary" : "primary"} />
+                    )}
+                    {(!m.canRead || !m.active) && status.outlookAvailable && (
+                      <a href={`/api/calendar/microsoft/start?agentId=${m.agentId}`} className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover">
+                        Connect Outlook again
+                      </a>
+                    )}
+                  </div>
+                </li>
+              ))}
+          </ul>
         </div>
 
         <div className="px-4 py-3">
@@ -63,7 +126,6 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
             <div className="min-w-0">
               <div className="flex items-center gap-2 font-medium">
                 Option 1 · Let the portals send leads to us
-                <span className="rounded-full border border-line px-1.5 text-[11px] font-normal text-muted">Recommended</span>
               </div>
               <p className="mt-0.5 max-w-xl text-muted">
                 In your Immoweb, Zimmo, Immovlan and Immoscoop accounts, set the email address that receives contact requests to your inbox address above. Nothing to set up in your mailbox: we forward each original portal email to the listing&apos;s agent, so nobody misses a lead, and replying to it goes straight to the client.
@@ -91,19 +153,17 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
         </div>
 
         <div className="px-4 py-3">
-          <div className="font-medium">Option 2 · Forward from your mailbox</div>
-          <p className="mt-0.5 max-w-xl text-muted">If you prefer to keep the portals writing to your own mailbox: a rule forwards a copy to us. With Outlook connected, we create that rule in one click. With a Gmail filter, turn off the forwarding to agents above, or they get each lead twice.</p>
+          <div className="font-medium">Option 2 · Forward from your mailbox (Gmail)</div>
+          <p className="mt-0.5 max-w-xl text-muted">For Gmail, and for Outlook mailboxes we don&apos;t read: a rule forwards a copy of each portal email to your inbox address. With Outlook connected, we create that rule in one click. With a Gmail filter, turn off the forwarding to agents above, or they get each lead twice.</p>
           <ul className="mt-3 flex flex-col gap-3">
-            {status.mailboxes.length === 0 && (
+            {status.mailboxes.filter((m) => !m.reading).length === 0 && (
               <li className="text-muted">
-                No mailbox connected yet. Connect Outlook on the{" "}
-                <a href="/agents" className="underline underline-offset-2">
-                  Agents
-                </a>{" "}
-                page for one-click forwarding, or follow the steps below.
+                Nothing to forward: every connected Outlook is read directly. For Gmail, follow the steps below.
               </li>
             )}
-            {status.mailboxes.map((m) => (
+            {status.mailboxes
+              .filter((m) => !m.reading)
+              .map((m) => (
               <li key={`${m.agentId}-${m.provider}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-2">
                   <StatusDot color={dotColor[m.forwardingState ?? "none"]!} className="mt-1.5" />

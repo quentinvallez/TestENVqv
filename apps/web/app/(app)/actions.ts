@@ -362,6 +362,21 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
   return { done: true };
 }
 
+/** Settings → Portal leads: start or stop reading lead emails from an agent's Outlook. */
+export async function mailboxLeadsAction(agentId: string, stop: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  await requireAdmin();
+  try {
+    const ctx = await getToolContext();
+    if (stop) await runTool(tools.stopMailboxLeads, ctx, { agentId });
+    else await runTool(tools.startMailboxLeads, ctx, { agentId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: /^Connect/.test(message) ? message : "Outlook refused. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
+
 export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
   await requireAdmin();
   try {
