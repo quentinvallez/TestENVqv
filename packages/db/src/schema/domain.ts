@@ -253,9 +253,8 @@ export const calendarConnections = pgTable(
   {
     id: id("cal"),
     agencyId: agencyId(),
-    agentId: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
+    // Null for the agency's office mailbox (e.g. info@): read for leads, and replies go from it when the listing's agent has none.
+    agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     provider: text().$type<"google" | "microsoft">().notNull(),
     accountEmail: text().notNull(),
     // Encrypted at rest by the integration layer, never stored in plain text.
@@ -268,7 +267,12 @@ export const calendarConnections = pgTable(
     status: text().$type<"active" | "expired" | "revoked">().notNull().default("active"),
     ...timestamps,
   },
-  (t) => [index().on(t.agentId), uniqueIndex().on(t.agentId, t.provider)],
+  (t) => [
+    index().on(t.agentId),
+    uniqueIndex().on(t.agentId, t.provider),
+    // One office mailbox per agency.
+    uniqueIndex("calendar_connections_office_idx").on(t.agencyId).where(sql`${t.agentId} is null`),
+  ],
 );
 
 export type ListingStatus = "draft" | "active" | "under_offer" | "sold" | "rented" | "archived";

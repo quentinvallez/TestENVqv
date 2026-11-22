@@ -1,4 +1,4 @@
-import { and, db as rootDb, desc, eq, schema, sql } from "@viewing/db";
+import { and, db as rootDb, eq, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import {
@@ -65,15 +65,17 @@ export function notificationUrl() {
   return new URL("/api/channels/outlook/notifications", host).toString();
 }
 
-async function outlookConnection(ctx: ToolContext, agentId: string) {
+async function outlookConnection(ctx: ToolContext, connectionId: string) {
   const [connection] = await ctx.db
     .select()
     .from(calendarConnections)
-    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.agentId, agentId), eq(calendarConnections.provider, "microsoft")))
-    .orderBy(desc(calendarConnections.createdAt))
-    .limit(1);
+    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, connectionId), eq(calendarConnections.provider, "microsoft")));
   return connection ?? null;
 }
+
+/** Events about a mailbox name its agent, or the agency for the office mailbox. */
+const subjectOf = (ctx: ToolContext, connection: { agentId: string | null }) =>
+  connection.agentId ? { subjectType: "agent" as const, subjectId: connection.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId };
 
 /** Saves the reading state without touching the rest of syncState (another request may be writing it). */
 async function saveReading(ctx: ToolContext, connectionId: string, reading: LeadReading | null) {
@@ -135,10 +137,10 @@ export const startMailboxLeads = defineTool({
   description:
     "Start reading portal lead emails (Immoweb, Zimmo, Immovlan, Immoscoop, the agency's website form) straight from an agent's connected Outlook, from now on. Only emails from those senders are opened. Replaces the Outlook forwarding rule.",
   mutates: true,
-  input: z.object({ agentId: z.string() }),
+  input: z.object({ connectionId: z.string().describe("The agent's or the office's Outlook connection") }),
   run: async (ctx, input) => {
-    const connection = await outlookConnection(ctx, input.agentId);
-    if (!connection || connection.status !== "active") throw new Error("Connect Outlook for this agent first");
+    const connection = await outlookConnection(ctx, input.connectionId);
+    if (!connection || connection.status !== "active") throw new Error("Connect Outlook first");
     if (!connection.scopes.includes("leads")) throw new Error("Connect Outlook again to allow reading lead emails");
     const previous = readingOf(connection.syncState);
     await deleteSubscription(ctx, connection, previous?.subscriptionId ?? null);
@@ -158,8 +160,7 @@ export const startMailboxLeads = defineTool({
     const removedRule = await removeForwardingRule(ctx, connection);
     await recordEvent(ctx, {
       type: "mailbox_leads.started",
-      subjectType: "agent",
-      subjectId: input.agentId,
+      ...subjectOf(ctx, connection),
       data: { accountEmail: connection.accountEmail, notified: Boolean(subscription.subscriptionId), removedForwardingRule: removedRule },
     });
     return { accountEmail: connection.accountEmail, notified: Boolean(subscription.subscriptionId), subscriptionError: subscription.subscriptionError ?? null, removedForwardingRule: removedRule };
@@ -170,14 +171,14 @@ export const stopMailboxLeads = defineTool({
   name: "mailbox_leads_stop",
   description: "Stop reading lead emails from an agent's Outlook. Leads already taken in stay.",
   mutates: true,
-  input: z.object({ agentId: z.string() }),
+  input: z.object({ connectionId: z.string() }),
   run: async (ctx, input) => {
-    const connection = await outlookConnection(ctx, input.agentId);
+    const connection = await outlookConnection(ctx, input.connectionId);
     const reading = connection && readingOf(connection.syncState);
     if (!connection || !reading) return { stopped: false };
     await deleteSubscription(ctx, connection, reading.subscriptionId);
     await saveReading(ctx, connection.id, null);
-    await recordEvent(ctx, { type: "mailbox_leads.stopped", subjectType: "agent", subjectId: input.agentId, data: { accountEmail: connection.accountEmail } });
+    await recordEvent(ctx, { type: "mailbox_leads.stopped", ...subjectOf(ctx, connection), data: { accountEmail: connection.accountEmail } });
     return { stopped: true };
   },
 });
@@ -212,7 +213,16 @@ type Read = { result: SyncResult; cursor: string; seen: string[]; lastLeadAt?: s
 async function readNewEmails(ctx: ToolContext, connection: Connection, reading: LeadReading, useAi: boolean): Promise<Read> {
   const [settings] = await ctx.db.select({ websiteUrl: agencySettings.websiteUrl }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
   const agentEmails = (await ctx.db.select({ email: agents.email }).from(agents).where(eq(agents.agencyId, ctx.agencyId))).map((a) => a.email).filter((e): e is string => Boolean(e));
-  const site = { domain: websiteDomain(settings?.websiteUrl), agentEmails: [...agentEmails, connection.accountEmail] };
+  // Colleagues on the agency's domain are not forms. The mailbox's own address can be (sites often send their form mail "from" info@).
+  const site = { domain: websiteDomain(settings?.websiteUrl), agentEmails };
+  // What the mailbox sent itself (our own replies from the office mailbox among them) is not a lead.
+  const ownFolders = new Set<string>();
+  for (const folder of ["sentitems", "drafts", "outbox"]) {
+    const found = await authorizedFetch(ctx, connection, `${graph}/me/mailFolders/${folder}?$select=id`)
+      .then((r) => r.json() as Promise<{ id?: string }>)
+      .catch(() => null);
+    if (found?.id) ownFolders.add(found.id);
+  }
 
   const result: SyncResult = { listed: 0, opened: 0, leads: 0, ignored: 0, failed: 0 };
   const since = new Date(Math.max(new Date(reading.since).getTime(), new Date(reading.cursor).getTime() - OVERLAP_MS));
@@ -226,7 +236,7 @@ async function readNewEmails(ctx: ToolContext, connection: Connection, reading: 
       result.listed++;
       if (new Date(header.receivedDateTime) > new Date(cursor)) cursor = new Date(header.receivedDateTime).toISOString();
       // Only the sender decides whether we open an email: never the subject or content of anything else.
-      if (seen.has(header.id) || !isLeadSender(header.from?.emailAddress?.address, site)) continue;
+      if (seen.has(header.id) || (header.parentFolderId && ownFolders.has(header.parentFolderId)) || !isLeadSender(header.from?.emailAddress?.address, site)) continue;
       seen.add(header.id);
       result.opened++;
       try {
@@ -256,17 +266,17 @@ export const syncMailboxLeads = defineTool({
   description:
     "Read the lead emails that arrived in an agent's Outlook since the last read and take each one in as a viewing request. Only emails from the portals or the agency's website are opened.",
   mutates: true,
-  input: z.object({ agentId: z.string(), useAi: z.boolean().default(true) }),
+  input: z.object({ connectionId: z.string(), useAi: z.boolean().default(true) }),
   run: async (ctx, input) => {
     const total: SyncResult = { listed: 0, opened: 0, leads: 0, ignored: 0, failed: 0 };
-    const first = await outlookConnection(ctx, input.agentId);
+    const first = await outlookConnection(ctx, input.connectionId);
     if (!first || !readingOf(first.syncState)) return { ...total, reading: false as const };
     if (first.status !== "active") return { ...total, reading: true as const, skipped: "expired" as const };
     let held = await claim(ctx, first.id);
     if (!held) return { ...total, reading: true as const, skipped: "busy" as const };
     try {
       for (let round = 0; round < 3; round++) {
-        const connection = (await outlookConnection(ctx, input.agentId))!;
+        const connection = (await outlookConnection(ctx, input.connectionId))!;
         const reading = readingOf(connection.syncState);
         if (!reading) break;
         let read: Read;
@@ -278,7 +288,7 @@ export const syncMailboxLeads = defineTool({
         }
         for (const key of Object.keys(total) as (keyof SyncResult)[]) total[key] += read.result[key];
         // Reread: the agent may have stopped or restarted reading meanwhile.
-        const latest = await outlookConnection(ctx, input.agentId);
+        const latest = await outlookConnection(ctx, input.connectionId);
         const current = latest && readingOf(latest.syncState);
         if (current) {
           await saveReading(ctx, connection.id, {
@@ -300,7 +310,7 @@ export const syncMailboxLeads = defineTool({
     } finally {
       if (held) await release(ctx, first.id);
     }
-    if (total.leads) await recordEvent(ctx, { type: "mailbox_leads.read", subjectType: "agent", subjectId: input.agentId, data: { leads: total.leads, opened: total.opened } });
+    if (total.leads) await recordEvent(ctx, { type: "mailbox_leads.read", ...subjectOf(ctx, first), data: { leads: total.leads, opened: total.opened } });
     return { ...total, reading: true as const };
   },
 });
@@ -310,7 +320,7 @@ export const renewMailboxLeads = defineTool({
   description:
     "Daily upkeep of lead reading for every agent of the agency: keep Outlook's new-email notifications alive (or recreate them) and read any lead a missed notification left behind.",
   mutates: true,
-  input: z.object({ agentId: z.string().optional(), useAi: z.boolean().default(true) }),
+  input: z.object({ connectionId: z.string().optional(), useAi: z.boolean().default(true) }),
   run: async (ctx, input) => {
     const rows = await ctx.db
       .select()
@@ -320,14 +330,14 @@ export const renewMailboxLeads = defineTool({
           eq(calendarConnections.agencyId, ctx.agencyId),
           eq(calendarConnections.provider, "microsoft"),
           sql`${calendarConnections.syncState} ? 'leadReading'`,
-          ...(input.agentId ? [eq(calendarConnections.agentId, input.agentId)] : []),
+          ...(input.connectionId ? [eq(calendarConnections.id, input.connectionId)] : []),
         ),
       );
-    const results: { agentId: string; renewed: boolean; leads: number; error?: string }[] = [];
+    const results: { connectionId: string; agentId: string | null; renewed: boolean; leads: number; error?: string }[] = [];
     for (const connection of rows) {
       const reading = readingOf(connection.syncState)!;
       if (connection.status !== "active") {
-        results.push({ agentId: connection.agentId, renewed: false, leads: 0, error: "Outlook connection expired" });
+        results.push({ connectionId: connection.id, agentId: connection.agentId, renewed: false, leads: 0, error: "Outlook connection expired" });
         continue;
       }
       try {
@@ -340,13 +350,13 @@ export const renewMailboxLeads = defineTool({
           : false;
         if (renewed) next = { ...next, expiresAt, subscriptionError: undefined };
         else next = { ...next, ...(await subscribe(ctx, connection, reading.clientState)) };
-        const latest = await outlookConnection(ctx, connection.agentId);
+        const latest = await outlookConnection(ctx, connection.id);
         const current = latest && readingOf(latest.syncState);
         if (current) await saveReading(ctx, connection.id, { ...current, subscriptionId: next.subscriptionId, expiresAt: next.expiresAt, subscriptionError: next.subscriptionError });
-        const read = await syncMailboxLeads.run(ctx, { agentId: connection.agentId, useAi: input.useAi });
-        results.push({ agentId: connection.agentId, renewed: Boolean(next.subscriptionId), leads: read.leads });
+        const read = await syncMailboxLeads.run(ctx, { connectionId: connection.id, useAi: input.useAi });
+        results.push({ connectionId: connection.id, agentId: connection.agentId, renewed: Boolean(next.subscriptionId), leads: read.leads });
       } catch (error) {
-        results.push({ agentId: connection.agentId, renewed: false, leads: 0, error: error instanceof Error ? error.message.slice(0, 200) : String(error) });
+        results.push({ connectionId: connection.id, agentId: connection.agentId, renewed: false, leads: 0, error: error instanceof Error ? error.message.slice(0, 200) : String(error) });
       }
     }
     return { mailboxes: results };

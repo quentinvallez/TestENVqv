@@ -30,7 +30,7 @@ describe("lead emails in an agent's Outlook", () => {
   it("lists new emails by sender and time only, oldest first", () => {
     const url = new URL(newMessagesUrl(new Date("2026-11-22T10:00:00Z")));
     expect(url.pathname).toBe("/v1.0/me/messages");
-    expect(url.searchParams.get("$select")).toBe("id,receivedDateTime,from");
+    expect(url.searchParams.get("$select")).toBe("id,receivedDateTime,from,parentFolderId");
     expect(url.searchParams.get("$filter")).toBe("receivedDateTime ge 2026-11-22T10:00:00.000Z");
     expect(url.searchParams.get("$orderby")).toBe("receivedDateTime asc");
   });

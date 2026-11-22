@@ -29,13 +29,13 @@ export async function POST(request: Request) {
   }
 
   // One read per mailbox, however many emails the batch announces.
-  const jobs = new Map<string, { agencyId: string; agentId: string; renew: boolean }>();
+  const jobs = new Map<string, { agencyId: string; connectionId: string; renew: boolean }>();
   for (const n of notifications) {
     const mailbox = n.subscriptionId ? await mailboxForSubscription(n.subscriptionId) : null;
     if (!mailbox || !n.clientState || !same(n.clientState, mailbox.clientState)) continue;
-    const key = `${mailbox.agencyId}:${mailbox.agentId}`;
+    const key = mailbox.connectionId;
     const renew = n.lifecycleEvent === "reauthorizationRequired" || n.lifecycleEvent === "subscriptionRemoved";
-    jobs.set(key, { agencyId: mailbox.agencyId, agentId: mailbox.agentId, renew: renew || Boolean(jobs.get(key)?.renew) });
+    jobs.set(key, { agencyId: mailbox.agencyId, connectionId: mailbox.connectionId, renew: renew || Boolean(jobs.get(key)?.renew) });
   }
 
   after(async () => {
@@ -43,10 +43,10 @@ export async function POST(request: Request) {
       const ctx = inboundContext(job.agencyId, "email");
       try {
         // Renewing also reads what arrived meanwhile ("missed" needs only the read).
-        if (job.renew) await runTool(tools.renewMailboxLeads, ctx, { agentId: job.agentId });
-        else await runTool(tools.syncMailboxLeads, ctx, { agentId: job.agentId });
+        if (job.renew) await runTool(tools.renewMailboxLeads, ctx, { connectionId: job.connectionId });
+        else await runTool(tools.syncMailboxLeads, ctx, { connectionId: job.connectionId });
       } catch (error) {
-        console.error("Reading lead emails failed", job.agentId, error);
+        console.error("Reading lead emails failed", job.connectionId, error);
       }
     }
   });

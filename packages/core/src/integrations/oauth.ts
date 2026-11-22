@@ -178,7 +178,11 @@ export async function accessToken(ctx: ToolContext, connection: Connection): Pro
       await ctx.db.update(schema.calendarConnections).set({ status: "expired" }).where(eq(schema.calendarConnections.id, connection.id));
       await recordEvent(
         { ...ctx, actor: { type: "system", id: null } },
-        { type: "calendar.expired", subjectType: "agent", subjectId: connection.agentId, data: { provider: connection.provider, connectionId: connection.id } },
+        {
+          type: "calendar.expired",
+          ...(connection.agentId ? { subjectType: "agent" as const, subjectId: connection.agentId } : { subjectType: "agency" as const, subjectId: connection.agencyId }),
+          data: { provider: connection.provider, connectionId: connection.id },
+        },
       );
     }
     throw error;

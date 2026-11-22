@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
+import { and, desc, eq, inArray, isNull, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
@@ -452,26 +452,44 @@ export const listConnections = defineTool({
 
 export const connectCalendar = defineTool({
   name: "calendar_connect",
-  description: "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox.",
+  description:
+    "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox. Without agentId it connects the agency's office mailbox (e.g. info@), used to read lead emails and to send replies when the listing's agent has no mailbox.",
   mutates: true,
-  input: z.object({ agentId: z.string(), provider: z.enum(["google", "microsoft"]), code: z.string(), redirectUri: z.string().url() }),
+  input: z.object({ agentId: z.string().nullable(), provider: z.enum(["google", "microsoft"]), code: z.string(), redirectUri: z.string().url() }),
   run: async (ctx, input) => {
-    const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
-    if (!agent) throw new Error("Agent not found");
+    if (input.agentId) {
+      const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
+      if (!agent) throw new Error("Agent not found");
+    }
     const { credentials, email, capabilities } = await exchangeCode(input.provider, input.code, input.redirectUri);
     if (!email) throw new Error("The account did not share its email address");
     if (!credentials.refreshToken) throw new Error("No offline access was granted; please connect again");
     if (capabilities.length === 0) throw new Error("Calendar access was not granted");
     const values = { accountEmail: email, credentials: sealCredentials(credentials), scopes: capabilities, status: "active" as const, syncState: {} };
-    const [connection] = await ctx.db
-      .insert(calendarConnections)
-      .values({ agencyId: ctx.agencyId, agentId: agent.id, provider: input.provider, ...values })
-      .onConflictDoUpdate({ target: [calendarConnections.agentId, calendarConnections.provider], set: values })
-      .returning();
+    let connection: { id: string } | undefined;
+    if (input.agentId) {
+      [connection] = await ctx.db
+        .insert(calendarConnections)
+        .values({ agencyId: ctx.agencyId, agentId: input.agentId, provider: input.provider, ...values })
+        .onConflictDoUpdate({ target: [calendarConnections.agentId, calendarConnections.provider], set: values })
+        .returning({ id: calendarConnections.id });
+    } else {
+      // One office mailbox per agency: a new one replaces the old (whose lead reading stops first).
+      const [old] = await ctx.db
+        .select({ id: calendarConnections.id, provider: calendarConnections.provider, syncState: calendarConnections.syncState })
+        .from(calendarConnections)
+        .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId)));
+      if (old && old.provider === "microsoft" && old.syncState.leadReading) {
+        const { stopMailboxLeads } = await import("./mailbox-leads");
+        await stopMailboxLeads.run(ctx, { connectionId: old.id }).catch((error) => console.error("Stopping lead reading failed", error));
+      }
+      [connection] = old
+        ? await ctx.db.update(calendarConnections).set({ provider: input.provider, ...values }).where(eq(calendarConnections.id, old.id)).returning({ id: calendarConnections.id })
+        : await ctx.db.insert(calendarConnections).values({ agencyId: ctx.agencyId, agentId: null, provider: input.provider, ...values }).returning({ id: calendarConnections.id });
+    }
     await recordEvent(ctx, {
-      type: "calendar.connected",
-      subjectType: "agent",
-      subjectId: agent.id,
+      type: input.agentId ? "calendar.connected" : "office_mailbox.connected",
+      ...(input.agentId ? { subjectType: "agent" as const, subjectId: input.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }),
       data: { provider: input.provider, accountEmail: email, scopes: capabilities },
     });
     return { connectionId: connection!.id, accountEmail: email, scopes: capabilities };
@@ -491,14 +509,18 @@ export const disconnectCalendar = defineTool({
     // Stop Outlook's new-email notifications first, while we still hold the token.
     if (connection?.provider === "microsoft" && connection.syncState.leadReading) {
       const { stopMailboxLeads } = await import("./mailbox-leads");
-      await stopMailboxLeads.run(ctx, { agentId: connection.agentId }).catch((error) => console.error("Stopping lead reading failed", error));
+      await stopMailboxLeads.run(ctx, { connectionId: input.connectionId }).catch((error) => console.error("Stopping lead reading failed", error));
     }
     const [removed] = await ctx.db
       .delete(calendarConnections)
       .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, input.connectionId)))
       .returning({ agentId: calendarConnections.agentId, provider: calendarConnections.provider });
     if (!removed) throw new Error("Connection not found");
-    await recordEvent(ctx, { type: "calendar.disconnected", subjectType: "agent", subjectId: removed.agentId, data: { provider: removed.provider } });
+    await recordEvent(ctx, {
+      type: removed.agentId ? "calendar.disconnected" : "office_mailbox.disconnected",
+      ...(removed.agentId ? { subjectType: "agent" as const, subjectId: removed.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }),
+      data: { provider: removed.provider },
+    });
     return { disconnected: true };
   },
 });

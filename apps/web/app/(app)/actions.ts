@@ -363,15 +363,27 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
 }
 
 /** Settings → Portal leads: start or stop reading lead emails from an agent's Outlook. */
-export async function mailboxLeadsAction(agentId: string, stop: boolean, _state: ForwardingState): Promise<ForwardingState> {
+export async function mailboxLeadsAction(connectionId: string, stop: boolean, _state: ForwardingState): Promise<ForwardingState> {
   await requireAdmin();
   try {
     const ctx = await getToolContext();
-    if (stop) await runTool(tools.stopMailboxLeads, ctx, { agentId });
-    else await runTool(tools.startMailboxLeads, ctx, { agentId });
+    if (stop) await runTool(tools.stopMailboxLeads, ctx, { connectionId });
+    else await runTool(tools.startMailboxLeads, ctx, { connectionId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return { error: /^Connect/.test(message) ? message : "Outlook refused. Try again, or connect Outlook again." };
+  }
+  revalidatePath("/settings");
+  return { done: true };
+}
+
+/** Settings → Portal leads: disconnect the office mailbox (info@). */
+export async function disconnectOfficeMailboxAction(connectionId: string, _state: ForwardingState): Promise<ForwardingState> {
+  await requireAdmin();
+  try {
+    await runTool(tools.disconnectCalendar, await getToolContext(), { connectionId });
+  } catch {
+    return { error: "Couldn't disconnect. Try again." };
   }
   revalidatePath("/settings");
   return { done: true };

@@ -18,10 +18,10 @@ export { parseWhatsAppWebhook } from "./channels/whatsapp";
  * The mailbox an Outlook new-email notification is about, found by its
  * subscription id, with the secret we gave Microsoft to check the post is real.
  */
-export async function mailboxForSubscription(subscriptionId: string): Promise<{ agencyId: string; agentId: string; clientState: string } | null> {
+export async function mailboxForSubscription(subscriptionId: string): Promise<{ agencyId: string; connectionId: string; clientState: string } | null> {
   if (!subscriptionId) return null;
   const [row] = await db
-    .select({ agencyId: schema.calendarConnections.agencyId, agentId: schema.calendarConnections.agentId, clientState: sql<string>`${schema.calendarConnections.syncState}->'leadReading'->>'clientState'` })
+    .select({ agencyId: schema.calendarConnections.agencyId, connectionId: schema.calendarConnections.id, clientState: sql<string>`${schema.calendarConnections.syncState}->'leadReading'->>'clientState'` })
     .from(schema.calendarConnections)
     .where(and(eq(schema.calendarConnections.provider, "microsoft"), sql`${schema.calendarConnections.syncState}->'leadReading'->>'subscriptionId' = ${subscriptionId}`))
     .limit(1);

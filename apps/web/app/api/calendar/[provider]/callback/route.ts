@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
   const ctx = await getToolContext();
   if (!state || state.provider !== provider || state.agencyId !== ctx.agencyId) return new Response("This connection link expired; please try again.", { status: 400 });
 
-  const back = new URL(`/agents/${state.agentId}`, url.origin);
+  const back = new URL(state.agentId ? `/agents/${state.agentId}` : "/settings", url.origin);
   const code = url.searchParams.get("code");
   if (!code) {
     const error = url.searchParams.get("error");
@@ -35,7 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     const connected = await runTool(tools.connectCalendar, ctx, { agentId: state.agentId, provider: state.provider, code, redirectUri: redirectUri(request, provider) });
     // Outlook allowed reading lead emails: start right away (replaces the forwarding rule).
     if (connected.scopes.includes("leads")) {
-      await runTool(tools.startMailboxLeads, ctx, { agentId: state.agentId }).catch((error) => console.error("Starting lead reading failed", error));
+      await runTool(tools.startMailboxLeads, ctx, { connectionId: connected.connectionId }).catch((error) => console.error("Starting lead reading failed", error));
     }
     back.searchParams.set("connect", "ok");
   } catch (error) {

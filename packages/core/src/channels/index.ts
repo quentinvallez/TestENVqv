@@ -1,4 +1,4 @@
-import { and, desc, eq, schema } from "@viewing/db";
+import { and, desc, eq, isNull, schema } from "@viewing/db";
 import type { Channel, ChannelProvider } from "@viewing/db/schema";
 import { recordEvent } from "../events";
 import { authorizedFetch } from "../integrations/oauth";
@@ -36,6 +36,24 @@ async function agentMailbox(ctx: ToolContext, agentId: string | null): Promise<M
     .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.agentId, agentId), eq(calendarConnections.status, "active")))
     .orderBy(calendarConnections.createdAt);
   return rows.find((c) => c.scopes.includes("mail")) ?? null;
+}
+
+/** The agency's office mailbox (e.g. info@) when it is connected and may send. */
+async function officeMailbox(ctx: ToolContext): Promise<Mailbox | null> {
+  const [row] = await ctx.db
+    .select()
+    .from(calendarConnections)
+    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId), eq(calendarConnections.status, "active")));
+  return row?.scopes.includes("mail") ? row : null;
+}
+
+/**
+ * The mailbox a client email leaves from: the agent's own, else the agency's
+ * office mailbox (info@), else none (then the agency's address on our mail domain).
+ */
+async function sendingMailbox(ctx: ToolContext, agentId: string | null) {
+  const own = await agentMailbox(ctx, agentId);
+  return { own, mailbox: own ?? (await officeMailbox(ctx)) };
 }
 
 function emailProvider(mailbox: Mailbox | null): ChannelProvider {
@@ -88,7 +106,7 @@ export async function conversationFor(
     .orderBy(desc(conversations.lastMessageAt))
     .limit(1);
   if (existing) return existing;
-  const provider: ChannelProvider = channel === "whatsapp" ? "whatsapp_business" : channel === "sms" ? "sms" : emailProvider(await agentMailbox(ctx, input.agentId ?? null));
+  const provider: ChannelProvider = channel === "whatsapp" ? "whatsapp_business" : channel === "sms" ? "sms" : emailProvider((await sendingMailbox(ctx, input.agentId ?? null)).mailbox);
   const [created] = await ctx.db
     .insert(conversations)
     .values({
@@ -109,7 +127,7 @@ export async function conversationFor(
 export async function deliveryRoute(ctx: ToolContext, conversation: { channel: Channel; agentId: string | null }): Promise<{ ready: boolean; via: string }> {
   if (conversation.channel === "whatsapp") return { ready: Boolean(await whatsappConfig(ctx)), via: "WhatsApp" };
   if (conversation.channel === "sms") return { ready: false, via: "SMS" };
-  const mailbox = await agentMailbox(ctx, conversation.agentId);
+  const { mailbox } = await sendingMailbox(ctx, conversation.agentId);
   if (mailbox) return { ready: true, via: mailbox.provider === "google" ? `Gmail (${mailbox.accountEmail})` : `Outlook (${mailbox.accountEmail})` };
   return { ready: mailgunConfigured() && Boolean(mailDomain()), via: "agency email" };
 }
@@ -199,10 +217,10 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       }
     }
   } else if (conversation.channel === "email") {
-    const mailbox = await agentMailbox(ctx, conversation.agentId);
+    const { own, mailbox } = await sendingMailbox(ctx, conversation.agentId);
     const inbox = await inboundAddress(ctx);
-    // Replies to the agent's own mailbox, with a copy to the inbox address so the app knows the client answered.
-    const agentAddress = mailbox?.accountEmail ?? conversation.agent?.email ?? null;
+    // Replies to the agent's own mailbox (else the office mailbox it went from), with a copy to the inbox address so the app knows the client answered.
+    const agentAddress = own?.accountEmail ?? conversation.agent?.email ?? mailbox?.accountEmail ?? null;
     const replyAddresses = (await repliesToAgent(ctx)) && agentAddress ? [agentAddress, inbox].filter((a): a is string => Boolean(a)) : inbox ? [inbox] : [];
     const agency = await ctx.db.query.organization.findFirst({ where: eq(schema.organization.id, ctx.agencyId), columns: { name: true } });
     const isReply = Boolean(lastFromClient);

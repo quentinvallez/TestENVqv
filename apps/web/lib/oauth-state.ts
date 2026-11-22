@@ -7,7 +7,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * started the flow.
  */
 
-type State = { agencyId: string; agentId: string; provider: "google" | "microsoft"; nonce: string; exp: number };
+/** agentId null: the agency's office mailbox. */
+type State = { agencyId: string; agentId: string | null; provider: "google" | "microsoft"; nonce: string; exp: number };
 
 function sign(payload: string) {
   return createHmac("sha256", process.env.BETTER_AUTH_SECRET ?? "").update(payload).digest("base64url");

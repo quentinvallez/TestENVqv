@@ -23,8 +23,8 @@ const domainOf = (address: string | null | undefined) => address?.trim().toLower
 
 /**
  * Whether we may open an email from this sender: a portal (or its subdomain), or
- * the agency's website domain (contact form mails). Never the agency's own
- * agents' addresses on that domain: those are colleagues, not forms.
+ * the agency's website domain (contact form mails, often sent "from" info@).
+ * Never the agents' own addresses on that domain: those are colleagues, not forms.
  */
 export function isLeadSender(address: string | null | undefined, site: { domain: string | null; agentEmails?: string[] }): boolean {
   if (!address) return false;
@@ -35,13 +35,13 @@ export function isLeadSender(address: string | null | undefined, site: { domain:
   return !(site.agentEmails ?? []).some((e) => e.toLowerCase() === address.trim().toLowerCase());
 }
 
-/** The fields we ask Graph for when listing: the sender and time, nothing about the content. */
-export const listFields = "id,receivedDateTime,from";
+/** The fields we ask Graph for when listing: the sender, time and folder, nothing about the content. */
+export const listFields = "id,receivedDateTime,from,parentFolderId";
 /** The fields we fetch of a lead email. */
 export const leadFields = "id,receivedDateTime,from,replyTo,subject,body,internetMessageId,internetMessageHeaders";
 
 type GraphAddress = { emailAddress?: { name?: string | null; address?: string | null } };
-export type GraphMessageHeader = { id: string; receivedDateTime: string; from?: GraphAddress | null };
+export type GraphMessageHeader = { id: string; receivedDateTime: string; from?: GraphAddress | null; parentFolderId?: string };
 export type GraphMessage = GraphMessageHeader & {
   subject?: string | null;
   replyTo?: GraphAddress[] | null;

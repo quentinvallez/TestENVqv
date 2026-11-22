@@ -69,7 +69,8 @@ export const portalLeadsStatus = defineTool({
     const [settings] = await ctx.db.select({ channels: agencySettings.channels, websiteUrl: agencySettings.websiteUrl }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const connections = await ctx.db
       .select({
-        agentId: agents.id,
+        connectionId: calendarConnections.id,
+        agentId: calendarConnections.agentId,
         agentName: agents.name,
         provider: calendarConnections.provider,
         accountEmail: calendarConnections.accountEmail,
@@ -78,9 +79,24 @@ export const portalLeadsStatus = defineTool({
         syncState: calendarConnections.syncState,
       })
       .from(calendarConnections)
-      .innerJoin(agents, eq(agents.id, calendarConnections.agentId))
+      .leftJoin(agents, eq(agents.id, calendarConnections.agentId))
       .where(eq(calendarConnections.agencyId, ctx.agencyId))
       .orderBy(agents.name);
+    const mailbox = (c: (typeof connections)[number]) => ({
+      connectionId: c.connectionId,
+      agentId: c.agentId,
+      agentName: c.agentName ?? "Office mailbox",
+      provider: c.provider,
+      accountEmail: c.accountEmail,
+      active: c.status === "active",
+      canForward: Boolean(c.agentId) && c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
+      forwarding: ruleOf(c.syncState),
+      forwardingState: forwardingState(ruleOf(c.syncState)),
+      canRead: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("leads"),
+      sends: c.status === "active" && c.scopes.includes("mail"),
+      reading: readingSummary(c.syncState.leadReading as LeadReading | undefined),
+    });
+    const office = connections.find((c) => !c.agentId);
     return {
       inboundAddress: address,
       portals: portals.map((portal) => {
@@ -89,19 +105,11 @@ export const portalLeadsStatus = defineTool({
       }),
       gmailForwarding: settings?.channels.gmailForwarding ?? null,
       leadCopyAddress: settings?.channels.leadCopyAddress ?? null,
-      mailboxes: connections.map((c) => ({
-        agentId: c.agentId,
-        agentName: c.agentName,
-        provider: c.provider,
-        accountEmail: c.accountEmail,
-        active: c.status === "active",
-        canForward: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
-        forwarding: ruleOf(c.syncState),
-        forwardingState: forwardingState(ruleOf(c.syncState)),
-        canRead: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("leads"),
-        reading: readingSummary(c.syncState.leadReading as LeadReading | undefined),
-      })),
+      /** The agency's general mailbox (info@): read for leads, and replies go from it when the listing's agent has no mailbox. */
+      office: office ? mailbox(office) : null,
+      mailboxes: connections.filter((c) => c.agentId).map(mailbox),
       outlookAvailable: oauthConfigured("microsoft"),
+      googleAvailable: oauthConfigured("google"),
       /** Contact-form emails from this domain count as leads when we read an agent's Outlook. */
       websiteDomain: websiteDomain(settings?.websiteUrl),
     };
@@ -216,7 +224,7 @@ export async function markForwardingCheck(ctx: ToolContext, token: string) {
   if (!row || !rule?.check) return false;
   const portalRule: PortalRule = { ...rule, check: { ...rule.check, receivedAt: new Date().toISOString() } };
   await ctx.db.update(calendarConnections).set({ syncState: { ...row.syncState, portalRule } }).where(eq(calendarConnections.id, row.id));
-  await recordEvent(ctx, { type: "portal_forwarding.verified", subjectType: "agent", subjectId: row.agentId, data: {} });
+  await recordEvent(ctx, { type: "portal_forwarding.verified", ...(row.agentId ? { subjectType: "agent" as const, subjectId: row.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }), data: {} });
   return true;
 }
 
