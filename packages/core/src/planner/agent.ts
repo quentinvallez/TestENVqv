@@ -457,8 +457,9 @@ export async function handleConversation(ctx: ToolContext, conversationId: strin
 const AUTO_REPLY_QUIET_MS = 24 * 3600 * 1000;
 
 /**
- * Whether the planner may answer this message on its own: a lead from
- * Immoweb, Zimmo or Immovlan that asks to visit an active listing we matched,
+ * Whether the planner may answer this message on its own: a request from
+ * Immoweb, Zimmo, Immovlan, Immoscoop or the agency's website contact form
+ * that asks to visit an active listing we matched,
  * with free times to offer, a client email address, and the agency not having
  * set it to "Ask me first" (autonomy.portal_replies = "suggest"). Everything else stays a draft.
  */

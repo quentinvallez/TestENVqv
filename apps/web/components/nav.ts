@@ -1,4 +1,4 @@
-import { Building2, CalendarDays, Inbox, LayoutGrid, Settings, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, ClipboardList, LayoutGrid, Settings, UserRound, Users, type LucideIcon } from "lucide-react";
 
 /** `also`: other pages that belong to this entry (highlighted with it). */
 export type NavItem = { href: string; label: string; icon: LucideIcon; also?: string[] };
@@ -12,7 +12,7 @@ export const navSections: { title?: string; items: NavItem[] }[] = [
   {
     items: [
       { href: "/", label: "Dashboard", icon: LayoutGrid },
-      { href: "/inbox", label: "Inbox", icon: Inbox },
+      { href: "/requests", label: "Viewing requests", icon: ClipboardList },
       { href: "/calendar", label: "Calendar", icon: CalendarDays, also: ["/appointments"] },
     ],
   },

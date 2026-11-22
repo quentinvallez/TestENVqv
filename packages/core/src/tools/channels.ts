@@ -4,6 +4,7 @@ import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessag
 import { automationSettings } from "../automations/rules";
 import { mailDomain, mailgunConfigured } from "../channels/email";
 import { forwardedSender, parsePortalEmail, portalNames, portalOfAddress, portals } from "../channels/portals";
+import { pageKey, parseWebsiteForm } from "../channels/website-form";
 import { samePhone } from "../channels/phone";
 import { metaErrorText, platformWhatsapp, sendWhatsApp, whatsappConfig, whatsappProblem } from "../channels/whatsapp";
 import { contactForInviteRef, parseInviteRef } from "../channels/whatsapp-invite";
@@ -36,7 +37,7 @@ const visitNote = {
  */
 async function forwardLeadCopy(
   ctx: ToolContext,
-  lead: { agentId: string | null; conversationId: string; clientEmail: string | null },
+  lead: { leadId: string; agentId: string | null; conversationId: string; clientEmail: string | null },
   original: { subject: string; text: string; from: { name: string | null; email: string } },
 ) {
   const [settings] = await ctx.db.select({ automations: agencySettings.automations, channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
@@ -51,7 +52,7 @@ async function forwardLeadCopy(
     replyTo: lead.clientEmail,
     subject: /^(fwd?|tr|doorst)\s*:/i.test(original.subject) ? original.subject : `Fwd: ${original.subject}`,
     text: [
-      `Lead added to your planner: ${absoluteUrl(`/inbox?c=${lead.conversationId}`)}`,
+      `Request added to your planner: ${absoluteUrl(`/requests/${lead.leadId}`)}`,
       `---------- Forwarded message ----------\nFrom: ${original.from.name ? `${original.from.name} <${original.from.email}>` : original.from.email}\nSubject: ${original.subject}`,
       original.text.trim(),
     ].join("\n\n"),
@@ -60,13 +61,16 @@ async function forwardLeadCopy(
   return sent;
 }
 
+/** Where a request came from, as the client's message names it. */
+const sourceNames = { ...portalNames, website: "website" } as const;
+
 export const receivePortalLead = defineTool({
   name: "portal_leads_receive",
   description:
-    "Take in a lead from Immoweb, Zimmo or Immovlan: match the listing by its portal code or the agency's reference, create or update the contact and lead for the listing's agent, and let the planner draft a reply with free viewing times.",
+    "Take in a viewing request from Immoweb, Zimmo, Immovlan, Immoscoop or the contact form on the agency's own website: match the listing by its portal code, page address or the agency's reference, create or update the contact and lead for the listing's agent, and let the planner answer with free viewing times and the booking link.",
   mutates: true,
   input: z.object({
-    portal: z.enum(portals),
+    portal: z.enum([...portals, "website"]),
     name: z.string().trim().nullish(),
     email: z.string().trim().toLowerCase().email().nullish(),
     phone: z.string().trim().nullish(),
@@ -74,6 +78,7 @@ export const receivePortalLead = defineTool({
     portalRef: z.string().trim().nullish().describe("The listing's code at the portal, e.g. Immoweb's 8-digit id"),
     agencyReference: z.string().trim().nullish(),
     listingId: z.string().optional().describe("When the caller already knows the listing"),
+    listingUrl: z.string().nullish().describe("The listing's page on the agency's website (contact forms)"),
     language: z.enum(["nl", "fr", "en", "de"]).nullish(),
     visitRequested: z.boolean().default(false).describe("The portal marked the request as a visit request"),
     externalId: z.string().max(500).optional(),
@@ -84,6 +89,8 @@ export const receivePortalLead = defineTool({
     const refs = [input.portalRef, input.agencyReference].filter((r): r is string => Boolean(r));
     const [listing] = input.listingId
       ? await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.id, input.listingId)))
+      : input.listingUrl
+      ? await ctx.db.select().from(listings).where(and(eq(listings.agencyId, ctx.agencyId), eq(listings.websiteUrl, input.listingUrl))).limit(1)
       : refs.length
       ? await ctx.db
           .select()
@@ -92,7 +99,7 @@ export const receivePortalLead = defineTool({
             and(
               eq(listings.agencyId, ctx.agencyId),
               or(
-                ...(input.portalRef ? [sql`${listings.portalRefs}->>${input.portal} = ${input.portalRef}`] : []),
+                ...(input.portalRef && input.portal !== "website" ? [sql`${listings.portalRefs}->>${input.portal} = ${input.portalRef}`] : []),
                 inArray(sql`upper(${listings.reference})`, refs.map((r) => r.toUpperCase())),
               ),
             ),
@@ -147,12 +154,13 @@ export const receivePortalLead = defineTool({
 
     const name = input.name || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || input.email || input.phone!;
     const where = listing ? [listing.street, listing.houseNumber].filter(Boolean).join(" ") || listing.reference : (input.portalRef ?? "unknown listing");
+    const sourceName = sourceNames[input.portal];
     const received = await receiveMessage.run(ctx, {
       channel: "email",
       provider: "email",
       from: { name, email: input.email ?? undefined, phone: input.phone ?? undefined },
-      subject: `${portalNames[input.portal]}: ${where}`,
-      body: input.message || (input.visitRequested ? visitNote[input.language ?? "en"](portalNames[input.portal], where) : `Request via ${portalNames[input.portal]} for ${where}, without a message.`),
+      subject: `${input.portal === "website" ? "Website form" : sourceName}: ${where}`,
+      body: input.message || (input.visitRequested ? visitNote[input.language ?? "en"](sourceName, where) : `Request via ${sourceName} for ${where}, without a message.`),
       listingId: listing?.id,
       externalId: input.externalId,
       metadata: { portal: input.portal, portalRef: input.portalRef ?? null, leadId: lead!.id },
@@ -161,6 +169,21 @@ export const receivePortalLead = defineTool({
     return { leadId: lead!.id, contactId: contact.id, listingId: listing?.id ?? null, agentId: lead!.agentId, newLead: !existing, ...received };
   },
 });
+
+/** The request in a mail sent by the agency's website contact form, matched against its listing pages. */
+async function websiteFormLead(ctx: ToolContext, email: { from: { name: string | null; email: string }; replyTo: string | null; subject: string; text: string; messageId: string | null; inReplyTo: string | null; references: string[]; strippedText: string | null }) {
+  const [settings] = await ctx.db.select({ websiteUrl: agencySettings.websiteUrl }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+  if (!settings?.websiteUrl) return null;
+  const pages = await ctx.db
+    .select({ url: listings.websiteUrl })
+    .from(listings)
+    .where(and(eq(listings.agencyId, ctx.agencyId), sql`${listings.websiteUrl} is not null`));
+  const lead = parseWebsiteForm({ ...email, recipient: "" }, { url: settings.websiteUrl, listingUrls: pages.map((p) => p.url!) });
+  if (!lead) return null;
+  // Stored page addresses may differ in form (www, trailing slash): pass the stored one.
+  const listingUrl = lead.listingUrl ? (pages.find((p) => pageKey(p.url!) === pageKey(lead.listingUrl!))?.url ?? null) : null;
+  return { ...lead, listingUrl };
+}
 
 export const receiveEmail = defineTool({
   name: "messages_receive_email",
@@ -191,7 +214,7 @@ export const receiveEmail = defineTool({
       // Sent straight by the portal (not forwarded by the agency's own mailbox, which already has it): send the agency its copy.
       const direct = fromPortal(input.from.email) && !input.fromMailbox;
       if (direct && !("duplicate" in result && result.duplicate)) {
-        await forwardLeadCopy(ctx, { agentId: result.agentId, conversationId: result.conversationId, clientEmail: lead.email }, { subject: input.subject, text: input.text, from: input.from });
+        await forwardLeadCopy(ctx, { leadId: result.leadId, agentId: result.agentId, conversationId: result.conversationId, clientEmail: lead.email }, { subject: input.subject, text: input.text, from: input.from });
       }
       return { kind: "portal_lead" as const, portal, ...result };
     }

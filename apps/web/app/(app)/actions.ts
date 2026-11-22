@@ -60,7 +60,7 @@ export async function cancelAppointmentAction(appointmentId: string) {
 export async function draftFollowUpAction(appointmentId: string) {
   const { conversationId } = await runTool(tools.plannerFollowUp, await getToolContext(), { appointmentId });
   revalidatePath("/", "layout");
-  redirect(`/inbox?c=${conversationId}`);
+  redirect(`/requests/${conversationId}`);
 }
 
 export type AssignState = { saved?: string; error?: string } | undefined;
@@ -79,13 +79,13 @@ export async function assignAgentAction(listingId: string, _state: AssignState, 
 export async function suggestListingsAction(contactId: string) {
   const { conversationId } = await runTool(tools.suggestListings, await getToolContext(), { contactId });
   revalidatePath("/", "layout");
-  redirect(conversationId ? `/inbox?c=${conversationId}` : `/contacts/${contactId}`);
+  redirect(conversationId ? `/requests/${conversationId}` : `/contacts/${contactId}`);
 }
 
 export async function suggestToMatchesAction(listingId: string) {
   await runTool(tools.suggestListingToMatches, await getToolContext(), { listingId });
   revalidatePath("/", "layout");
-  redirect("/inbox?f=drafts");
+  redirect("/requests?stage=needs_you");
 }
 
 export async function setValuationLauncherAction(on: boolean) {
@@ -206,7 +206,7 @@ export async function runAutomationsAction() {
 export async function markAttendanceAction(appointmentId: string, attended: boolean) {
   const { conversationId } = await runTool(tools.markAttendance, await getToolContext(), { appointmentId, attended });
   revalidatePath("/", "layout");
-  if (conversationId) redirect(`/inbox?c=${conversationId}`);
+  if (conversationId) redirect(`/requests/${conversationId}`);
 }
 
 export type WebsiteImportState =

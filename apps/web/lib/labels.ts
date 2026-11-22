@@ -9,6 +9,29 @@ export const leadStageMeta = {
   lost: { label: "Lost", color: "#a1a1aa" },
 } as const;
 
+/** The requests board's stages, in the order a request moves through them. */
+export const requestStageMeta = {
+  needs_you: { label: "Needs you", color: "#ef4444", hint: "A person has to call, answer or approve" },
+  contacted: { label: "Contacted", color: "#3b82f6", hint: "Got the booking link automatically" },
+  not_planned: { label: "Not planned yet", color: "#f59e0b", hint: "No booking yet: reminders after 24 and 72 hours" },
+  planned: { label: "Planned", color: "#16a34a", hint: "Viewing booked" },
+  visited: { label: "Visited", color: "#06b6d4", hint: "The viewing took place" },
+  closed: { label: "Closed", color: "#a1a1aa", hint: "No response, not interested or done" },
+} as const;
+
+export const requestReasonLabel: Record<string, string> = {
+  draft: "Reply waits for your OK",
+  client_wrote: "The client wrote back",
+  phone_only: "No email address: call them",
+  listing_unknown: "Listing not recognised",
+  listing_unavailable: "Listing not on offer",
+  not_delivered: "Our message didn't arrive",
+  not_contacted: "Not contacted yet",
+  no_response: "No response after two reminders",
+  not_interested: "Not interested",
+  won: "Deal done",
+};
+
 export const listingStatusMeta = {
   draft: { label: "Draft", color: "#a1a1aa" },
   active: { label: "Active", color: "#16a34a" },

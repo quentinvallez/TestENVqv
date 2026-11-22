@@ -6,6 +6,7 @@ import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
 import { resetToDemoData, seedDemoData } from "./tools/demo";
 import { listLeads, moveLeadStage } from "./tools/leads";
+import { getRequest, listRequests, markRequest, requestConversationIds } from "./tools/requests";
 import { assignListingAgent, createListing, getListing, listingBookingLink, listListings } from "./tools/listings";
 import { getConversation, listInbox, plannerFollowUp, plannerRedraft, receiveMessage, replyToConversation, updateConversation } from "./tools/conversations";
 import { decideProposal, listProposals } from "./tools/proposals";
@@ -39,6 +40,10 @@ export const tools = {
   createListing,
   assignListingAgent,
   listLeads,
+  listRequests,
+  getRequest,
+  markRequest,
+  requestConversationIds,
   moveLeadStage,
   listContacts,
   listAppointments,

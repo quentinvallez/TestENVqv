@@ -8,19 +8,19 @@ import { address } from "@/lib/format";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, agency } = await getSession();
   const ctx = await getToolContext();
-  const [listings, proposals, me] = await Promise.all([
+  const [listings, requests, me] = await Promise.all([
     runTool(tools.listListings, ctx, {}),
-    runTool(tools.listProposals, ctx, {}),
+    runTool(tools.listRequests, ctx, { stage: "needs_you" }),
     runTool(tools.getMyAgent, ctx, {}),
   ]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
-      <Sidebar agencyName={agency.name} userName={user.name} myAgentId={me.agentId} inboxCount={proposals.length} />
+      <Sidebar agencyName={agency.name} userName={user.name} myAgentId={me.agentId} needsYouCount={requests.counts.needs_you} />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-panel md:my-2 md:mr-2 md:rounded-xl md:border md:border-line">
         {children}
       </main>
-      <MobileTabBar agencyName={agency.name} userName={user.name} myAgentId={me.agentId} inboxCount={proposals.length} />
+      <MobileTabBar agencyName={agency.name} userName={user.name} myAgentId={me.agentId} needsYouCount={requests.counts.needs_you} />
       <CommandMenu
         listings={listings.map((l) => ({ id: l.id, label: `${l.reference} · ${address(l.street, l.houseNumber, l.city)}` }))}
       />
