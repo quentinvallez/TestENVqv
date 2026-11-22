@@ -219,7 +219,14 @@ export const receiveEmail = defineTool({
       return { kind: "portal_lead" as const, portal, ...result };
     }
 
-    // From an agent's own mailbox we only take in leads: anything else is theirs, not ours to read.
+    // The contact form on the agency's own website: a request like a portal's, answered with the booking link when it asks to visit.
+    const websiteLead = await websiteFormLead(ctx, input);
+    if (websiteLead) {
+      const result = await receivePortalLead.run(ctx, { portal: "website", ...websiteLead, externalId: input.messageId ?? undefined, useAi: input.useAi });
+      return { kind: "website_form" as const, ...result };
+    }
+
+    // From a mailbox we read (office or agent) we only take in leads: anything else is theirs, not ours to read.
     if (input.fromMailbox) return { kind: "ignored" as const, reason: "not_a_lead" };
 
     // Our forwarding test, forwarded back by an agent's Outlook rule (not sent straight to us).
