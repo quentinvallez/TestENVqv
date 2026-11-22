@@ -31,31 +31,49 @@ export function platformWhatsapp(): WhatsAppConfig | null {
   return { phoneNumberId, accessToken, displayNumber: process.env.WHATSAPP_VERIFY_NUMBER ?? null, own: false };
 }
 
+/**
+ * The codes a template may be approved under in Meta, plain language first.
+ * Meta matches the code exactly: a template made as "Dutch (BEL)" is nl_BE and
+ * isn't found as nl, so we try the regional variants agencies tend to pick.
+ */
+export function templateLanguageCodes(language: WhatsAppTemplate["language"]): string[] {
+  return { nl: ["nl", "nl_BE"], fr: ["fr", "fr_BE"], en: ["en", "en_GB", "en_US"], de: ["de"] }[language];
+}
+
 export async function sendWhatsApp(config: WhatsAppConfig, to: string, message: { text: string } | { template: WhatsAppTemplate }): Promise<string> {
-  const payload =
-    "text" in message
-      ? { type: "text", text: { body: message.text, preview_url: true } }
-      : {
-          type: "template",
-          template: {
-            name: message.template.name,
-            language: { code: message.template.language },
-            components: message.template.params.length ? [{ type: "body", parameters: message.template.params.map((text) => ({ type: "text", text })) }] : [],
-          },
-        };
-  const response = await fetch(`${graph}/${config.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${config.accessToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: normalizePhone(to), ...payload }),
-  });
-  const body = (await response.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: MetaError };
-  if (!response.ok || !body.messages?.[0]) {
-    const reason = `WhatsApp ${response.status}: ${body.error ? metaErrorText(body.error) : "no message id"}`;
+  const post = async (payload: Record<string, unknown>): Promise<{ id: string } | { status: number; error?: MetaError }> => {
+    const response = await fetch(`${graph}/${config.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: normalizePhone(to), ...payload }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: MetaError };
+    const id = response.ok ? body.messages?.[0]?.id : undefined;
+    return id ? { id } : { status: response.status, error: body.error };
+  };
+  const refused = (status: number, error: MetaError | undefined, template: string | null) => {
+    const reason = `WhatsApp ${status}: ${error ? metaErrorText(error) : "no message id"}`;
     // Meta's own words, so the cause shows up in the runtime logs as well as on the message.
-    console.warn("[whatsapp] send refused", { template: "template" in message ? `${message.template.name}/${message.template.language}` : null, reason });
-    throw new Error(reason);
+    console.warn("[whatsapp] send refused", { template, reason });
+    return new Error(reason);
+  };
+
+  if ("text" in message) {
+    const result = await post({ type: "text", text: { body: message.text, preview_url: true } });
+    if ("id" in result) return result.id;
+    throw refused(result.status, result.error, null);
   }
-  return body.messages[0].id;
+  const { template } = message;
+  const components = template.params.length ? [{ type: "body", parameters: template.params.map((text) => ({ type: "text", text })) }] : [];
+  let first: { status: number; error?: MetaError } | null = null;
+  for (const code of templateLanguageCodes(template.language)) {
+    const result = await post({ type: "template", template: { name: template.name, language: { code }, components } });
+    if ("id" in result) return result.id;
+    first ??= result;
+    // Only "not in this language" is worth another code; anything else would fail the same way.
+    if (result.error?.code !== 132001) throw refused(result.status, result.error, `${template.name}/${code}`);
+  }
+  throw refused(first!.status, first!.error, `${template.name}/${template.language}`);
 }
 
 type MetaError = { code?: number; title?: string; message?: string; error_data?: { details?: string } };

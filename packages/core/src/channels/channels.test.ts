@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildMime } from "./email";
 import { aliasOf, htmlToText, parseAddress, parseMailgunForm, verifyMailgunSignature, type InboundEmail } from "./inbound-email";
 import { normalizePhone, samePhone } from "./phone";
 import { parsePortalEmail } from "./portals";
-import { metaErrorText, parseWhatsAppWebhook, whatsappProblem } from "./whatsapp";
+import { metaErrorText, parseWhatsAppWebhook, sendWhatsApp, templateLanguageCodes, whatsappProblem } from "./whatsapp";
 import { createHmac } from "node:crypto";
 
 const mail = (overrides: Partial<InboundEmail>): InboundEmail => ({
@@ -249,5 +249,46 @@ describe("WhatsApp errors", () => {
     expect(whatsappProblem("WhatsApp 401: [190] Error validating access token: Session has expired")).toMatch(/access token/);
     expect(whatsappProblem("[131042] Business eligibility payment issue")).toMatch(/payment method/);
     expect(whatsappProblem("Re-engagement message")).toBeNull();
+  });
+});
+
+describe("WhatsApp template languages", () => {
+  const config = { phoneNumberId: "1055", accessToken: "token", displayNumber: null, own: false };
+  const template = { name: "booking_confirmed", language: "nl" as const, params: ["Jan"] };
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+  const notInLanguage = { error: { code: 132001, message: "(#132001) Template name does not exist in the translation", error_data: { details: "template name (booking_confirmed) does not exist in nl" } } };
+
+  it("tries the plain language first, then the regional variants", () => {
+    expect(templateLanguageCodes("nl")).toEqual(["nl", "nl_BE"]);
+    expect(templateLanguageCodes("en")[0]).toBe("en");
+  });
+
+  it("finds a template approved as Dutch (BEL)", async () => {
+    const codes: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const code = JSON.parse(String(init.body)).template.language.code as string;
+      codes.push(code);
+      return code === "nl_BE" ? reply(200, { messages: [{ id: "wamid.ok" }] }) : reply(404, notInLanguage);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      expect(await sendWhatsApp(config, "0470123456", { template })).toBe("wamid.ok");
+      expect(codes).toEqual(["nl", "nl_BE"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stops at other errors and reports the first refusal when no variant exists", async () => {
+    const fetchMock = vi.fn(async () => reply(401, { error: { code: 190, message: "Session has expired" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(sendWhatsApp(config, "0470123456", { template })).rejects.toThrow("[190]");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      fetchMock.mockImplementation(async () => reply(404, notInLanguage));
+      await expect(sendWhatsApp(config, "0470123456", { template })).rejects.toThrow("does not exist in nl");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
