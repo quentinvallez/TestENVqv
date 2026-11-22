@@ -652,7 +652,7 @@ export async function noteClientAction(ctx: ToolContext, appointmentId: string, 
       ? `${note} New times sent on its own (Settings → Automations).`
       : `${note} Confirmation sent on its own (Settings → Automations).`;
   const proposal = plan
-    ? await propose(ctx, thread, confirm ? { ...plan, messageKind: cancelled ? "cancellation_reply" : "booking_confirmation" } : plan, lang, confirm ? sentNote : note, options.useAi ?? true, { fixedText: confirm })
+    ? await propose(ctx, thread, { ...plan, messageKind: cancelled ? "cancellation_reply" : "booking_confirmation" }, lang, confirm ? sentNote : note, options.useAi ?? true, { fixedText: confirm })
     : null;
   if (proposal && confirm) {
     const decided = await decideProposal.run({ ...ctx, actor: { type: "agent", id: "planner" } }, { proposalId: proposal.id, decision: "approved" });

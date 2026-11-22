@@ -26,14 +26,6 @@ export async function redraftAction(conversationId: string) {
   revalidatePath("/requests", "layout");
 }
 
-export async function replyAction(conversationId: string, _state: DraftState, form: FormData): Promise<DraftState> {
-  const body = String(form.get("body") ?? "").trim();
-  if (!body) return { error: "The message is empty." };
-  await runTool(tools.replyToConversation, await getToolContext(), { conversationId, body });
-  revalidatePath("/", "layout");
-  return undefined;
-}
-
 /** The agent settled a request by hand: called or emailed them ("handled"), closed it, or opened it again. */
 export async function markRequestAction(id: string, action: "handled" | "not_interested" | "reopen") {
   await runTool(tools.markRequest, await getToolContext(), { id, action });
@@ -42,7 +34,7 @@ export async function markRequestAction(id: string, action: "handled" | "not_int
 
 const portalSources = ["immoweb", "zimmo", "immovlan", "immoscoop", "website"] as const;
 
-/** Demo helper: a request from a portal or the website's contact form, or a client's WhatsApp, handled as the real ones are. */
+/** Demo helper: a request from a portal or the website's contact form, handled as the real ones are. */
 export async function simulateMessageAction(_state: DraftState, form: FormData): Promise<DraftState> {
   const provider = String(form.get("provider"));
   const contact = String(form.get("contact") ?? "").trim();
@@ -51,26 +43,16 @@ export async function simulateMessageAction(_state: DraftState, form: FormData):
   let target: string;
   try {
     const portal = portalSources.find((p) => p === provider);
-    if (portal) {
-      const email = contact.includes("@");
-      const result = await runTool(tools.receivePortalLead, await getToolContext(), {
-        portal,
-        name: String(form.get("name") ?? "").trim() || null,
-        ...(email ? { email: contact } : { phone: contact }),
-        message: body,
-        listingId: String(form.get("listingId") ?? "") || undefined,
-      });
-      target = result.leadId;
-    } else {
-      const result = await runTool(tools.receiveMessage, await getToolContext(), {
-        channel: "whatsapp",
-        provider: "whatsapp_business",
-        from: { name: String(form.get("name") ?? "").trim() || contact, phone: contact },
-        body,
-        listingId: String(form.get("listingId") ?? "") || undefined,
-      });
-      target = result.conversationId;
-    }
+    if (!portal) return { error: "Pick where the request comes from." };
+    const email = contact.includes("@");
+    const result = await runTool(tools.receivePortalLead, await getToolContext(), {
+      portal,
+      name: String(form.get("name") ?? "").trim() || null,
+      ...(email ? { email: contact } : { phone: contact }),
+      message: body,
+      listingId: String(form.get("listingId") ?? "") || undefined,
+    });
+    target = result.leadId;
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Could not process the request" };
   }

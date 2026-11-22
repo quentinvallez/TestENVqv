@@ -23,8 +23,8 @@ export type RequestStage = (typeof requestStages)[number];
 
 /** Why a request waits for a person (stage "needs_you"), or why it closed. */
 export type RequestReason =
-  | "draft" // a reply waits for approval (a question, or "Ask me first")
-  | "client_wrote" // the client answered on WhatsApp, or wrote and nothing drafted
+  | "draft" // one of our own messages waits for approval ("Ask me first")
+  | "question" // they asked a question without asking to visit: the agent answers from their own mailbox
   | "phone_only" // no email address: someone has to call
   | "listing_unknown" // we couldn't tell which listing they mean
   | "listing_unavailable" // under option, sold, let or off the website
@@ -52,9 +52,10 @@ export type RequestFacts = {
   maxReminders: number;
   /** Our latest message to the client failed and nothing recovered it. */
   lastDeliveryFailed: boolean;
+  /** One of our own messages (confirmation, reminder, follow-up…) waits for approval because the agency set it to "Ask me first". */
   pendingDraft: boolean;
-  /** The client's latest message came after our latest one and still waits (conversation open). */
-  clientWroteLast: boolean;
+  /** The request was a question, not a visit request, so no booking link went out. */
+  question: boolean;
 };
 
 export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage; reason: RequestReason | null } {
@@ -64,8 +65,8 @@ export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage
   // No email address and nothing sent: a draft can't reach them either, someone has to call.
   if (f.leadStage === "new" && !f.invitedAt && !f.hasEmail && !f.hasUpcomingViewing) return { stage: "needs_you", reason: f.hasPhone ? "phone_only" : "not_contacted" };
   // Anything a person has to do comes first, wherever the request stood.
+  // Clients' own replies are not here: they go to the agent's mailbox and are answered there.
   if (f.pendingDraft) return { stage: "needs_you", reason: "draft" };
-  if (f.clientWroteLast) return { stage: "needs_you", reason: "client_wrote" };
   if (f.lastDeliveryFailed) return { stage: "needs_you", reason: "not_delivered" };
 
   if (f.hasUpcomingViewing || f.leadStage === "booked") return { stage: "planned", reason: null };
@@ -73,11 +74,11 @@ export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage
 
   if (!f.invitedAt) {
     if (f.leadStage === "invited") return { stage: "contacted", reason: null }; // marked as contacted (by phone)
-    if (now.getTime() - f.createdAt.getTime() < AUTO_REPLY_GRACE && f.hasEmail) return { stage: "contacted", reason: null };
+    if (now.getTime() - f.createdAt.getTime() < AUTO_REPLY_GRACE && f.hasEmail && !f.question) return { stage: "contacted", reason: null };
     if (!f.hasEmail) return { stage: "needs_you", reason: f.hasPhone ? "phone_only" : "not_contacted" };
     if (f.listingStatus === null) return { stage: "needs_you", reason: "listing_unknown" };
     if (f.listingStatus !== "active") return { stage: "needs_you", reason: "listing_unavailable" };
-    return { stage: "needs_you", reason: "not_contacted" };
+    return { stage: "needs_you", reason: f.question ? "question" : "not_contacted" };
   }
 
   const since = now.getTime() - f.invitedAt.getTime();

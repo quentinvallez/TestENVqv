@@ -97,19 +97,3 @@ export function DraftComposer({
     </form>
   );
 }
-
-export function ReplyBox({ send, channelLabel }: { send: (state: DraftState, form: FormData) => Promise<DraftState>; channelLabel: string }) {
-  const [state, formAction, pending] = useActionState(send, undefined);
-  return (
-    <form action={formAction} className="rounded-lg border border-line bg-panel">
-      <textarea name="body" rows={3} placeholder={`Reply via ${channelLabel}…`} className="block w-full resize-y bg-transparent px-3 py-2.5 outline-none placeholder:text-faint" />
-      {state?.error && <p className="px-3 pb-2 text-danger">{state.error}</p>}
-      <div className="flex justify-end border-t border-line px-3 py-2">
-        <Button size="sm" disabled={pending}>
-          <Send className="size-3.5" />
-          Send
-        </Button>
-      </div>
-    </form>
-  );
-}

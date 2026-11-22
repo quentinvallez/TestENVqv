@@ -1,22 +1,22 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { aiAvailable, runTool, tools, type RequestItem } from "@viewing/core";
-import { Building2, CalendarPlus, Check, Mail, MessageCircle, Phone, RotateCcw, X } from "lucide-react";
+import { aiAvailable, ownMessageDraft, runTool, tools, type RequestItem } from "@viewing/core";
+import { Building2, CalendarPlus, Check, Mail, Phone, RotateCcw, Send, X } from "lucide-react";
 import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
 import { Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { address, formatDateTime, formatRelative } from "@/lib/format";
 import { requestReasonLabel, requestStageMeta, sourceLabel } from "@/lib/labels";
-import { dismissDraftAction, markRequestAction, redraftAction, replyAction, sendDraftAction } from "../actions";
-import { DraftComposer, ReplyBox } from "../composer";
+import { dismissDraftAction, markRequestAction, redraftAction, sendDraftAction } from "../actions";
+import { DraftComposer } from "../composer";
 import { Timeline } from "../timeline";
 
 type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.run>>>;
 
 /** What a person should do, in a sentence, per reason the request waits. */
 const needsYouText: Record<string, (name: string) => string> = {
-  draft: () => "A reply is ready. Check it and send it, or handle it yourself and mark it as handled.",
-  client_wrote: (name) => `${name} wrote back. Answer them, then mark it as handled.`,
+  draft: () => "This message goes out after your OK (you set it to “Ask me first” in Settings). Check it and send it.",
+  question: (name) => `${name} asked a question without asking to visit, so no booking link went out. Answer from your own mailbox, then mark it as handled.`,
   phone_only: (name) => `${name} left no email address, so nothing went out automatically. Call them to plan the viewing, or book it for them.`,
   listing_unknown: () => "We couldn't tell which listing this is about, so no booking link went out. Contact them yourself.",
   listing_unavailable: () => "The listing is under option, sold or off the website, so no booking link went out.",
@@ -53,8 +53,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
     (c): c is Conversation => Boolean(c),
   );
   for (const c of conversations) if (c.unread) await runTool(tools.updateConversation, ctx, { conversationId: c.id, unread: false });
-  const withDraft = conversations.find((c) => c.draft);
-  const whatsapp = conversations.find((c) => c.channel === "whatsapp");
+  // Only drafts of our own messages; answers to what clients write are given from the agent's own mailbox.
+  const withDraft = conversations.find((c) => c.draft && ownMessageDraft(c.draft));
   const name = item.contact?.name ?? "Unknown";
   const firstName = name.split(" ")[0]!;
   const origin = leadOrigin(item.source);
@@ -107,7 +107,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 
           <Panel className="p-4">
             <NextStep item={item} firstName={firstName} />
-            {item.stage === "needs_you" && item.message && item.reason !== "draft" && (
+            {item.stage === "needs_you" && item.message && item.kind === "lead" && (
               <blockquote className="mt-3 border-l-2 border-line pl-3 whitespace-pre-line text-muted">{item.message}</blockquote>
             )}
 
@@ -128,13 +128,6 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                 />
               </div>
             )}
-            {/* WhatsApp answers can't be answered from the agent's mailbox. */}
-            {item.reason === "client_wrote" && whatsapp && !withDraft && (
-              <div className="mt-4">
-                <ReplyBox send={replyAction.bind(null, whatsapp.id)} channelLabel={whatsapp.route.ready ? whatsapp.route.via : "WhatsApp"} />
-              </div>
-            )}
-
             <div className="mt-4 flex flex-wrap gap-2">
               {item.contact?.phone && (
                 <a href={`tel:${item.contact.phone.replace(/\s/g, "")}`} className="inline-flex h-10 items-center gap-1.5 rounded-md border border-line bg-panel px-3 font-medium hover:bg-hover sm:h-8">
@@ -183,13 +176,13 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-medium">
-              <MessageCircle className="size-4 text-muted" />
-              What happened
+              <Send className="size-4 text-muted" />
+              What we sent
             </h2>
             <Timeline conversations={conversations} name={name} agentName={agentName} />
-            {item.contact?.email && (
-              <p className="mt-3 text-[12px] text-faint">Email replies from {firstName} go to {agentName ? `${agentName.split(" ")[0]}'s` : "the agent's"} own mailbox and are answered there.</p>
-            )}
+            <p className="mt-3 text-[12px] text-faint">
+              Only what went out automatically, and what {firstName} did with their link. Their replies go to {agentName ? `${agentName.split(" ")[0]}'s` : "the agent's"} own mailbox and are answered there.
+            </p>
           </section>
         </div>
       </div>
