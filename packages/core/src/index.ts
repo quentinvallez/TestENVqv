@@ -23,3 +23,4 @@ export { renewMailboxLeadsForAllAgencies } from "./tools/mailbox-leads";
 export { icsCalendar, type IcsEvent } from "./planner/ics";
 export { demoSlots } from "./planner/demo-slots";
 export { PreviewError } from "./website/preview";
+export { SignupError, SIGNUP_LINK_DAYS } from "./tools/signups";

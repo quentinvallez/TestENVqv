@@ -10,7 +10,9 @@ import { ImportForm } from "../listings/website/import-form";
 import { setBookingLauncherAction, setValuationLauncherAction, setupWebsiteAction } from "../actions";
 import { Install } from "./install";
 
-export default async function WidgetPage() {
+export default async function WidgetPage({ searchParams }: { searchParams: Promise<{ website?: string }> }) {
+  // A new workspace arrives with the website given in its request, ready to read.
+  const { website } = await searchParams;
   const { agency } = await getSession();
   const h = await headers();
   const appOrigin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
@@ -38,7 +40,7 @@ export default async function WidgetPage() {
               We read your listings from it, with their status and agent, and keep them up to date every night. We also take your colour from it
               for the buttons.
             </p>
-            <ImportForm action={setupWebsiteAction} websiteUrl={widget.websiteUrl} label={widget.websiteUrl ? "Read again" : "Read my website"} />
+            <ImportForm action={setupWebsiteAction} websiteUrl={widget.websiteUrl ?? website?.slice(0, 300) ?? null} label={widget.websiteUrl ? "Read again" : "Read my website"} />
             {widget.websiteUrl && (
               <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
                 <Link href="/listings/website" className="underline underline-offset-2">

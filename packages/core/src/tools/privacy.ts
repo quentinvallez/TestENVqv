@@ -4,6 +4,7 @@ import { automationSettings } from "../automations/rules";
 import { recordEvent } from "../events";
 import { absoluteUrl } from "../planner/agent";
 import { defineTool, runTool, type ToolContext } from "../tool";
+import { applySignupRetention } from "./signups";
 import { cancelAppointment } from "./booking";
 
 /*
@@ -235,7 +236,9 @@ export async function applyRetention(ctx: ToolContext, now = new Date()) {
       }
     }
   }
-  return { erased, unverifiedValuations: unverified.length };
+  // Workspace requests (only the platform's own agency has any) that went nowhere.
+  const signupRequests = await applySignupRetention(ctx, now);
+  return { erased, unverifiedValuations: unverified.length, signupRequests };
 }
 
 export const previewRetention = defineTool({

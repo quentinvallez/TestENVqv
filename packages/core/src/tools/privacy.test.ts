@@ -99,7 +99,7 @@ describe.skipIf(!process.env.DATABASE_URL)("client data (GDPR)", () => {
 
     expect(await inactiveContacts(ctx, 24, new Date())).toEqual([quiet!.id]);
     const result = await applyRetention(ctx);
-    expect(result).toEqual({ erased: 1, unverifiedValuations: 1 });
+    expect(result).toEqual({ erased: 1, unverifiedValuations: 1, signupRequests: 0 });
     const left = (await db.select({ id: schema.contacts.id }).from(schema.contacts).where(inArray(schema.contacts.id, [quiet!.id, inDeal!.id, owner!.id, recent!.id]))).map((c) => c.id);
     expect(left.sort()).toEqual([inDeal!.id, owner!.id, recent!.id].sort());
 

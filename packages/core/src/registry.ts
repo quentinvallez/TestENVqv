@@ -17,6 +17,7 @@ import { bookingQuestionsForWidget, getBookingQuestions, updateBookingQuestions 
 import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, checkWhatsApp, connectCalendar, connectWhatsApp, disconnectCalendar, listAgentsWithoutMailbox, listConnections, listUndeliveredMessages, markEmailBounced, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
+import { approveSignup, claimSignup, declineSignup, finishSignup, listSignups, releaseSignup, requestSignup } from "./tools/signups";
 import { createWidgetPreview, deleteWidgetPreview, listWidgetPreviews, noteWidgetPreview } from "./tools/previews";
 import { importWebsiteListings, importWebsitePage, websiteImportStatus } from "./tools/website";
 import { cancelOpenHouse, listOpenHouses, planOpenHouse } from "./tools/open-houses";
@@ -133,6 +134,13 @@ export const tools = {
   listWidgetPreviews,
   noteWidgetPreview,
   deleteWidgetPreview,
+  requestSignup,
+  listSignups,
+  approveSignup,
+  declineSignup,
+  claimSignup,
+  releaseSignup,
+  finishSignup,
 };
 
 /** Tools by their public name, as agents and proposals refer to them. */

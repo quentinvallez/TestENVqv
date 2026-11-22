@@ -1,5 +1,5 @@
-import { AuthForm } from "@/components/auth-form";
+import { RequestAccessForm } from "./request-form";
 
 export default function SignupPage() {
-  return <AuthForm mode="signup" />;
+  return <RequestAccessForm />;
 }

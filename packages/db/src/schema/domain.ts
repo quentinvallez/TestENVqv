@@ -453,6 +453,40 @@ export const widgetPreviews = pgTable(
   (t) => [index().on(t.agencyId, t.createdAt)],
 );
 
+/**
+ * An agency asking for an Unbird workspace. Requests belong to the platform's own agency
+ * (PLATFORM_AGENCY_ID): its admins approve or decline them. Approval emails a link that is
+ * valid 7 days; the workspace is created when the requester opens it and sets a password.
+ */
+export const signupRequests = pgTable(
+  "signup_requests",
+  {
+    id: id("sgn"),
+    agencyId: agencyId(),
+    agencyName: text().notNull(),
+    website: text(),
+    name: text().notNull(),
+    email: text().notNull(),
+    phone: text(),
+    note: text(),
+    language: text().$type<Language>().notNull().default("en"),
+    status: text().$type<"pending" | "approved" | "declined" | "completed">().notNull().default("pending"),
+    /** sha256 of the secret in the approval link; the link itself is never stored. */
+    tokenHash: text().unique(),
+    tokenExpiresAt: timestamp({ withTimezone: true }),
+    decidedAt: timestamp({ withTimezone: true }),
+    decidedBy: text(),
+    /** The workspace made from this request. */
+    createdAgencyId: text().references(() => organization.id, { onDelete: "set null" }),
+    completedAt: timestamp({ withTimezone: true }),
+    /** Which data processing agreement the requester accepted when creating the workspace, and when. */
+    dpaVersion: text(),
+    dpaAcceptedAt: timestamp({ withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index().on(t.agencyId, t.status, t.createdAt), index("signup_requests_email_idx").on(sql`lower(${t.email})`)],
+);
+
 export type WidgetPreviewListing = {
   url: string;
   title: string | null;
