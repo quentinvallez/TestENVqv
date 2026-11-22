@@ -77,6 +77,7 @@ export const portalLeadsStatus = defineTool({
         scopes: calendarConnections.scopes,
         status: calendarConnections.status,
         syncState: calendarConnections.syncState,
+        createdAt: calendarConnections.createdAt,
       })
       .from(calendarConnections)
       .leftJoin(agents, eq(agents.id, calendarConnections.agentId))
@@ -86,6 +87,8 @@ export const portalLeadsStatus = defineTool({
       connectionId: c.connectionId,
       agentId: c.agentId,
       agentName: c.agentName ?? "Office mailbox",
+      /** Replies go out from this office mailbox when the listing's agent has none. */
+      sendsForAgents: !c.agentId && c.status === "active" && c.scopes.includes("mail") && c.connectionId === offices.find((o) => o.status === "active" && o.scopes.includes("mail"))?.connectionId,
       provider: c.provider,
       accountEmail: c.accountEmail,
       active: c.status === "active",
@@ -96,7 +99,7 @@ export const portalLeadsStatus = defineTool({
       sends: c.status === "active" && c.scopes.includes("mail"),
       reading: readingSummary(c.syncState.leadReading as LeadReading | undefined),
     });
-    const office = connections.find((c) => !c.agentId);
+    const offices = connections.filter((c) => !c.agentId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     return {
       inboundAddress: address,
       portals: portals.map((portal) => {
@@ -105,8 +108,8 @@ export const portalLeadsStatus = defineTool({
       }),
       gmailForwarding: settings?.channels.gmailForwarding ?? null,
       leadCopyAddress: settings?.channels.leadCopyAddress ?? null,
-      /** The agency's general mailbox (info@): read for leads, and replies go from it when the listing's agent has no mailbox. */
-      office: office ? mailbox(office) : null,
+      /** Office mailboxes where portal and website requests arrive (info@, contact@, …): read for leads; the first one sends replies when the listing's agent has no mailbox. */
+      offices: offices.map(mailbox),
       mailboxes: connections.filter((c) => c.agentId).map(mailbox),
       outlookAvailable: oauthConfigured("microsoft"),
       googleAvailable: oauthConfigured("google"),

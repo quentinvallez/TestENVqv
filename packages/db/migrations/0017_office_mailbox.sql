@@ -1,2 +1,0 @@
-ALTER TABLE "calendar_connections" ALTER COLUMN "agent_id" DROP NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "calendar_connections_office_idx" ON "calendar_connections" USING btree ("agency_id") WHERE "calendar_connections"."agent_id" is null;

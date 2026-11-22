@@ -253,7 +253,7 @@ export const calendarConnections = pgTable(
   {
     id: id("cal"),
     agencyId: agencyId(),
-    // Null for the agency's office mailbox (e.g. info@): read for leads, and replies go from it when the listing's agent has none.
+    // Null for an office mailbox (info@, contact@, …; several allowed): read for leads, and replies go from it when the listing's agent has none.
     agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     provider: text().$type<"google" | "microsoft">().notNull(),
     accountEmail: text().notNull(),
@@ -270,8 +270,8 @@ export const calendarConnections = pgTable(
   (t) => [
     index().on(t.agentId),
     uniqueIndex().on(t.agentId, t.provider),
-    // One office mailbox per agency.
-    uniqueIndex("calendar_connections_office_idx").on(t.agencyId).where(sql`${t.agentId} is null`),
+    // An office mailbox (agentId null) is one per address.
+    uniqueIndex("calendar_connections_office_idx").on(t.agencyId, t.accountEmail).where(sql`${t.agentId} is null`),
   ],
 );
 

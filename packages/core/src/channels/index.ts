@@ -38,13 +38,14 @@ async function agentMailbox(ctx: ToolContext, agentId: string | null): Promise<M
   return rows.find((c) => c.scopes.includes("mail")) ?? null;
 }
 
-/** The agency's office mailbox (e.g. info@) when it is connected and may send. */
+/** The agency's office mailbox (info@, contact@, …) that may send; the first one connected when there are several. */
 async function officeMailbox(ctx: ToolContext): Promise<Mailbox | null> {
-  const [row] = await ctx.db
+  const rows = await ctx.db
     .select()
     .from(calendarConnections)
-    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId), eq(calendarConnections.status, "active")));
-  return row?.scopes.includes("mail") ? row : null;
+    .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId), eq(calendarConnections.status, "active")))
+    .orderBy(calendarConnections.createdAt);
+  return rows.find((r) => r.scopes.includes("mail")) ?? null;
 }
 
 /**

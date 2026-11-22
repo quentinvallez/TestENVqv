@@ -49,13 +49,13 @@ function MailboxRow({ m, outlookAvailable, reconnectHref }: { m: MailboxStatus; 
             {!m.active
               ? `${gmail ? "Gmail" : "Outlook"} connection expired: connect again.`
               : gmail
-                ? "Gmail: replies go out from this address when the listing's agent has no mailbox. Google doesn't let us read Gmail, so forward its lead emails with the filter in option 2."
+                ? `Gmail: ${m.sendsForAgents ? "replies go out from this address when the listing's agent has no mailbox. " : ""}Google doesn't let us read Gmail, so forward its lead emails with the filter in option 2.`
                 : m.reading
                   ? readingText(m.reading)
                   : m.canRead
                     ? "Not reading lead emails."
                     : "Connect Outlook again to allow reading lead emails."}
-            {office && m.active && !gmail && m.sends ? " Replies go out from this address when the listing's agent has no mailbox." : ""}
+            {m.sendsForAgents && !gmail ? " Replies go out from this address when the listing's agent has no mailbox." : ""}
           </div>
         </div>
       </div>
@@ -107,32 +107,37 @@ export async function PortalLeads({ ctx, copies }: { ctx: ToolContext; copies: b
             <span className="rounded-full border border-line px-1.5 text-[11px] font-normal text-muted">Recommended</span>
           </div>
           <p className="mt-0.5 max-w-xl text-muted">
-            Connect your office mailbox (the address the portals and your website write to, like info@) once here; agents connect their own Outlook on their page. We pick up new lead emails as they arrive, and the reply with the booking link goes out from the listing&apos;s agent, or from the office mailbox when that agent has none. We only open emails sent by Immoweb, Zimmo, Immovlan, Immoscoop
+            Connect the mailbox where your portal and website requests arrive (any address) once here; agents connect their own Outlook on their page. We pick up new lead emails as they arrive, and the reply with the booking link goes out from the listing&apos;s agent, or from your first office mailbox when that agent has none. We only open emails sent by Immoweb, Zimmo, Immovlan, Immoscoop
             {status.websiteDomain ? <> and your website ({status.websiteDomain})</> : null}. For every other email we only look at the sender to skip it, and never open it. Emails that arrived before reading started are left alone.
           </p>
           <ul className="mt-3 flex flex-col gap-3">
-            {status.office ? (
-              <MailboxRow m={status.office} outlookAvailable={status.outlookAvailable} reconnectHref={`/api/calendar/${status.office.provider}/start?office=1`} />
-            ) : (
-              <li className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-start gap-2">
-                  <StatusDot color="var(--line-strong)" className="mt-1.5" />
-                  <div className="min-w-0">
-                    <div>Office mailbox</div>
-                    <div className="text-[12px] text-muted">Not connected. Sign in with your general address (info@…) to read its lead emails and send replies from it.</div>
+            {status.offices.map((m) => (
+              <MailboxRow key={m.connectionId} m={m} outlookAvailable={status.outlookAvailable} reconnectHref={`/api/calendar/${m.provider}/start?office=1`} />
+            ))}
+            <li className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-2">
+                <StatusDot color="var(--line-strong)" className="mt-1.5" />
+                <div className="min-w-0">
+                  <div>{status.offices.length ? "Another mailbox where requests arrive" : "The mailbox where your requests arrive"}</div>
+                  <div className="text-[12px] text-muted">
+                    Sign in with the address your portal accounts and website send requests to, whatever its name (info@, contact@, verkoop@…). Leads in several places? Connect each one.
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1.5">
-                  {(["microsoft", "google"] as const)
-                    .filter((p) => (p === "microsoft" ? status.outlookAvailable : status.googleAvailable))
-                    .map((p) => (
-                      <a key={p} href={`/api/calendar/${p}/start?office=1`} className={`inline-flex h-7 items-center rounded-md px-2.5 text-[12px] font-medium ${p === "microsoft" ? "bg-primary text-primary-fg hover:opacity-90" : "border border-line hover:bg-hover"}`}>
-                        Connect {p === "microsoft" ? "Outlook" : "Gmail"}
-                      </a>
-                    ))}
-                </div>
-              </li>
-            )}
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                {(["microsoft", "google"] as const)
+                  .filter((p) => (p === "microsoft" ? status.outlookAvailable : status.googleAvailable))
+                  .map((p) => (
+                    <a
+                      key={p}
+                      href={`/api/calendar/${p}/start?office=1`}
+                      className={`inline-flex h-7 items-center rounded-md px-2.5 text-[12px] font-medium ${p === "microsoft" && !status.offices.length ? "bg-primary text-primary-fg hover:opacity-90" : "border border-line hover:bg-hover"}`}
+                    >
+                      Connect {p === "microsoft" ? "Outlook" : "Gmail"}
+                    </a>
+                  ))}
+              </div>
+            </li>
             {status.mailboxes
               .filter((m) => m.provider === "microsoft")
               .map((m) => (

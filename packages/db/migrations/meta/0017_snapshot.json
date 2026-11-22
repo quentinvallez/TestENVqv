@@ -1,5 +1,5 @@
 {
-  "id": "7ec96189-903b-400c-a3ef-25b577ec41e7",
+  "id": "787ad6bc-ba64-4419-9380-5725f6fcd254",
   "prevId": "5dd4607d-849d-43d3-88cb-b29d75701f79",
   "version": "7",
   "dialect": "postgresql",
@@ -1562,6 +1562,12 @@
           "columns": [
             {
               "expression": "agency_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "account_email",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

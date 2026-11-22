@@ -483,7 +483,7 @@ export const listConnections = defineTool({
 export const connectCalendar = defineTool({
   name: "calendar_connect",
   description:
-    "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox. Without agentId it connects the agency's office mailbox (e.g. info@), used to read lead emails and to send replies when the listing's agent has no mailbox.",
+    "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox. Without agentId it connects an office mailbox (where portal and website requests arrive: info@, contact@, …; several allowed), read for lead emails and used to send replies when the listing's agent has no mailbox.",
   mutates: true,
   input: z.object({ agentId: z.string().nullable(), provider: z.enum(["google", "microsoft"]), code: z.string(), redirectUri: z.string().url() }),
   run: async (ctx, input) => {
@@ -504,15 +504,11 @@ export const connectCalendar = defineTool({
         .onConflictDoUpdate({ target: [calendarConnections.agentId, calendarConnections.provider], set: values })
         .returning({ id: calendarConnections.id });
     } else {
-      // One office mailbox per agency: a new one replaces the old (whose lead reading stops first).
+      // Office mailboxes (info@, contact@, …): several allowed, one row per address; connecting the same address again refreshes it.
       const [old] = await ctx.db
-        .select({ id: calendarConnections.id, provider: calendarConnections.provider, syncState: calendarConnections.syncState })
+        .select({ id: calendarConnections.id })
         .from(calendarConnections)
-        .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId)));
-      if (old && old.provider === "microsoft" && old.syncState.leadReading) {
-        const { stopMailboxLeads } = await import("./mailbox-leads");
-        await stopMailboxLeads.run(ctx, { connectionId: old.id }).catch((error) => console.error("Stopping lead reading failed", error));
-      }
+        .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId), eq(calendarConnections.accountEmail, email)));
       [connection] = old
         ? await ctx.db.update(calendarConnections).set({ provider: input.provider, ...values }).where(eq(calendarConnections.id, old.id)).returning({ id: calendarConnections.id })
         : await ctx.db.insert(calendarConnections).values({ agencyId: ctx.agencyId, agentId: null, provider: input.provider, ...values }).returning({ id: calendarConnections.id });

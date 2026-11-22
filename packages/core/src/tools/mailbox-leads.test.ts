@@ -157,8 +157,28 @@ describe.skipIf(!process.env.DATABASE_URL)("Lead emails from Outlook", () => {
       .returning();
     await runTool(tools.startMailboxLeads, ctx, { connectionId: office!.id });
     const status = await runTool(tools.portalLeadsStatus, ctx, {});
-    expect(status.office).toMatchObject({ agentName: "Office mailbox", accountEmail: "info@immo-zone.be", reading: { instant: true }, canForward: false });
+    expect(status.offices).toHaveLength(1);
+    expect(status.offices[0]).toMatchObject({ agentName: "Office mailbox", accountEmail: "info@immo-zone.be", reading: { instant: true }, canForward: false, sendsForAgents: true });
     expect(status.mailboxes.map((m) => m.accountEmail)).toEqual(["quentin@immo-zone.be"]);
+
+    // Leads also arrive at a second address (verkoop@): read too, but replies keep going from the first one.
+    const [second] = await db
+      .insert(schema.calendarConnections)
+      .values({
+        agencyId,
+        agentId: null,
+        provider: "microsoft",
+        accountEmail: "verkoop@immo-zone.be",
+        credentials: sealCredentials({ accessToken: "office-2", refreshToken: "r", expiresAt: Date.now() + 3600_000 }),
+        scopes: ["mail", "leads"],
+      })
+      .returning();
+    await runTool(tools.startMailboxLeads, ctx, { connectionId: second!.id });
+    const both = await runTool(tools.portalLeadsStatus, ctx, {});
+    expect(both.offices.map((o) => [o.accountEmail, o.sendsForAgents, Boolean(o.reading)])).toEqual([
+      ["info@immo-zone.be", true, true],
+      ["verkoop@immo-zone.be", false, true],
+    ]);
 
     // A colleague without a connected mailbox: the client email leaves from info@, replies still reach the colleague.
     const [sofie] = await db.insert(schema.agents).values({ agencyId, name: "Sofie", email: "sofie@immo-zone.be" }).returning();
@@ -181,7 +201,8 @@ describe.skipIf(!process.env.DATABASE_URL)("Lead emails from Outlook", () => {
     // Disconnecting the office mailbox stops its subscription.
     const before = calls.length;
     await runTool(tools.disconnectCalendar, ctx, { connectionId: office!.id });
+    await runTool(tools.disconnectCalendar, ctx, { connectionId: second!.id });
     expect(calls.slice(before).some((c) => c.method === "DELETE" && c.url.includes("/subscriptions/"))).toBe(true);
-    expect((await runTool(tools.portalLeadsStatus, ctx, {})).office).toBeNull();
+    expect((await runTool(tools.portalLeadsStatus, ctx, {})).offices).toEqual([]);
   });
 });
