@@ -1,3 +1,4 @@
+import type { LeadStage } from "@viewing/db/schema";
 import { describe, expect, it } from "vitest";
 import { zonedTime } from "../time";
 import { completionDue, followUpDue, nudgeDue, reminderDue } from "./rules";
@@ -68,7 +69,7 @@ describe("followUpDue", () => {
 describe("nudgeDue", () => {
   const facts = {
     lastMessage: { direction: "outbound" as const, authorType: "user", sentAt: at(1, 10) },
-    leadStage: "invited" as const,
+    leadStage: "follow_up" as LeadStage,
     hasPendingDraft: false,
     hasUpcomingAppointment: false,
     nudgesSoFar: 0,
@@ -77,11 +78,22 @@ describe("nudgeDue", () => {
     expect(nudgeDue(facts, at(3, 10), 3)).toBe(false);
     expect(nudgeDue(facts, at(4, 10), 3)).toBe(true);
   });
+  it("reminds a client invited to book after 24 hours, again after 72, then stops", () => {
+    const invited = { ...facts, leadStage: "invited" as LeadStage };
+    expect(nudgeDue(invited, at(1, 22), 3)).toBe(false);
+    expect(nudgeDue(invited, at(2, 10), 3)).toBe(true);
+    // The second counts from the first reminder (sent at day 2, 10:00): 48 hours later.
+    const second = { ...invited, lastMessage: { ...invited.lastMessage, sentAt: at(2, 10) }, nudgesSoFar: 1 };
+    expect(nudgeDue(second, at(4, 9), 3)).toBe(false);
+    expect(nudgeDue(second, at(4, 10), 3)).toBe(true);
+    expect(nudgeDue({ ...second, nudgesSoFar: 2 }, at(9, 10), 3)).toBe(false);
+  });
   it("leaves the client alone when they answered, booked, moved on or had two nudges", () => {
     expect(nudgeDue({ ...facts, lastMessage: { ...facts.lastMessage, direction: "inbound" } }, at(5, 10), 3)).toBe(false);
     expect(nudgeDue({ ...facts, hasUpcomingAppointment: true }, at(5, 10), 3)).toBe(false);
     expect(nudgeDue({ ...facts, leadStage: "offer" }, at(5, 10), 3)).toBe(false);
     expect(nudgeDue({ ...facts, nudgesSoFar: 2 }, at(5, 10), 3)).toBe(false);
+    expect(nudgeDue({ ...facts, leadStage: "booked" }, at(5, 10), 3)).toBe(false);
     expect(nudgeDue({ ...facts, hasPendingDraft: true }, at(5, 10), 3)).toBe(false);
   });
 });

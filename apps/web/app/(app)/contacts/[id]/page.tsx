@@ -86,8 +86,8 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                     : `Viewed ${address(needsFollowUp!.listing?.street, needsFollowUp!.listing?.houseNumber, needsFollowUp!.listing?.city)}; no follow-up sent yet.`}
                 </span>
                 {hasDraft && conversationId ? (
-                  <Link href={`/inbox?c=${conversationId}`} className="font-medium underline-offset-2 hover:underline">
-                    Review in inbox
+                  <Link href={`/requests/${conversationId}`} className="font-medium underline-offset-2 hover:underline">
+                    Review the draft
                   </Link>
                 ) : (
                   needsFollowUp && (

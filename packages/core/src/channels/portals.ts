@@ -42,7 +42,7 @@ const portalMentions: Record<Portal, RegExp> = {
   immoscoop: /immoscoop\.be/i,
 };
 
-const labels = {
+export const labels = {
   name: ["naam", "volledige naam", "nom", "nom et prénom", "nom complet", "name", "full name", "contact"],
   firstName: ["voornaam", "prénom", "first name"],
   lastName: ["achternaam", "familienaam", "nom de famille", "last name"],
@@ -55,11 +55,16 @@ const labels = {
 };
 
 /** A visit request in a subject or request-type field. Only those, never the whole mail: footers say "bezoek onze website". */
-const visitWords = /\b(bezoek\w*|bezichtig\w*|visite[rs]?|viewing|visit)\b/i;
+export const visitWords = /\b(bezoek\w*|bezichtig\w*|visite[rs]?|viewing|visit)\b/i;
 
 const french = /\b(nom|prénom|téléphone|votre|demande|bien|visite|référence)\b/i;
 const german = /\b(vorname|nachname|telefon|nachricht|anfrage|besichtigung|immobilie|ihre)\b/i;
 const dutch = /\b(naam|voornaam|telefoon|bericht|aanvraag|pand|bezoek|referentie|uw)\b/i;
+
+/** The language of a form's labels and subject, or null when they don't say. */
+export function guessLanguage(sample: string): PortalLead["language"] {
+  return french.test(sample) ? "fr" : german.test(sample) ? "de" : dutch.test(sample) ? "nl" : /\b(name|phone|message|request)\b/i.test(sample) ? "en" : null;
+}
 
 /** The original sender of a forwarded mail ("Van: Immoweb <noreply@immoweb.be>" in its first lines), if any. */
 export function forwardedSender(text: string): string | null {
@@ -88,7 +93,7 @@ const allLabels = Object.values(labels).flat().sort((a, b) => b.length - a.lengt
 const labelLine = new RegExp(`^\\s*[*•-]?\\s*(${allLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s*[:：]\\s*(.*)$`, "i");
 
 /** "Label: value" pairs; a message label takes the following lines until the next label or a blank line after text. */
-function labelledFields(text: string) {
+export function labelledFields(text: string) {
   const fields = new Map<string, string>();
   const lines = text.replace(/\r/g, "").split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -111,7 +116,7 @@ function labelledFields(text: string) {
   return fields;
 }
 
-function first(fields: Map<string, string>, keys: string[]) {
+export function first(fields: Map<string, string>, keys: string[]) {
   for (const key of keys) {
     const value = fields.get(key);
     if (value) return value;
@@ -119,8 +124,8 @@ function first(fields: Map<string, string>, keys: string[]) {
   return null;
 }
 
-const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
-const phonePattern = /(?:\+|00)?\d[\d\s./-]{7,}\d/;
+export const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+export const phonePattern = /(?:\+|00)?\d[\d\s./-]{7,}\d/;
 
 function portalRefFrom(portal: Portal, text: string, labelled: string | null): string | null {
   if (portal === "immoweb") {
@@ -169,7 +174,7 @@ export function parsePortalEmail(email: InboundEmail): PortalLead | null {
     message,
     portalRef: portalRefFrom(portal, text, first(fields, labels.portalRef)),
     agencyReference: first(fields, labels.reference),
-    language: french.test(sample) ? "fr" : german.test(sample) ? "de" : dutch.test(sample) ? "nl" : /\b(name|phone|message|request)\b/i.test(sample) ? "en" : null,
+    language: guessLanguage(sample),
     visitRequested,
   };
 }

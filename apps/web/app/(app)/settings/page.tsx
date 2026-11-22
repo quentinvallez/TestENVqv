@@ -87,7 +87,7 @@ export default async function SettingsPage() {
       on: automations.repliesToAgent,
       title: "Client replies go to the agent's mailbox",
       description:
-        "When a client answers an email, the reply lands in the agent's own Outlook or Gmail, and the agent answers from there. The app keeps a silent copy, only so reminders and check-ins stop for clients who already answered. Turn off to answer replies in the app's inbox instead, with a drafted reply.",
+        "When a client answers an email, the reply lands in the agent's own Outlook or Gmail, and the agent answers from there. The app keeps a silent copy, only so reminders and check-ins stop for clients who already answered. Turn off to answer replies in the app instead, with a drafted reply under Viewing requests → Needs you.",
     },
     {
       key: "agentAlerts",
@@ -137,7 +137,7 @@ export default async function SettingsPage() {
                   <>
                     <p className="mt-1 font-mono text-[12px] break-all">{channels.inboundAddress}</p>
                     <p className="mt-1 text-[12px] text-muted">
-                      Client email replies go to the agent's own mailbox, with a copy here (see Automations to change that). Immoweb, Zimmo and Immovlan leads sent here become leads for the listing&apos;s agent; see Portal leads below.
+                      Client email replies go to the agent's own mailbox, with a copy here (see Automations to change that). Immoweb, Zimmo, Immovlan and Immoscoop leads and your website&apos;s contact-form mails sent here become viewing requests for the listing&apos;s agent; see Portal leads below.
                       {channels.portalLeads > 0 && ` ${channels.portalLeads} portal leads so far.`}
                     </p>
                   </>
@@ -204,12 +204,12 @@ export default async function SettingsPage() {
               <Sparkles className="size-4 text-ai" />
               Agent autonomy
             </h2>
-            <p className="mb-2 text-muted">Choose what the planner may do on its own. Anything set to “Ask me first” lands in your inbox.</p>
+            <p className="mb-2 text-muted">Choose what the planner may do on its own. Anything set to “Ask me first” waits under Viewing requests → Needs you.</p>
             <Panel className="divide-y divide-line">
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span>Reply to portal leads that ask to visit</span>
+                    <span>Reply to portal and website requests that ask to visit</span>
                     <Pill className={automations.replyToPortalLeadsAutomatically ? "border-ai-line bg-ai-soft text-ai" : undefined}>
                       {automations.replyToPortalLeadsAutomatically ? autonomyLabel.act : autonomyLabel.suggest}
                     </Pill>
@@ -244,7 +244,7 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
-            <p className="mb-2 text-muted">These jobs run on their own and send their messages automatically, in fixed text in the client&apos;s language. Set any of them to “Ask me first” to approve each message in the inbox instead.</p>
+            <p className="mb-2 text-muted">These jobs run on their own and send their messages automatically, in fixed text in the client&apos;s language. Set any of them to “Ask me first” to approve each message under Viewing requests → Needs you instead.</p>
             <Panel className="divide-y divide-line">
               {jobs.map((job) => (
                 <div key={job.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">

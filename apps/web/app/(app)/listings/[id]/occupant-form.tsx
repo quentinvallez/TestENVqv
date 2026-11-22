@@ -6,7 +6,7 @@ import type { OccupantState } from "../../actions";
 
 const field = "h-8 w-full rounded-md border border-line bg-panel px-2 outline-none focus:border-line-strong";
 
-/** Adds the owner or tenant; the invitation with their link waits in the inbox for approval. */
+/** Adds the owner or tenant; the invitation with their link waits under Viewing requests → Needs you for approval. */
 export function OccupantForm({ defaultRole, action }: { defaultRole: "owner" | "tenant"; action: (state: OccupantState, form: FormData) => Promise<OccupantState> }) {
   const [state, formAction, pending] = useActionState(action, undefined);
   return (
@@ -35,7 +35,7 @@ export function OccupantForm({ defaultRole, action }: { defaultRole: "owner" | "
         <Button variant="primary" disabled={pending}>
           {pending ? "Adding…" : "Add and draft invitation"}
         </Button>
-        {state?.added && <span className="text-success">Added. The invitation with their link is in the inbox for approval.</span>}
+        {state?.added && <span className="text-success">Added. The invitation with their link waits under Viewing requests → Needs you.</span>}
         {state?.error && <span className="text-danger">{state.error}</span>}
       </div>
     </form>

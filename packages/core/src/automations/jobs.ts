@@ -9,7 +9,7 @@ import { messageOccupant, occupantAlertsAutomatic, occupantsWithAlerts, placeOf 
 import { availableSlots } from "../tools/booking";
 import { AGENCY_TIMEZONE, startOfZonedDay } from "../time";
 import { runTool, type ToolContext } from "../tool";
-import { automationSettings, completionDue, followUpDue, LOOKBACK, nudgeDue, REMINDER_HOUR, REMINDER_MIN_NOTICE, reminderDue } from "./rules";
+import { automationSettings, BOOKING_REMINDER_AFTER_DAYS, completionDue, followUpDue, LOOKBACK, nudgeDue, REMINDER_HOUR, REMINDER_MIN_NOTICE, reminderDue } from "./rules";
 
 const { appointments, automationRuns, agencySettings, conversations, leads, listingOccupants, listingWindows, messages, organization, proposals } = schema;
 
@@ -332,7 +332,8 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
       eq(conversations.agencyId, ctx.agencyId),
       eq(conversations.status, "waiting"),
       isNotNull(conversations.contactId),
-      lte(conversations.lastMessageAt, new Date(now.getTime() - afterDays * DAY)),
+      // Clients invited to book get their reminder sooner (nudgeDue decides per lead).
+      lte(conversations.lastMessageAt, new Date(now.getTime() - Math.min(afterDays, ...BOOKING_REMINDER_AFTER_DAYS) * DAY)),
       gte(conversations.lastMessageAt, new Date(now.getTime() - LOOKBACK - afterDays * DAY)),
     ),
     with: {

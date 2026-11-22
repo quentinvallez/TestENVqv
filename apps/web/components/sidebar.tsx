@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { navItemActive, navSections } from "./nav";
 import { openCommandMenu } from "./command-menu";
 
-export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agencyName: string; userName: string; myAgentId: string | null; inboxCount: number }) {
+export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { agencyName: string; userName: string; myAgentId: string | null; needsYouCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
   const signOut = async () => {
@@ -50,8 +50,8 @@ export function Sidebar({ agencyName, userName, myAgentId, inboxCount }: { agenc
               >
                 <item.icon className="size-4" strokeWidth={1.75} />
                 <span className="flex-1">{item.label}</span>
-                {item.href === "/inbox" && inboxCount > 0 && (
-                  <span className="rounded bg-ai-soft px-1.5 text-[11px] font-medium text-ai tabular-nums">{inboxCount}</span>
+                {item.href === "/requests" && needsYouCount > 0 && (
+                  <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger tabular-nums" title="Requests that need you">{needsYouCount}</span>
                 )}
               </Link>
             ))}

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 import { Pill } from "./ui";
 
-/** Where a lead came from, as the inbox shows it: one of the portals, or the agency's own website. */
+/** Where a lead came from, as the requests board shows it: one of the portals, or the agency's own website. */
 export const leadOrigins = {
   immoweb: { label: "Immoweb" },
   zimmo: { label: "Zimmo" },
