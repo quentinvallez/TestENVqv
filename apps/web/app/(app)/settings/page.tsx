@@ -3,11 +3,21 @@ import { db, eq, schema } from "@viewing/db";
 import { BellRing, Lock, Palette, Play, Radio, ShieldCheck, Sparkles } from "lucide-react";
 import { ChannelMark } from "@/components/channel";
 import { SettingsTabs } from "@/components/settings-tabs";
-import { AiPill, Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
+import { Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getSession, getToolContext } from "@/lib/context";
 import { formatRelative } from "@/lib/format";
 import { automationRuleLabel } from "@/lib/labels";
-import { checkWhatsAppAction, connectWhatsAppAction, disconnectWhatsAppAction, runAutomationsAction, setNudgeDaysAction, setRetentionAction, updateAutomationsAction } from "../actions";
+import {
+  checkWhatsAppAction,
+  connectWhatsAppAction,
+  disconnectWhatsAppAction,
+  runAutomationsAction,
+  setBrandColourAction,
+  setNudgeDaysAction,
+  setRetentionAction,
+  updateAutomationsAction,
+} from "../actions";
+import { BrandColour } from "../widget/brand-colour";
 import { CopyText, WhatsAppCheckForm, WhatsAppForm } from "./channels";
 import { PortalLeads } from "./portal-leads";
 
@@ -42,11 +52,12 @@ export default async function SettingsPage() {
   }
   const ctx = await getToolContext();
   const settings = await db.query.agencySettings.findFirst({ where: eq(schema.agencySettings.agencyId, agency.id) });
-  const [channels, automations, runs, retention] = await Promise.all([
+  const [channels, automations, runs, retention, widget] = await Promise.all([
     runTool(tools.channelsStatus, ctx, {}),
     runTool(tools.getAutomationSettings, ctx, {}),
     runTool(tools.listAutomationRuns, ctx, { limit: 8 }),
     runTool(tools.previewRetention, ctx, {}),
+    runTool(tools.getWidgetSettings, ctx, {}),
   ]);
   const { privacyUrl } = retention;
   const sendingMailboxes = channels.mailboxes.filter((m) => m.sends);
@@ -188,14 +199,23 @@ export default async function SettingsPage() {
 
           <PortalLeads ctx={ctx} copies={automations.portalLeadCopies} />
 
-          <section>
-            <h2 className="mb-2 flex items-center gap-2 font-medium">
+          <section id="colour" className="scroll-mt-4">
+            <h2 className="mb-1 flex items-center gap-2 font-medium">
               <Palette className="size-4 text-muted" />
-              Branding
+              Your colour
             </h2>
-            <Panel className="flex items-center justify-between gap-4 px-4 py-3">
-              <span className="text-muted">Logo and colours are detected from your website and used in the widget and messages.</span>
-              <AiPill>Phase 2</AiPill>
+            <p className="mb-2 max-w-xl text-muted">
+              Used for the floating buttons and the booking and valuation widgets on your website, and on your booking pages. We take it from
+              your website; pick your own if it&apos;s wrong or you want another one.
+            </p>
+            <Panel className="p-4">
+              <BrandColour
+                current={widget.brandColor}
+                detected={widget.detectedColor}
+                chosen={widget.colourChosen}
+                canEdit={isAdmin}
+                save={setBrandColourAction}
+              />
             </Panel>
           </section>
 

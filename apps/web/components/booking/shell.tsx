@@ -1,12 +1,13 @@
+import { parseColour, textOn } from "@viewing/core/colour";
 import type { Branding } from "@viewing/db/schema";
 
 /** Card frame for client-facing pages, in the agency's colours when known. */
 export function BookingShell({ agencyName, branding, children }: { agencyName: string; branding?: Branding | null; children: React.ReactNode }) {
-  const brand = branding?.primaryColor;
+  const brand = branding?.primaryColor ? parseColour(branding.primaryColor) : null;
   return (
     <div
       className="mx-auto w-full max-w-[520px]"
-      style={{ "--brand": brand ?? "var(--primary)", "--brand-fg": brand ? "#ffffff" : "var(--primary-fg)" } as React.CSSProperties}
+      style={{ "--brand": brand ?? "var(--primary)", "--brand-fg": brand ? textOn(brand) : "var(--primary-fg)" } as React.CSSProperties}
     >
       <div className="mb-5 flex items-center gap-2">
         {branding?.logoUrl ? (

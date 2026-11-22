@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./time": "./src/time.ts",
+    "./colour": "./src/colour.ts",
     "./public": "./src/public.ts",
     "./qualification": "./src/planner/qualification.ts",
     "./inbound": "./src/inbound.ts"

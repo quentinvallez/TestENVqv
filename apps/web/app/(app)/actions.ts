@@ -525,3 +525,18 @@ export async function saveBookingQuestionsAction(transaction: "sale" | "rent", q
     throw error;
   }
 }
+
+export type BrandColourState = { error?: string; saved?: boolean } | undefined;
+
+/** The agency's own button and widget colour (a hex or RGB code), or back to its website's colour when `colour` is null. */
+export async function setBrandColourAction(colour: string | null): Promise<BrandColourState> {
+  await requireAdmin();
+  try {
+    await runTool(tools.updateBrandColour, await getToolContext(), { brandColor: colour });
+  } catch (error) {
+    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : "Use a colour code like #1e3a31 or rgb(30, 58, 49)." };
+  }
+  revalidatePath("/settings");
+  revalidatePath("/widget");
+  return { saved: true };
+}
