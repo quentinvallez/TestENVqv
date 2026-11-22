@@ -270,3 +270,10 @@ export async function privacyNoticeFacts(agencyId: string) {
     retentionMonths: automationSettings(settings?.automations).retentionMonths,
   };
 }
+
+/** Where a short link in one of our messages (`/l/<code>`) leads, or null for an unknown code. */
+export async function shortLinkTarget(code: string): Promise<string | null> {
+  if (!/^[0-9A-Za-z]{10}$/.test(code)) return null;
+  const [row] = await db.select({ target: schema.shortLinks.target }).from(schema.shortLinks).where(eq(schema.shortLinks.code, code));
+  return row && /^https?:\/\//i.test(row.target) ? row.target : null;
+}

@@ -1,4 +1,5 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
+import { expandShortLinks } from "../channels/short-links";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { sendMessage } from "../channels";
 import { tools } from "../registry";
@@ -179,7 +180,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const sent = await sendMessage(ctx, { conversationId: email.id, body: "Beste Wout, hier zijn enkele momenten.", kind: "portal_reply" });
     const [message] = await db.select().from(schema.messages).where(eq(schema.messages.id, sent.messageId));
     expect(message!.body).toContain("Liever via WhatsApp?");
-    const link = message!.body.match(/https:\/\/wa\.me\/\S+/)![0];
+    const link = (await expandShortLinks(db, message!.body)).match(/https:\/\/wa\.me\/\S+/)![0];
     expect(link).toContain("https://wa.me/32470001122?text=");
     const prefilled = new URL(link).searchParams.get("text")!;
 
@@ -274,7 +275,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const [email] = await db.select().from(schema.messages).where(eq(schema.messages.id, recoveredBy));
     // The first email to the client ends with where the privacy notice is.
     expect(email).toMatchObject({ delivery: "sent" });
-    expect(email!.body).toMatch(/^Uw bezoek morgen\n\nHow we handle your data: http\S+\/privacy\/org_\S+\?lang=en$/);
+    expect(await expandShortLinks(db, email!.body)).toMatch(/^Uw bezoek morgen\n\nHow we handle your data: http\S+\/privacy\/org_\S+\?lang=en$/);
     expect(email!.metadata).toMatchObject({ kind: "reminder", fallbackReason: "whatsapp_failed", retryOf: sent.messageId });
     const mails = fetchMock.mock.calls.filter((c) => String(c[0]).includes("mailgun"));
     expect(mails).toHaveLength(1);
@@ -371,7 +372,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const conversation = await runTool(tools.getConversation, ctx, { conversationId: auto.conversationId });
     const reply = conversation!.messages.at(-1)!;
     expect(reply).toMatchObject({ direction: "outbound", authorType: "agent", delivery: "simulated" });
-    expect(reply.body).toContain(`/book/${auto.listingId}`);
+    expect(await expandShortLinks(db, reply.body)).toContain(`/book/${auto.listingId}`);
     expect(reply.body).toMatch(/Beste Klant/);
     expect(conversation!.draft).toBeNull();
     const [proposal] = await db.select().from(schema.proposals).where(eq(schema.proposals.id, auto.proposalId!));
@@ -414,7 +415,8 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     const params = payload.template.components[0].parameters.map((p: { text: string }) => p.text);
     expect(params).toHaveLength(5);
     expect(params[0]).toBe("Mira");
-    expect(params[4]).toMatch(/\/a\/[^/]+$/);
+    expect(params[4]).toMatch(/\/l\/[0-9A-Za-z]{10}$/);
+    expect(await expandShortLinks(db, params[4])).toMatch(/\/a\/[^/]+$/);
     const [message] = await db.select().from(schema.messages).where(eq(schema.messages.externalId, "wamid.confirm1"));
     expect(message).toMatchObject({ delivery: "sent" });
     expect(message!.metadata).toMatchObject({ kind: "booking_confirmation", template: "booking_confirmed" });
@@ -507,7 +509,7 @@ describe.skipIf(!process.env.DATABASE_URL)("channels", () => {
     expect(copy.get("to")).toContain("sofie@demo-agency.be");
     expect(copy.get("h:Reply-To")).toMatch(/^lotte\d+@example\.be$/);
     expect(copy.get("text")).toContain("Kan ik dit appartement bezoeken?");
-    expect(copy.get("text")).toContain("/requests/led_");
+    expect(await expandShortLinks(db, copy.get("text")!)).toContain("/requests/led_");
 
     // Forwarded by the agent's own mailbox: they already have it, no copy.
     const before = forms().length;

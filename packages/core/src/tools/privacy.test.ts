@@ -44,12 +44,19 @@ describe.skipIf(!process.env.DATABASE_URL)("client data (GDPR)", () => {
     const conversationIds = (await db.select({ id: schema.conversations.id }).from(schema.conversations).where(eq(schema.conversations.contactId, contactId))).map((c) => c.id);
     expect(conversationIds.length).toBeGreaterThan(0);
 
+    // Links in the messages they got went out short, on our own domain.
+    const sent = await db.select().from(schema.messages).where(and(inArray(schema.messages.conversationId, conversationIds), eq(schema.messages.direction, "outbound")));
+    expect(sent.some((m) => /\/l\/[0-9A-Za-z]{10}\b/.test(m.body))).toBe(true);
+    expect(sent.some((m) => m.body.includes(`/a/${apt!.manageToken}`))).toBe(false);
+    expect((await db.select().from(schema.shortLinks).where(eq(schema.shortLinks.contactId, contactId))).length).toBeGreaterThan(0);
+
     const counts = await runTool(tools.eraseContact, ctx, { contactId });
     expect(counts.upcomingCancelled).toBe(1);
     expect(counts.appointmentsKeptAnonymous).toBe(2);
 
     expect(await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId))).toHaveLength(0);
     expect(await db.select().from(schema.leads).where(eq(schema.leads.contactId, contactId))).toHaveLength(0);
+    expect(await db.select().from(schema.shortLinks).where(eq(schema.shortLinks.contactId, contactId))).toHaveLength(0);
     expect(await db.select().from(schema.messages).where(inArray(schema.messages.conversationId, conversationIds))).toHaveLength(0);
     expect(await db.select().from(schema.proposals).where(and(eq(schema.proposals.agencyId, agencyId), inArray(schema.proposals.conversationId, conversationIds)))).toHaveLength(0);
     const [kept] = await db.select().from(schema.appointments).where(eq(schema.appointments.id, past!.id));

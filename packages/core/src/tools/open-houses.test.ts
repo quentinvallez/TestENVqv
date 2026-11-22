@@ -1,4 +1,5 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
+import { expandShortLinks } from "../channels/short-links";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tools } from "../registry";
 import { zonedDay, zonedTime } from "../time";
@@ -143,7 +144,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phone bookings and open houses", () 
     expect(notice?.body).toMatch(/kijkdag .* niet door/);
     // The listing's usual times again, not the cancelled open house.
     expect(notice?.body).toMatch(/• /);
-    expect(notice?.body).toContain("/book/");
+    expect(await expandShortLinks(db, notice!.body)).toContain("/book/");
     expect((await runTool(tools.listOpenHouses, staff, { listingId })).some((o) => o.id === planned.openHouseId)).toBe(false);
   });
 

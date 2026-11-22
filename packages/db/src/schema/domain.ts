@@ -702,6 +702,24 @@ export const messages = pgTable(
   (t) => [index().on(t.conversationId, t.sentAt), index().on(t.agencyId, t.externalId)],
 );
 
+/**
+ * Short links in messages we send (`<SHORT_LINK_URL>/l/<code>` redirects to `target`). One per
+ * client and address, so they go with the client when their data is erased (cascade); links in
+ * internal emails to agents have no contact. The code is random and long enough not to be guessed,
+ * since some targets (a manage link) act as a key.
+ */
+export const shortLinks = pgTable(
+  "short_links",
+  {
+    code: text().primaryKey(),
+    agencyId: agencyId(),
+    contactId: text().references(() => contacts.id, { onDelete: "cascade" }),
+    target: text().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index().on(t.agencyId, t.contactId)],
+);
+
 export type ActorType = "user" | "agent" | "contact" | "system";
 
 /**

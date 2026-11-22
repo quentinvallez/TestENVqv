@@ -160,6 +160,10 @@ Alerts to the occupants of a listing (see "Owners and tenants" in the README) us
 - en: Hi {{1}}, unfortunately the occupants of {{2}} can't receive you on {{3}}. Pick another time here: {{4}} Sorry for the inconvenience.
 - de: Guten Tag {{1}}, die Bewohner von {{2}} können Sie am {{3}} leider nicht empfangen. Wählen Sie hier einen anderen Termin: {{4}} Entschuldigen Sie die Unannehmlichkeiten.
 
+## Short links
+
+Every link in a message we send (client emails and WhatsApp, including template parameters, and the internal emails to agents) goes out as a short link on our own domain, `<SHORT_LINK_URL>/l/<code>`, which redirects to the real address (booking page, the listing on the agency's site, manage link, owner/tenant page, privacy notice, WhatsApp invitation). No outside shortener: those hurt deliverability and trust and would be one more subprocessor. Codes are random (10 letters and digits), one per client and address, and are deleted with the client (`short_links`, cascade). `SHORT_LINK_URL` (e.g. `https://unbird.io`) must point at this Vercel project; unset, links use `APP_URL` (or the production URL). The WhatsApp templates take links as body variables (`{{n}}`), so they need no change in Meta when the domain changes.
+
 ## For developers
 
 - Outbound: `sendMessage(ctx, { conversationId, body, subject?, kind?, whatsappTemplate?, metadata? })` and `conversationFor(ctx, { contactId, channel? })` in `packages/core/src/channels`. Returns `delivery: "sent" | "failed" | "simulated"` and records `message.sent` or `message.failed`. The `conversations_reply` tool (what approving a draft runs) calls it.
