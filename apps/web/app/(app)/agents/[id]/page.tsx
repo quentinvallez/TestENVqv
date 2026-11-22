@@ -142,7 +142,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
             {welcome && !connections.some((c) => c.scopes.includes("mail") && c.status === "active") && (available.google || available.microsoft) && (
               <Panel className="mb-6 p-4">
                 <div className="font-medium">Welcome, {agent.name.split(" ")[0]}</div>
-                <p className="mt-1 text-muted">One step left: connect your mailbox. Messages to your clients then go out from your own address, and your busy times block bookings.</p>
+                <p className="mt-1 text-muted">One step left: connect your mailbox. Messages to your clients then go out from your own address, and your busy times block bookings. With Outlook, portal leads also reach the planner on their own.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(["microsoft", "google"] as const)
                     .filter((p) => available[p])
@@ -193,7 +193,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                     <div className="min-w-0 flex-1">
                       <div className="truncate">{c.accountEmail}</div>
                       <div className="text-[12px] text-muted">
-                        {c.provider === "google" ? "Google" : "Outlook"} · {c.status === "active" ? [c.scopes.includes("calendar") && "calendar", c.scopes.includes("mail") && "sends email"].filter(Boolean).join(", ") : "expired, connect again"}
+                        {c.provider === "google" ? "Google" : "Outlook"} · {c.status === "active" ? [c.scopes.includes("calendar") && "calendar", c.scopes.includes("mail") && "sends email", c.scopes.includes("leads") && "reads lead emails"].filter(Boolean).join(", ") : "expired, connect again"}
                       </div>
                     </div>
                     <form action={disconnectCalendarAction.bind(null, agent.id, c.id)}>
@@ -215,7 +215,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
               </div>
               <p className="mt-2 text-[12px] text-faint">
                 {available.google || available.microsoft
-                  ? "Busy times block bookings, viewings are added to the agenda, and approved replies go out from this mailbox."
+                  ? "Busy times block bookings, viewings are added to the agenda, and messages to clients go out from this mailbox. With Outlook we also pick up lead emails from Immoweb, Zimmo, Immovlan, Immoscoop and your website as they arrive. We never open any other email."
                   : "Connecting needs the Google and Microsoft app registrations (docs/setup-calendars.md)."}
               </p>
             </Panel>

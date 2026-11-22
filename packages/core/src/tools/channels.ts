@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, notInArray, or, schema, sql } from "@viewing/db";
+import { and, desc, eq, inArray, isNull, notInArray, or, schema, sql } from "@viewing/db";
 import { z } from "zod";
 import { conversationFor, emailAgent, inboundAddress, repliesToAgent, sendMessage } from "../channels";
 import { automationSettings } from "../automations/rules";
@@ -200,6 +200,10 @@ export const receiveEmail = defineTool({
     inReplyTo: z.string().nullable().default(null),
     references: z.array(z.string()).default([]),
     useAi: z.boolean().default(true),
+    fromMailbox: z
+      .boolean()
+      .default(false)
+      .describe("Read from an agent's own Outlook rather than sent to the inbox address: only a lead is taken in, and the agency already has the original"),
   }),
   run: async (ctx, input) => {
     const recipient = (await inboundAddress(ctx)) ?? "";
@@ -208,7 +212,7 @@ export const receiveEmail = defineTool({
       const { portal, ...lead } = portalLead;
       const result = await receivePortalLead.run(ctx, { portal, ...lead, externalId: input.messageId ?? undefined, useAi: input.useAi });
       // Sent straight by the portal (not forwarded by the agency's own mailbox, which already has it): send the agency its copy.
-      const direct = fromPortal(input.from.email);
+      const direct = fromPortal(input.from.email) && !input.fromMailbox;
       if (direct && !("duplicate" in result && result.duplicate)) {
         await forwardLeadCopy(ctx, { leadId: result.leadId, agentId: result.agentId, conversationId: result.conversationId, clientEmail: lead.email }, { subject: input.subject, text: input.text, from: input.from });
       }
@@ -221,6 +225,9 @@ export const receiveEmail = defineTool({
       const result = await receivePortalLead.run(ctx, { portal: "website", ...websiteLead, externalId: input.messageId ?? undefined, useAi: input.useAi });
       return { kind: "website_form" as const, ...result };
     }
+
+    // From a mailbox we read (office or agent) we only take in leads: anything else is theirs, not ours to read.
+    if (input.fromMailbox) return { kind: "ignored" as const, reason: "not_a_lead" };
 
     // Our forwarding test, forwarded back by an agent's Outlook rule (not sent straight to us).
     const checkToken = input.from.email !== checkSender() ? forwardingCheckToken(input) : null;
@@ -475,26 +482,40 @@ export const listConnections = defineTool({
 
 export const connectCalendar = defineTool({
   name: "calendar_connect",
-  description: "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox.",
+  description:
+    "Finish connecting an agent's Google or Microsoft account after they approved access: stores the encrypted tokens for calendar and mailbox. Without agentId it connects an office mailbox (where portal and website requests arrive: info@, contact@, …; several allowed), read for lead emails and used to send replies when the listing's agent has no mailbox.",
   mutates: true,
-  input: z.object({ agentId: z.string(), provider: z.enum(["google", "microsoft"]), code: z.string(), redirectUri: z.string().url() }),
+  input: z.object({ agentId: z.string().nullable(), provider: z.enum(["google", "microsoft"]), code: z.string(), redirectUri: z.string().url() }),
   run: async (ctx, input) => {
-    const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
-    if (!agent) throw new Error("Agent not found");
+    if (input.agentId) {
+      const [agent] = await ctx.db.select({ id: agents.id }).from(agents).where(and(eq(agents.agencyId, ctx.agencyId), eq(agents.id, input.agentId)));
+      if (!agent) throw new Error("Agent not found");
+    }
     const { credentials, email, capabilities } = await exchangeCode(input.provider, input.code, input.redirectUri);
     if (!email) throw new Error("The account did not share its email address");
     if (!credentials.refreshToken) throw new Error("No offline access was granted; please connect again");
     if (capabilities.length === 0) throw new Error("Calendar access was not granted");
     const values = { accountEmail: email, credentials: sealCredentials(credentials), scopes: capabilities, status: "active" as const, syncState: {} };
-    const [connection] = await ctx.db
-      .insert(calendarConnections)
-      .values({ agencyId: ctx.agencyId, agentId: agent.id, provider: input.provider, ...values })
-      .onConflictDoUpdate({ target: [calendarConnections.agentId, calendarConnections.provider], set: values })
-      .returning();
+    let connection: { id: string } | undefined;
+    if (input.agentId) {
+      [connection] = await ctx.db
+        .insert(calendarConnections)
+        .values({ agencyId: ctx.agencyId, agentId: input.agentId, provider: input.provider, ...values })
+        .onConflictDoUpdate({ target: [calendarConnections.agentId, calendarConnections.provider], set: values })
+        .returning({ id: calendarConnections.id });
+    } else {
+      // Office mailboxes (info@, contact@, …): several allowed, one row per address; connecting the same address again refreshes it.
+      const [old] = await ctx.db
+        .select({ id: calendarConnections.id })
+        .from(calendarConnections)
+        .where(and(eq(calendarConnections.agencyId, ctx.agencyId), isNull(calendarConnections.agentId), eq(calendarConnections.accountEmail, email)));
+      [connection] = old
+        ? await ctx.db.update(calendarConnections).set({ provider: input.provider, ...values }).where(eq(calendarConnections.id, old.id)).returning({ id: calendarConnections.id })
+        : await ctx.db.insert(calendarConnections).values({ agencyId: ctx.agencyId, agentId: null, provider: input.provider, ...values }).returning({ id: calendarConnections.id });
+    }
     await recordEvent(ctx, {
-      type: "calendar.connected",
-      subjectType: "agent",
-      subjectId: agent.id,
+      type: input.agentId ? "calendar.connected" : "office_mailbox.connected",
+      ...(input.agentId ? { subjectType: "agent" as const, subjectId: input.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }),
       data: { provider: input.provider, accountEmail: email, scopes: capabilities },
     });
     return { connectionId: connection!.id, accountEmail: email, scopes: capabilities };
@@ -507,12 +528,25 @@ export const disconnectCalendar = defineTool({
   mutates: true,
   input: z.object({ connectionId: z.string() }),
   run: async (ctx, input) => {
+    const [connection] = await ctx.db
+      .select({ agentId: calendarConnections.agentId, provider: calendarConnections.provider, syncState: calendarConnections.syncState })
+      .from(calendarConnections)
+      .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, input.connectionId)));
+    // Stop Outlook's new-email notifications first, while we still hold the token.
+    if (connection?.provider === "microsoft" && connection.syncState.leadReading) {
+      const { stopMailboxLeads } = await import("./mailbox-leads");
+      await stopMailboxLeads.run(ctx, { connectionId: input.connectionId }).catch((error) => console.error("Stopping lead reading failed", error));
+    }
     const [removed] = await ctx.db
       .delete(calendarConnections)
       .where(and(eq(calendarConnections.agencyId, ctx.agencyId), eq(calendarConnections.id, input.connectionId)))
       .returning({ agentId: calendarConnections.agentId, provider: calendarConnections.provider });
     if (!removed) throw new Error("Connection not found");
-    await recordEvent(ctx, { type: "calendar.disconnected", subjectType: "agent", subjectId: removed.agentId, data: { provider: removed.provider } });
+    await recordEvent(ctx, {
+      type: removed.agentId ? "calendar.disconnected" : "office_mailbox.disconnected",
+      ...(removed.agentId ? { subjectType: "agent" as const, subjectId: removed.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }),
+      data: { provider: removed.provider },
+    });
     return { disconnected: true };
   },
 });

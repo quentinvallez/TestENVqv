@@ -253,21 +253,26 @@ export const calendarConnections = pgTable(
   {
     id: id("cal"),
     agencyId: agencyId(),
-    agentId: text()
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
+    // Null for an office mailbox (info@, contact@, …; several allowed): read for leads, and replies go from it when the listing's agent has none.
+    agentId: text().references(() => agents.id, { onDelete: "cascade" }),
     provider: text().$type<"google" | "microsoft">().notNull(),
     accountEmail: text().notNull(),
     // Encrypted at rest by the integration layer, never stored in plain text.
     credentials: text().notNull(),
     // What the agent allowed: "calendar" (busy times, viewings in their agenda), "mail" (send from their mailbox)
-    // and "rules" (Outlook only: create the mail rule that forwards portal leads; no access to their mail).
-    scopes: jsonb().$type<("calendar" | "mail" | "rules")[]>().notNull().default(["calendar"]),
+    // "rules" (Outlook only: create the mail rule that forwards portal leads; no access to their mail)
+    // and "leads" (Outlook only: read lead emails from the portals and the agency's website as they arrive).
+    scopes: jsonb().$type<("calendar" | "mail" | "rules" | "leads")[]>().notNull().default(["calendar"]),
     syncState: jsonb().$type<Record<string, unknown>>().notNull().default({}),
     status: text().$type<"active" | "expired" | "revoked">().notNull().default("active"),
     ...timestamps,
   },
-  (t) => [index().on(t.agentId), uniqueIndex().on(t.agentId, t.provider)],
+  (t) => [
+    index().on(t.agentId),
+    uniqueIndex().on(t.agentId, t.provider),
+    // An office mailbox (agentId null) is one per address.
+    uniqueIndex("calendar_connections_office_idx").on(t.agencyId, t.accountEmail).where(sql`${t.agentId} is null`),
+  ],
 );
 
 export type ListingStatus = "draft" | "active" | "under_offer" | "sold" | "rented" | "archived";

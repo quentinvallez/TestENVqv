@@ -3,10 +3,12 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { inboundAddress } from "../channels";
 import { portalDomains, portals } from "../channels/portals";
+import { websiteDomain } from "../channels/mailbox-leads";
 import { mailDomain, mailgunConfigured, newMessageId, sendWithMailgun } from "../channels/email";
 import { recordEvent } from "../events";
 import { authorizedFetch, oauthConfigured } from "../integrations/oauth";
 import { defineTool, type ToolContext } from "../tool";
+import type { LeadReading } from "./mailbox-leads";
 
 /*
  * Getting Immoweb, Zimmo and Immovlan lead emails from the agency's mailbox to
@@ -64,21 +66,40 @@ export const portalLeadsStatus = defineTool({
       .from(leads)
       .where(and(eq(leads.agencyId, ctx.agencyId), inArray(leads.source, [...portals])))
       .groupBy(leads.source);
-    const [settings] = await ctx.db.select({ channels: agencySettings.channels }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
+    const [settings] = await ctx.db.select({ channels: agencySettings.channels, websiteUrl: agencySettings.websiteUrl }).from(agencySettings).where(eq(agencySettings.agencyId, ctx.agencyId));
     const connections = await ctx.db
       .select({
-        agentId: agents.id,
+        connectionId: calendarConnections.id,
+        agentId: calendarConnections.agentId,
         agentName: agents.name,
         provider: calendarConnections.provider,
         accountEmail: calendarConnections.accountEmail,
         scopes: calendarConnections.scopes,
         status: calendarConnections.status,
         syncState: calendarConnections.syncState,
+        createdAt: calendarConnections.createdAt,
       })
       .from(calendarConnections)
-      .innerJoin(agents, eq(agents.id, calendarConnections.agentId))
+      .leftJoin(agents, eq(agents.id, calendarConnections.agentId))
       .where(eq(calendarConnections.agencyId, ctx.agencyId))
       .orderBy(agents.name);
+    const mailbox = (c: (typeof connections)[number]) => ({
+      connectionId: c.connectionId,
+      agentId: c.agentId,
+      agentName: c.agentName ?? "Office mailbox",
+      /** Replies go out from this office mailbox when the listing's agent has none. */
+      sendsForAgents: !c.agentId && c.status === "active" && c.scopes.includes("mail") && c.connectionId === offices.find((o) => o.status === "active" && o.scopes.includes("mail"))?.connectionId,
+      provider: c.provider,
+      accountEmail: c.accountEmail,
+      active: c.status === "active",
+      canForward: Boolean(c.agentId) && c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
+      forwarding: ruleOf(c.syncState),
+      forwardingState: forwardingState(ruleOf(c.syncState)),
+      canRead: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("leads"),
+      sends: c.status === "active" && c.scopes.includes("mail"),
+      reading: readingSummary(c.syncState.leadReading as LeadReading | undefined),
+    });
+    const offices = connections.filter((c) => !c.agentId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     return {
       inboundAddress: address,
       portals: portals.map((portal) => {
@@ -87,20 +108,30 @@ export const portalLeadsStatus = defineTool({
       }),
       gmailForwarding: settings?.channels.gmailForwarding ?? null,
       leadCopyAddress: settings?.channels.leadCopyAddress ?? null,
-      mailboxes: connections.map((c) => ({
-        agentId: c.agentId,
-        agentName: c.agentName,
-        provider: c.provider,
-        accountEmail: c.accountEmail,
-        active: c.status === "active",
-        canForward: c.provider === "microsoft" && c.status === "active" && c.scopes.includes("rules"),
-        forwarding: ruleOf(c.syncState),
-        forwardingState: forwardingState(ruleOf(c.syncState)),
-      })),
+      /** Office mailboxes where portal and website requests arrive (info@, contact@, …): read for leads; the first one sends replies when the listing's agent has no mailbox. */
+      offices: offices.map(mailbox),
+      mailboxes: connections.filter((c) => c.agentId).map(mailbox),
       outlookAvailable: oauthConfigured("microsoft"),
+      googleAvailable: oauthConfigured("google"),
+      /** Contact-form emails from this domain count as leads when we read an agent's Outlook. */
+      websiteDomain: websiteDomain(settings?.websiteUrl),
     };
   },
 });
+
+/** What Settings shows about reading lead emails from an agent's Outlook. */
+function readingSummary(reading: LeadReading | undefined) {
+  if (!reading) return null;
+  return {
+    since: reading.since,
+    lastSyncAt: reading.lastSyncAt ?? null,
+    lastLeadAt: reading.lastLeadAt ?? null,
+    leads: reading.leads ?? 0,
+    // Without notifications the daily check still reads leads, but up to a day late.
+    instant: Boolean(reading.subscriptionId && reading.expiresAt && new Date(reading.expiresAt) > new Date()),
+    error: reading.error ?? null,
+  };
+}
 
 async function outlookConnection(ctx: ToolContext, agentId: string) {
   const [connection] = await ctx.db
@@ -196,7 +227,7 @@ export async function markForwardingCheck(ctx: ToolContext, token: string) {
   if (!row || !rule?.check) return false;
   const portalRule: PortalRule = { ...rule, check: { ...rule.check, receivedAt: new Date().toISOString() } };
   await ctx.db.update(calendarConnections).set({ syncState: { ...row.syncState, portalRule } }).where(eq(calendarConnections.id, row.id));
-  await recordEvent(ctx, { type: "portal_forwarding.verified", subjectType: "agent", subjectId: row.agentId, data: {} });
+  await recordEvent(ctx, { type: "portal_forwarding.verified", ...(row.agentId ? { subjectType: "agent" as const, subjectId: row.agentId } : { subjectType: "agency" as const, subjectId: ctx.agencyId }), data: {} });
   return true;
 }
 

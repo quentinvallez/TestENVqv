@@ -6,8 +6,11 @@ import type { ToolContext } from "../tool";
 /*
  * One OAuth app at Google and one at Microsoft (docs/setup-calendars.md) give
  * agents a single "Connect" button for both their calendar and their mailbox.
- * Mail is send-only: client replies come back through the agency's forwarding
- * address, so we never need to read anyone's mailbox.
+ * We send from the mailbox. Outlook also lets us read it (Mail.Read), but we
+ * only ever open lead emails from the portals and the agency's own website
+ * (channels/mailbox-leads.ts); client replies go to the agent's own mailbox.
+ * Gmail stays send-only: reading it is a restricted scope (security audit),
+ * so Gmail agents forward lead emails with a filter instead.
  */
 
 export type OAuthProvider = "google" | "microsoft";
@@ -27,6 +30,7 @@ const config = {
       mail: ["https://www.googleapis.com/auth/gmail.send"],
       // Gmail's forwarding settings need a restricted scope (security audit), so Gmail users set the filter themselves.
       rules: [] as string[],
+      leads: [] as string[],
     },
   },
   microsoft: {
@@ -40,6 +44,8 @@ const config = {
       mail: ["Mail.Send"],
       // Only to create the inbox rule that forwards portal leads to the agency's inbox address. Gives no access to messages.
       rules: ["MailboxSettings.ReadWrite"],
+      // To pick up portal lead emails as they arrive. Microsoft has no narrower scope; we only open emails from the portals and the agency's website.
+      leads: ["Mail.Read"],
     },
   },
 } as const;
@@ -51,7 +57,7 @@ export function oauthConfigured(provider: OAuthProvider) {
 export function authorizeUrl(provider: OAuthProvider, options: { redirectUri: string; state: string; loginHint?: string }) {
   const c = config[provider];
   const url = new URL(c.authorize);
-  const scopes = [...c.scopes.base, ...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules];
+  const scopes = [...c.scopes.base, ...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules, ...c.scopes.leads];
   url.search = new URLSearchParams({
     client_id: c.clientId() ?? "",
     redirect_uri: options.redirectUri,
@@ -72,7 +78,7 @@ export function authorizeUrl(provider: OAuthProvider, options: { redirectUri: st
 export function adminConsentUrl(options: { redirectUri: string }) {
   const c = config.microsoft;
   const url = new URL("https://login.microsoftonline.com/organizations/v2.0/adminconsent");
-  const scopes = [...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules, "User.Read"].map((s) => `https://graph.microsoft.com/${s}`);
+  const scopes = [...c.scopes.calendar, ...c.scopes.mail, ...c.scopes.rules, ...c.scopes.leads, "User.Read"].map((s) => `https://graph.microsoft.com/${s}`);
   url.search = new URLSearchParams({ client_id: c.clientId() ?? "", scope: scopes.join(" "), redirect_uri: options.redirectUri, state: "admin_consent" }).toString();
   return url.toString();
 }
@@ -118,7 +124,7 @@ export function emailFromIdToken(idToken: string | undefined): string | null {
 }
 
 /** Which of our capabilities the granted scopes cover. */
-export type Capability = "calendar" | "mail" | "rules";
+export type Capability = "calendar" | "mail" | "rules" | "leads";
 
 export function grantedCapabilities(provider: OAuthProvider, scope: string | undefined): Capability[] {
   const granted = new Set((scope ?? "").split(" ").map((s) => s.toLowerCase()));
@@ -129,6 +135,7 @@ export function grantedCapabilities(provider: OAuthProvider, scope: string | und
   if (c.calendar.every(has)) result.push("calendar");
   if (c.mail.every(has)) result.push("mail");
   if (c.rules.length && c.rules.every(has)) result.push("rules");
+  if (c.leads.length && c.leads.every(has)) result.push("leads");
   return result;
 }
 
@@ -171,7 +178,11 @@ export async function accessToken(ctx: ToolContext, connection: Connection): Pro
       await ctx.db.update(schema.calendarConnections).set({ status: "expired" }).where(eq(schema.calendarConnections.id, connection.id));
       await recordEvent(
         { ...ctx, actor: { type: "system", id: null } },
-        { type: "calendar.expired", subjectType: "agent", subjectId: connection.agentId, data: { provider: connection.provider, connectionId: connection.id } },
+        {
+          type: "calendar.expired",
+          ...(connection.agentId ? { subjectType: "agent" as const, subjectId: connection.agentId } : { subjectType: "agency" as const, subjectId: connection.agencyId }),
+          data: { provider: connection.provider, connectionId: connection.id },
+        },
       );
     }
     throw error;

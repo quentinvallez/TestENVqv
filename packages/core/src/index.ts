@@ -19,6 +19,7 @@ export { adminConsentUrl, authorizeUrl, needsAdminConsent, oauthConfigured } fro
 export { runAutomationsForAllAgencies, type AutomationSummary } from "./automations/jobs";
 export { REMINDER_HOUR } from "./automations/rules";
 export { syncWebsitesForAllAgencies } from "./tools/website";
+export { renewMailboxLeadsForAllAgencies } from "./tools/mailbox-leads";
 export { icsCalendar, type IcsEvent } from "./planner/ics";
 export { demoSlots } from "./planner/demo-slots";
 export { PreviewError } from "./website/preview";

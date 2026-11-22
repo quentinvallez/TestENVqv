@@ -11,7 +11,7 @@ type Section = { title: string; body: string[] };
 export const privacyText: Record<WidgetLang, { title: (agency: string) => string; updated: string; languages: string; sections: (f: Facts) => Section[] }> = {
   nl: {
     title: (agency) => `Privacyverklaring van ${agency}`,
-    updated: "Bijgewerkt op 15 november 2026",
+    updated: "Bijgewerkt op 22 november 2026",
     languages: "Taal",
     sections: (f) => [
       {
@@ -26,6 +26,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         body: [
           "Uw naam, e-mailadres, telefoonnummer en taal; het bezoek of de schatting die u plant; uw antwoorden op de korte vragen; de berichten die u en het kantoor uitwisselen.",
           "Voor een online schatting ook het adres en de kenmerken van uw woning.",
+          "Vroeg u een bezoek of informatie aan via Immoweb, Zimmo, Immovlan, Immoscoop of de website van het kantoor, dan komen uw gegevens uit het bericht dat die site naar de mailbox van het kantoor stuurde. De software leest in die mailbox enkel zulke aanvragen.",
         ],
       },
       {
@@ -64,7 +65,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
   },
   fr: {
     title: (agency) => `Déclaration de confidentialité de ${agency}`,
-    updated: "Mise à jour le 15 novembre 2026",
+    updated: "Mise à jour le 22 novembre 2026",
     languages: "Langue",
     sections: (f) => [
       {
@@ -79,6 +80,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         body: [
           "Votre nom, votre adresse e-mail, votre téléphone et votre langue ; la visite ou l'estimation que vous planifiez ; vos réponses aux questions courtes ; les messages échangés avec l'agence.",
           "Pour une estimation en ligne, aussi l'adresse et les caractéristiques de votre bien.",
+          "Si vous avez demandé une visite ou des informations via Immoweb, Zimmo, Immovlan, Immoscoop ou le site de l'agence, vos données viennent du message que ce site a envoyé à la boîte e-mail de l'agence. Le logiciel ne lit dans cette boîte que ces demandes.",
         ],
       },
       {
@@ -117,7 +119,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
   },
   en: {
     title: (agency) => `Privacy notice of ${agency}`,
-    updated: "Updated 15 November 2026",
+    updated: "Updated 22 November 2026",
     languages: "Language",
     sections: (f) => [
       {
@@ -132,6 +134,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         body: [
           "Your name, email address, phone number and language; the viewing or valuation you book; your answers to the short questions; the messages you and the agency exchange.",
           "For an online valuation, also the address and features of your home.",
+          "If you asked for a viewing or information through Immoweb, Zimmo, Immovlan, Immoscoop or the agency's website, your data comes from the message that site sent to the agency's mailbox. The software only reads such requests in that mailbox.",
         ],
       },
       {
@@ -170,7 +173,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
   },
   de: {
     title: (agency) => `Datenschutzhinweis von ${agency}`,
-    updated: "Aktualisiert am 15. November 2026",
+    updated: "Aktualisiert am 22. November 2026",
     languages: "Sprache",
     sections: (f) => [
       {
@@ -185,6 +188,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         body: [
           "Ihr Name, Ihre E-Mail-Adresse, Telefonnummer und Sprache; die Besichtigung oder Bewertung, die Sie buchen; Ihre Antworten auf die kurzen Fragen; die Nachrichten zwischen Ihnen und dem Büro.",
           "Bei einer Online-Bewertung auch die Adresse und die Merkmale Ihrer Immobilie.",
+          "Haben Sie eine Besichtigung oder Informationen über Immoweb, Zimmo, Immovlan, Immoscoop oder die Website des Büros angefragt, stammen Ihre Daten aus der Nachricht, die diese Seite an das Postfach des Büros geschickt hat. Die Software liest in diesem Postfach nur solche Anfragen.",
         ],
       },
       {

@@ -1,5 +1,6 @@
 import { createAgent, listAgents, updateAgent } from "./tools/agents";
 import { portalLeadsStatus, removePortalForwarding, setLeadCopyAddress, setupPortalForwarding } from "./tools/portal-forwarding";
+import { renewMailboxLeads, startMailboxLeads, stopMailboxLeads, syncMailboxLeads } from "./tools/mailbox-leads";
 import { dashboardSummary, recentActivity } from "./tools/activity";
 import { listAppointments } from "./tools/appointments";
 import { getContact, listContacts } from "./tools/contacts";
@@ -52,6 +53,10 @@ export const tools = {
   portalLeadsStatus,
   setupPortalForwarding,
   removePortalForwarding,
+  startMailboxLeads,
+  stopMailboxLeads,
+  syncMailboxLeads,
+  renewMailboxLeads,
   setLeadCopyAddress,
   listProposals,
   decideProposal,
