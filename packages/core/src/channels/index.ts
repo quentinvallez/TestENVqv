@@ -8,6 +8,7 @@ import { automationSettings } from "../automations/rules";
 import { type Lang, toLang } from "../planner/language";
 import { sendWhatsApp, serviceWindowMs, whatsappConfig, type WhatsAppTemplate } from "./whatsapp";
 import { whatsappInviteLine } from "./whatsapp-invite";
+import { shortenLinks } from "./short-links";
 
 export type { WhatsAppTemplate } from "./whatsapp";
 export { normalizePhone, samePhone } from "./phone";
@@ -172,12 +173,21 @@ async function whatsappInviteFor(ctx: ToolContext, contact: { id: string; langua
  * email, and a connected Gmail/Outlook that refuses (e.g. an expired login)
  * falls back to the agency's own address through Mailgun.
  */
-export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<SendResult> {
+export async function sendMessage(ctx: ToolContext, original: SendInput): Promise<SendResult> {
   const conversation = await ctx.db.query.conversations.findFirst({
-    where: and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.id, input.conversationId)),
+    where: and(eq(conversations.agencyId, ctx.agencyId), eq(conversations.id, original.conversationId)),
     with: { contact: true, agent: true, messages: { orderBy: desc(messages.sentAt), limit: 30 } },
   });
   if (!conversation) throw new Error("Conversation not found");
+  // Every link goes out short, on our own domain (also in WhatsApp template parameters).
+  const short = (text: string) => shortenLinks(ctx, text, conversation.contactId);
+  const input: SendInput = {
+    ...original,
+    body: await short(original.body),
+    ...(original.whatsappTemplate && {
+      whatsappTemplate: { ...original.whatsappTemplate, params: await Promise.all(original.whatsappTemplate.params.map(short)) },
+    }),
+  };
   const contact = conversation.contact;
   const lastFromClient = conversation.messages.find((m) => m.direction === "inbound" && m.authorType === "contact");
 
@@ -241,6 +251,7 @@ export async function sendMessage(ctx: ToolContext, input: SendInput): Promise<S
       body = `${body}\n\n${await privacyLine(ctx.agencyId, toLang(contact.language))}`;
       extra.privacyNotice = true;
     }
+    body = await short(body);
     if (!contact?.email) {
       delivery = "failed";
       error = "no_email";
@@ -382,6 +393,7 @@ export async function emailAgent(ctx: ToolContext, input: AgentEmail): Promise<{
   const from = await inboundAddress(ctx);
   const mailbox = mailgunConfigured() && from ? null : await agentMailbox(ctx, agent?.id ?? null);
   if (!mailbox && !(mailgunConfigured() && from)) return { delivery: "simulated", transport: "none", to: address };
+  input = { ...input, text: await shortenLinks(ctx, input.text, null) };
   const email: OutgoingEmail = {
     from: { name: agency?.name ?? "", address: mailbox ? mailbox.accountEmail : from! },
     to: { name: agent?.name, address },

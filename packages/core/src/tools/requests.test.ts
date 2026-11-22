@@ -1,4 +1,5 @@
 import { and, db, eq, inArray, newId, schema } from "@viewing/db";
+import { expandShortLinks } from "../channels/short-links";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runAutomations } from "../automations/jobs";
 import { tools } from "../registry";
@@ -63,7 +64,7 @@ describe.skipIf(!process.env.DATABASE_URL)("viewing requests board", () => {
     const sent = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, result.conversationId));
     const reminders = sent.filter((m) => m.metadata.kind === "nudge");
     expect(reminders).toHaveLength(1);
-    expect(reminders[0]!.body).toContain(`/book/${listingId}`);
+    expect(await expandShortLinks(db, reminders[0]!.body)).toContain(`/book/${listingId}`);
     expect(await item(result.leadId)).toMatchObject({ stage: "not_planned", remindedAt: reminders[0]!.sentAt });
 
     // The second reminder two days after the first (72 hours after the link), then no more.

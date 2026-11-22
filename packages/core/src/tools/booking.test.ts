@@ -1,4 +1,5 @@
 import { db, eq, newId, schema } from "@viewing/db";
+import { expandShortLinks } from "../channels/short-links";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { tools } from "../registry";
 import { runTool, type ToolContext } from "../tool";
@@ -108,7 +109,8 @@ describe.skipIf(!process.env.DATABASE_URL)("booking", () => {
     });
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toContain("Wanneer:");
-    expect(sent[0]!.body).toContain(`/a/${booked.manageToken}`);
+    expect(sent[0]!.body).not.toContain(`/a/${booked.manageToken}`); // sent as a short link
+    expect(await expandShortLinks(db, sent[0]!.body)).toContain(`/a/${booked.manageToken}`);
     expect(sent[0]!).toMatchObject({ delivery: "simulated", metadata: { kind: "booking_confirmation" } });
 
     await runTool(tools.updateAutomationSettings, ctx, { sendBookingConfirmationsAutomatically: false });

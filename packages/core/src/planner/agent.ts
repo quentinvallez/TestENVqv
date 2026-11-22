@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gt, inArray, ne, schema } from "@viewing/db";
+import { appOrigin } from "../app-url";
 import { bookingUrl } from "./booking-link";
 import type { ConversationCategory, Priority } from "@viewing/db/schema";
 import { z } from "zod";
@@ -64,8 +65,7 @@ export type Thread = Awaited<ReturnType<typeof loadThread>>;
 
 /** Public address of the app, so links in messages work outside it. */
 export function absoluteUrl(path: string) {
-  const host = process.env.APP_URL ?? (process.env.VERCEL_BRANCH_URL ? `https://${process.env.VERCEL_BRANCH_URL}` : process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
-  return new URL(path, host).toString();
+  return new URL(path, appOrigin()).toString();
 }
 
 export const addressOf = (listing: Thread["listing"]) =>

@@ -166,7 +166,7 @@ async function erase(ctx: ToolContext, contactId: string, reason: "request" | "r
       .set({ data: {} })
       .where(and(eq(events.agencyId, ctx.agencyId), or(inArray(events.subjectId, subjects), sql`${events.data}->>'contactId' = ${contact.id}`)));
     await tx.update(automationRuns).set({ detail: {} }).where(and(eq(automationRuns.agencyId, ctx.agencyId), inArray(automationRuns.subjectId, subjects)));
-    // Leads and the owner/tenant roles go with the contact (cascade).
+    // Leads, the owner/tenant roles and the short links in their messages go with the contact (cascade).
     await tx.delete(contacts).where(and(eq(contacts.agencyId, ctx.agencyId), eq(contacts.id, contact.id)));
 
     const counts = {

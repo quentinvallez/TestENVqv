@@ -1,4 +1,5 @@
 import { and, db, eq, newId, schema } from "@viewing/db";
+import { expandShortLinks } from "../channels/short-links";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runAutomations } from "../automations/jobs";
 import { tools } from "../registry";
@@ -168,7 +169,7 @@ describe.skipIf(!process.env.DATABASE_URL)("automations", () => {
     await runAutomations(ctx, new Date(), { useAi: false });
     await runTool(tools.markAttendance, ctx, { appointmentId: missed.id, attended: false, useAi: false });
     const [noShow] = await outbound("no_show", missed.contactId!);
-    expect(noShow?.m.body).toContain(`/book/${listingId}`);
+    expect(await expandShortLinks(db, noShow!.m.body)).toContain(`/book/${listingId}`);
     expect(await pendingFor(missed.id)).toHaveLength(0);
 
     const { contactId, leadId } = await client(7);
