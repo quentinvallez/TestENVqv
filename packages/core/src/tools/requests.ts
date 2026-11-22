@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, inArray, isNotNull, ne, notInArray, or, schema 
 import type { LeadSource } from "@viewing/db/schema";
 import { z } from "zod";
 import { recordEvent } from "../events";
+import { MAX_BOOKING_REMINDERS } from "../automations/rules";
 import { invitesClient, requestStatus, requestStages, type RequestReason, type RequestStage } from "../planner/requests";
 import { defineTool, type ToolContext } from "../tool";
 
@@ -48,6 +49,7 @@ export type RequestItem = {
   /** When the client first got our booking link (or reply), and the reminder after it. */
   invitedAt: Date | null;
   remindedAt: Date | null;
+  reminders: number;
   viewing: { id: string; startsAt: Date; status: string; agentName: string | null } | null;
   /** What waits for a person, in one line. */
   draft: { id: string; summary: string } | null;
@@ -146,7 +148,8 @@ async function loadBoard(ctx: ToolContext, now: Date) {
     const all = convs.flatMap((c) => c.messages).sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
     const fromRequest = all.filter((m) => m.sentAt.getTime() >= lead.createdAt.getTime() - 60_000);
     const invite = latest(fromRequest.filter(invitesClient));
-    const reminder = latest(fromRequest.filter((m) => m.direction === "outbound" && m.metadata.kind === "nudge"));
+    const reminderMessages = fromRequest.filter((m) => m.direction === "outbound" && m.metadata.kind === "nudge" && (!invite || m.sentAt >= invite.sentAt));
+    const reminder = latest(reminderMessages);
     const lastOut = latest(fromRequest.filter((m) => m.direction === "outbound" && realMessage(m)));
     const draftConv = convs.find((c) => c.proposals.length);
     const waiting = lastOut ? convs.map(clientWaiting).find(Boolean) : null;
@@ -164,6 +167,8 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         hasPastViewing: Boolean(past),
         invitedAt: invite?.sentAt ?? null,
         remindedAt: reminder?.sentAt ?? null,
+        reminders: reminderMessages.length,
+        maxReminders: MAX_BOOKING_REMINDERS,
         lastDeliveryFailed: lastOut?.delivery === "failed" && !lastOut.metadata.recoveredBy,
         pendingDraft: Boolean(draftConv),
         clientWroteLast: Boolean(waiting),
@@ -190,6 +195,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
       createdAt: lead.createdAt,
       invitedAt: invite?.sentAt ?? null,
       remindedAt: reminder?.sentAt ?? null,
+      reminders: reminderMessages.length,
       viewing: viewing && { id: viewing.id, startsAt: viewing.startsAt, status: viewing.status, agentName: viewing.agent?.name ?? null },
       draft: draftConv ? { id: draftConv.proposals[0]!.id, summary: draftConv.proposals[0]!.summary } : null,
       message: (waiting?.body ?? lead.message ?? firstInbound?.body ?? null)?.slice(0, 400) ?? null,
@@ -221,6 +227,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         createdAt: c.messages[0]?.sentAt ?? now,
         invitedAt: null,
         remindedAt: null,
+        reminders: 0,
         viewing: null,
         draft: c.proposals[0] ? { id: c.proposals[0].id, summary: c.proposals[0].summary } : null,
         message: (clientWaiting(c)?.body ?? c.summary ?? null)?.slice(0, 400) ?? null,

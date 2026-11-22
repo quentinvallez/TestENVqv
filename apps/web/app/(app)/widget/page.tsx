@@ -98,7 +98,7 @@ export default async function WidgetPage() {
                   <ExternalLink className="size-4 text-muted" />
                   Home valuation
                 </div>
-                <p className="mt-1 text-muted">Owners estimate their home; you get a verified seller lead in the inbox.</p>
+                <p className="mt-1 text-muted">Owners estimate their home; you get a verified seller lead and a drafted reply to approve.</p>
               </Panel>
             </Link>
             {first && (

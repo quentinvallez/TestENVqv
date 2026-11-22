@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Building2, CalendarDays, Inbox, LayoutGrid, LogOut, Menu, Search, X } from "lucide-react";
+import { Building2, CalendarDays, ClipboardList, LayoutGrid, LogOut, Menu, Search, X } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
 import { openCommandMenu } from "./command-menu";
@@ -11,13 +11,13 @@ import { navItemActive, navSections } from "./nav";
 
 const tabs = [
   { href: "/", label: "Home", icon: LayoutGrid },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/requests", label: "Requests", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays, also: ["/appointments"] },
   { href: "/listings", label: "Listings", icon: Building2 },
 ];
 
 /** Bottom tab bar on phones, with everything else behind "More". */
-export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { agencyName: string; userName: string; myAgentId: string | null; inboxCount: number }) {
+export function MobileTabBar({ agencyName, userName, myAgentId, needsYouCount }: { agencyName: string; userName: string; myAgentId: string | null; needsYouCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -36,9 +36,9 @@ export function MobileTabBar({ agencyName, userName, myAgentId, inboxCount }: { 
           >
             <tab.icon className="size-5" strokeWidth={navItemActive(tab, pathname) ? 2.25 : 1.75} />
             {tab.label}
-            {tab.href === "/inbox" && inboxCount > 0 && (
-              <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-ai px-1 text-center text-[10px] leading-4 font-semibold text-white tabular-nums">
-                {inboxCount}
+            {tab.href === "/requests" && needsYouCount > 0 && (
+              <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] leading-4 font-semibold text-white tabular-nums">
+                {needsYouCount}
               </span>
             )}
           </Link>

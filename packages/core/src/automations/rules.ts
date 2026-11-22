@@ -19,12 +19,13 @@ export const COMPLETE_AFTER = 1 * HOUR;
 export const LOOKBACK = 7 * DAY;
 export const MAX_NUDGES = 2;
 /**
- * A client who got the booking link and hasn't booked gets one reminder the
- * next run after a day (the daily run makes that 24 to 48 hours), then the
- * request closes as "no response" on the requests board.
+ * A client who got the booking link and hasn't booked gets two reminders: one
+ * day after the link, and two days after the first (72 hours after the link).
+ * The daily run sends each on the first run past that point. Then the request
+ * closes as "no response" on the requests board.
  */
-export const BOOKING_REMINDER_AFTER_DAYS = 1;
-export const MAX_BOOKING_REMINDERS = 1;
+export const BOOKING_REMINDER_AFTER_DAYS = [1, 2] as const;
+export const MAX_BOOKING_REMINDERS = BOOKING_REMINDER_AFTER_DAYS.length;
 
 export const defaultAutomationSettings: Required<AutomationSettings> = {
   reminders: true,
@@ -85,7 +86,7 @@ export const nudgeStages: LeadStage[] = ["new", "invited", "follow_up"];
 
 /**
  * A nudge when our last message, a real one to the client, has gone unanswered
- * for `afterDays` days; for a client invited to book, one reminder after a day.
+ * for `afterDays` days; for a client invited to book, the two booking reminders.
  */
 export function nudgeDue(
   facts: {
@@ -103,7 +104,7 @@ export function nudgeDue(
   if (!facts.leadStage || !nudgeStages.includes(facts.leadStage)) return false;
   const invited = facts.leadStage === "invited";
   if (facts.hasPendingDraft || facts.hasUpcomingAppointment || facts.nudgesSoFar >= (invited ? MAX_BOOKING_REMINDERS : MAX_NUDGES)) return false;
-  const days = invited ? BOOKING_REMINDER_AFTER_DAYS : afterDays;
+  const days = invited ? BOOKING_REMINDER_AFTER_DAYS[facts.nudgesSoFar]! : afterDays;
   const since = now.getTime() - last.sentAt.getTime();
   return since >= days * DAY && since <= LOOKBACK + days * DAY;
 }

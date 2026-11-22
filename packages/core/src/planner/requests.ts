@@ -9,9 +9,9 @@ import type { LeadStage } from "@viewing/db/schema";
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
-/** After this long without a booking, a contacted client counts as "not planned yet" and gets one reminder. */
+/** After this long without a booking, a contacted client counts as "not planned yet" and gets the first reminder. */
 export const NOT_PLANNED_AFTER = DAY;
-/** After the reminder, this long without a booking and the request is closed as "no response". */
+/** After the last reminder, this long without a booking and the request is closed as "no response". */
 export const NO_RESPONSE_AFTER_REMINDER = 3 * DAY;
 /** Without a reminder (switched off), the request closes this long after the booking link. */
 export const NO_RESPONSE_WITHOUT_REMINDER = 7 * DAY;
@@ -45,8 +45,11 @@ export type RequestFacts = {
   hasPastViewing: boolean;
   /** Our latest message to the client that invited them to book (booking link, new times), not the reminder. */
   invitedAt: Date | null;
-  /** The automatic reminder after that invitation. */
+  /** The latest automatic reminder after that invitation, and how many went out. */
   remindedAt: Date | null;
+  reminders: number;
+  /** How many reminders go out in all (2: after 24 and 72 hours). */
+  maxReminders: number;
   /** Our latest message to the client failed and nothing recovered it. */
   lastDeliveryFailed: boolean;
   pendingDraft: boolean;
@@ -79,7 +82,9 @@ export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage
 
   const since = now.getTime() - f.invitedAt.getTime();
   if (f.remindedAt && f.remindedAt >= f.invitedAt) {
-    if (now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_AFTER_REMINDER) return { stage: "closed", reason: "no_response" };
+    // Closed only once the last reminder has had its time; until then the next reminder is still to come.
+    if (f.reminders >= f.maxReminders && now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_AFTER_REMINDER) return { stage: "closed", reason: "no_response" };
+    if (now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };
     return { stage: "not_planned", reason: null };
   }
   if (since >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };

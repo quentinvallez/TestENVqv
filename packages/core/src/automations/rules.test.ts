@@ -78,11 +78,15 @@ describe("nudgeDue", () => {
     expect(nudgeDue(facts, at(3, 10), 3)).toBe(false);
     expect(nudgeDue(facts, at(4, 10), 3)).toBe(true);
   });
-  it("reminds a client invited to book once, a day after the booking link", () => {
+  it("reminds a client invited to book after 24 hours, again after 72, then stops", () => {
     const invited = { ...facts, leadStage: "invited" as LeadStage };
     expect(nudgeDue(invited, at(1, 22), 3)).toBe(false);
     expect(nudgeDue(invited, at(2, 10), 3)).toBe(true);
-    expect(nudgeDue({ ...invited, nudgesSoFar: 1 }, at(5, 10), 3)).toBe(false);
+    // The second counts from the first reminder (sent at day 2, 10:00): 48 hours later.
+    const second = { ...invited, lastMessage: { ...invited.lastMessage, sentAt: at(2, 10) }, nudgesSoFar: 1 };
+    expect(nudgeDue(second, at(4, 9), 3)).toBe(false);
+    expect(nudgeDue(second, at(4, 10), 3)).toBe(true);
+    expect(nudgeDue({ ...second, nudgesSoFar: 2 }, at(9, 10), 3)).toBe(false);
   });
   it("leaves the client alone when they answered, booked, moved on or had two nudges", () => {
     expect(nudgeDue({ ...facts, lastMessage: { ...facts.lastMessage, direction: "inbound" } }, at(5, 10), 3)).toBe(false);

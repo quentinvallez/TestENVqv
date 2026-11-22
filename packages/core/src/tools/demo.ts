@@ -140,6 +140,9 @@ export const seedDemoData = defineTool({
         ["Victor", "Leroy", "victor.leroy@example.com", "fr"],
         ["Lotte", "Hermans", "lotte.hermans@example.com", "nl"],
         ["Jules", "Martin", "jules.martin@example.com", "fr"],
+        ["Sarah", "De Smet", "sarah.desmet@example.com", "nl"],
+        ["Tom", "Janssens", "", "nl"], // left only a phone number on Zimmo
+        ["Laura", "Vandenberghe", "laura.vandenberghe@example.com", "nl"],
       ];
       const contactRows = await tx
         .insert(contacts)
@@ -148,7 +151,7 @@ export const seedDemoData = defineTool({
             agencyId,
             firstName,
             lastName,
-            email,
+            email: email || null,
             language,
             phone: `+32 47${i % 10} ${String(10 + i).padStart(2, "0")} ${String(20 + i * 3).padStart(2, "0")} ${String(30 + i * 2).padStart(2, "0")}`,
             whatsappOptIn: i % 3 !== 0,
@@ -169,7 +172,10 @@ export const seedDemoData = defineTool({
         [8, "GNT-2011", "visited", "immoweb", "Bezoek gehad, denken erover na."],
         [9, "ANT-1055", "follow_up", "zimmo", "Nous aimerions une deuxième visite."],
         [10, "ANT-1055", "offer", "website", "Wij willen een bod uitbrengen."],
-        [11, "GNT-2020", "visited", "immoscoop", "Merci pour la visite."],
+        [11, "GNT-2020", "invited", "immoscoop", "Merci pour la visite."], // didn't come: new times sent, so invited again
+        [12, "ANT-1055", "invited", "immoscoop", "Wanneer kan ik de woning bezichtigen?"],
+        [13, "ANT-1043", "new", "zimmo", "Graag een bezoek, bel me maar."],
+        [14, "GNT-2014", "new", "website", "Zijn er huisdieren toegelaten in het gebouw?"],
       ];
       const leadRows = await tx
         .insert(leads)
@@ -303,6 +309,7 @@ export const seedDemoData = defineTool({
       [0, "Immoweb", 2, "Immoweb – Contactaanvraag voor ANT-1042, Cogels-Osylei 38", "Goedemiddag,\n\nIs het appartement aan de Cogels-Osylei nog beschikbaar? We zouden het graag eens komen bekijken, bij voorkeur volgende week.\n\nGroeten,\nEmma Claes"],
       [2, "Zimmo", 5, "Zimmo – Nouvelle demande pour GNT-2011, Coupure Links 55", "Bonjour,\n\nJe souhaiterais visiter la maison Coupure Links. Je suis disponible en fin d'après-midi.\n\nMerci,\nCamille Lambert"],
       [3, "Immovlan", 100, "Immovlan – Aanvraag voor ANT-1051, Londenstraat 7", "Hallo,\n\nIs het penthouse nog te huur? Ik zou het graag bezichtigen.\n\nNoah Wouters"],
+      [12, "Immoscoop", 30, "Immoscoop – Aanvraag voor ANT-1055, Kapellensteenweg 301", "Goedendag,\n\nWanneer kan ik de woning bezichtigen? Ik ben flexibel.\n\nSarah De Smet"],
     ];
     for (const [leadIndex, portal, ago, subject, body] of portalLeads) {
       const lead = leadRows[leadIndex]!;
@@ -314,9 +321,9 @@ export const seedDemoData = defineTool({
         { from: "client", hoursAgo: ago, body, portal: portal.toLowerCase() },
         { from: "planner", hoursAgo: ago - 0.02, kind: "portal_reply", body: fixed(lang, "viewing_request", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) },
       ];
-      // No answer after a few days: the planner checks in once, with fresh times.
-      if (ago > 72) {
-        lines.push({ from: "planner", hoursAgo: ago - 72, kind: "nudge", body: fixed(lang, "nudge_invited", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) });
+      // No booking: the planner reminds them after 24 hours and again after 72, with fresh times.
+      for (const after of [24, 72]) {
+        if (ago > after) lines.push({ from: "planner", hoursAgo: ago - after, kind: "nudge", body: fixed(lang, "nudge_invited", vars, "email", { slots: await freeTimes(listing.id), link: { url: absoluteUrl(`/book/${listing.id}`), label: linkLabels.book[lang] } }) });
       }
       threads.push({
         contactId: contact.id,
@@ -326,7 +333,7 @@ export const seedDemoData = defineTool({
         channel: "email",
         subject,
         category: "viewing_request",
-        summary: ago > 72 ? `${portal} lead; booking link sent, checked in after 3 days without an answer.` : `${portal} lead asking to visit; free times and the booking link sent.`,
+        summary: ago > 72 ? `${portal} lead; booking link sent, reminded after 24 and 72 hours.` : `${portal} lead asking to visit; free times and the booking link sent.`,
         unread: ago < 1,
         lines,
       });
@@ -510,6 +517,16 @@ export const seedDemoData = defineTool({
           sentAt: hoursAgo(line.hoursAgo),
         })),
       );
+      // The request came in with its first message, and the reminders sent count as done for the jobs.
+      if (thread.leadIndex !== undefined) {
+        await ctx.db.update(leads).set({ createdAt: hoursAgo(Math.max(...thread.lines.map((l) => l.hoursAgo))) }).where(eq(leads.id, leadRows[thread.leadIndex]!.id));
+      }
+      const nudges = thread.lines.filter((l) => l.from === "planner" && l.kind === "nudge");
+      if (nudges.length) {
+        await ctx.db.insert(automationRuns).values(
+          nudges.map((_, i) => ({ agencyId, rule: "nudge" as const, subjectType: "conversation", subjectId: conversation!.id, dueKey: `demo-${i}`, outcome: "sent" as const, detail: { demo: true } })),
+        );
+      }
     }
 
     // The jobs see these as done, so they don't send them again.
@@ -541,6 +558,42 @@ export const seedDemoData = defineTool({
     if (requested?.contactId) {
       await ctx.db.delete(conversations).where(and(eq(conversations.agencyId, agencyId), eq(conversations.contactId, requested.contactId)));
       await ctx.db.delete(proposals).where(and(eq(proposals.agencyId, agencyId), eq(proposals.status, "pending")));
+    }
+
+    // Two requests that need a person: a Zimmo lead with only a phone number, and a website question without a visit request.
+    {
+      const phoneLead = leadRows[13]!;
+      const [conversation] = await ctx.db
+        .insert(conversations)
+        .values({ agencyId, contactId: phoneLead.contactId, leadId: phoneLead.id, listingId: phoneLead.listingId, agentId: phoneLead.agentId, channel: "email", provider: "email", subject: "Zimmo – Aanvraag voor ANT-1043", status: "open", category: "viewing_request", summary: "Zimmo lead asking to visit; only a phone number.", lastMessageAt: hoursAgo(1.5) })
+        .returning();
+      await ctx.db.insert(messages).values({ agencyId, conversationId: conversation!.id, direction: "inbound", authorType: "contact", subject: "Zimmo – Aanvraag voor ANT-1043", body: "Graag een bezoek, bel me maar. Liefst 's avonds.", metadata: { portal: "zimmo" }, sentAt: hoursAgo(1.5) });
+      await ctx.db.update(leads).set({ createdAt: hoursAgo(1.5) }).where(eq(leads.id, phoneLead.id));
+    }
+    {
+      const question = leadRows[14]!;
+      const contact = contactRows.find((c) => c.id === question.contactId)!;
+      const listing = listingOf(question.listingId);
+      const [conversation] = await ctx.db
+        .insert(conversations)
+        .values({ agencyId, contactId: contact.id, leadId: question.id, listingId: listing.id, agentId: question.agentId, channel: "email", provider: "email", subject: `Website form: ${place(listing)}`, status: "open", category: "question", summary: "Asks whether pets are allowed in the building.", lastMessageAt: hoursAgo(4) })
+        .returning();
+      await ctx.db.insert(messages).values({ agencyId, conversationId: conversation!.id, direction: "inbound", authorType: "contact", subject: `Website form: ${place(listing)}`, body: "Zijn er huisdieren toegelaten in het gebouw? We hebben een kleine hond.", intent: "question", metadata: { portal: "website" }, sentAt: hoursAgo(4) });
+      await ctx.db.update(leads).set({ createdAt: hoursAgo(4) }).where(eq(leads.id, question.id));
+      const lang = toLang(contact.language);
+      await ctx.db.insert(proposals).values({
+        agencyId,
+        agentName: "planner",
+        conversationId: conversation!.id,
+        kind: "reply",
+        generatedBy: "template",
+        toolName: "conversations_reply",
+        input: { conversationId: conversation!.id, body: fixed(lang, "question", { name: contact.firstName ?? "", address: place(listing), agentName: agentName(question.agentId) }, "email"), offeredSlots: [] },
+        summary: `Answer ${contact.firstName}'s question about pets`,
+        reasoning: "The client asks a question without asking to visit (classified by keyword rules)",
+        subjectType: "conversation",
+        subjectId: conversation!.id,
+      });
     }
 
     return { seeded: true, listings: seeded.listingRows.length, leads: leadRows.length, appointments: appointmentRows.length, conversations: threads.length };

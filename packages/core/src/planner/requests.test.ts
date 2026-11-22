@@ -15,6 +15,8 @@ const base: RequestFacts = {
   hasPastViewing: false,
   invitedAt: null,
   remindedAt: null,
+  reminders: 0,
+  maxReminders: 2,
   lastDeliveryFailed: false,
   pendingDraft: false,
   clientWroteLast: false,
@@ -27,9 +29,10 @@ describe("requestStatus", () => {
     expect(status({ leadStage: "invited", invitedAt: ago(25) })).toEqual({ stage: "not_planned", reason: null });
   });
 
-  it("stays not planned for 3 days after the reminder, then closes as no response", () => {
-    expect(status({ leadStage: "invited", invitedAt: ago(50), remindedAt: ago(20) }).stage).toBe("not_planned");
-    expect(status({ leadStage: "invited", invitedAt: ago(100), remindedAt: ago(73) })).toEqual({ stage: "closed", reason: "no_response" });
+  it("stays not planned through both reminders, and closes 3 days after the second", () => {
+    expect(status({ leadStage: "invited", invitedAt: ago(50), remindedAt: ago(20), reminders: 1 }).stage).toBe("not_planned");
+    expect(status({ leadStage: "invited", invitedAt: ago(100), remindedAt: ago(73), reminders: 1 }).stage).toBe("not_planned");
+    expect(status({ leadStage: "invited", invitedAt: ago(150), remindedAt: ago(73), reminders: 2 })).toEqual({ stage: "closed", reason: "no_response" });
   });
 
   it("closes a week after the booking link when no reminder went out", () => {
@@ -38,7 +41,7 @@ describe("requestStatus", () => {
   });
 
   it("starts the clock again when new times are sent after the reminder", () => {
-    expect(status({ leadStage: "invited", invitedAt: ago(2), remindedAt: ago(80) }).stage).toBe("contacted");
+    expect(status({ leadStage: "invited", invitedAt: ago(2), remindedAt: ago(80), reminders: 2 }).stage).toBe("contacted");
   });
 
   it("is planned with an upcoming viewing, visited after it", () => {

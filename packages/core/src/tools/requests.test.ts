@@ -46,7 +46,7 @@ describe.skipIf(!process.env.DATABASE_URL)("viewing requests board", () => {
     await db.update(schema.leads).set({ createdAt: new Date(lead!.createdAt.getTime() - by) }).where(eq(schema.leads.id, lead!.id));
   };
 
-  it("takes a website form that asks to visit, sends the booking link, then reminds once and closes as no response", async () => {
+  it("takes a website form that asks to visit, sends the booking link, reminds after 24 and 72 hours, then closes as no response", async () => {
     const result = await runTool(tools.receiveEmail, ctx, form(1, "Is de tuin op het zuiden? Ik kom de woning graag bezoeken."));
     expect(result.kind).toBe("website_form");
     if (result.kind !== "website_form") return;
@@ -66,14 +66,18 @@ describe.skipIf(!process.env.DATABASE_URL)("viewing requests board", () => {
     expect(reminders[0]!.body).toContain(`/book/${listingId}`);
     expect(await item(result.leadId)).toMatchObject({ stage: "not_planned", remindedAt: reminders[0]!.sentAt });
 
-    // Only one reminder.
+    // The second reminder two days after the first (72 hours after the link), then no more.
     await backdate(result.conversationId, 2 * DAY);
     await runAutomations({ ...ctx, actor: { type: "system", id: null } }, new Date(), { useAi: false });
-    const again = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, result.conversationId));
-    expect(again.filter((m) => m.metadata.kind === "nudge")).toHaveLength(1);
-
-    // Three days after the reminder: closed, no response.
+    const nudges = async () => (await db.select().from(schema.messages).where(eq(schema.messages.conversationId, result.conversationId))).filter((m) => m.metadata.kind === "nudge");
+    expect(await nudges()).toHaveLength(2);
+    expect(await item(result.leadId)).toMatchObject({ stage: "not_planned", reminders: 2 });
     await backdate(result.conversationId, 2 * DAY);
+    await runAutomations({ ...ctx, actor: { type: "system", id: null } }, new Date(), { useAi: false });
+    expect(await nudges()).toHaveLength(2);
+
+    // Three days after the last reminder: closed, no response.
+    await backdate(result.conversationId, 1 * DAY);
     expect(await item(result.leadId)).toMatchObject({ stage: "closed", reason: "no_response" });
   });
 

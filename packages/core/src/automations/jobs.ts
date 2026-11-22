@@ -333,7 +333,7 @@ async function draftNudges(ctx: ToolContext, now: Date, afterDays: number, useAi
       eq(conversations.status, "waiting"),
       isNotNull(conversations.contactId),
       // Clients invited to book get their reminder sooner (nudgeDue decides per lead).
-      lte(conversations.lastMessageAt, new Date(now.getTime() - Math.min(afterDays, BOOKING_REMINDER_AFTER_DAYS) * DAY)),
+      lte(conversations.lastMessageAt, new Date(now.getTime() - Math.min(afterDays, ...BOOKING_REMINDER_AFTER_DAYS) * DAY)),
       gte(conversations.lastMessageAt, new Date(now.getTime() - LOOKBACK - afterDays * DAY)),
     ),
     with: {
