@@ -8,6 +8,8 @@ import { pageKey, parseWebsiteForm } from "../channels/website-form";
 import { samePhone } from "../channels/phone";
 import { metaErrorText, platformWhatsapp, sendWhatsApp, whatsappConfig, whatsappProblem } from "../channels/whatsapp";
 import { contactForInviteRef, parseInviteRef } from "../channels/whatsapp-invite";
+import { shortenLinks } from "../channels/short-links";
+import { appOrigin } from "../app-url";
 import { canEncrypt, encrypt } from "../crypto";
 import { recordEvent } from "../events";
 import { exchangeCode, oauthConfigured, sealCredentials } from "../integrations/oauth";
@@ -624,11 +626,14 @@ export const connectWhatsApp = defineTool({
 });
 
 const sampleParams = {
-  nl: ["Quentin", "do 19 nov. om 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
-  fr: ["Quentin", "jeu. 19 nov. à 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
-  en: ["Quentin", "Thu 19 Nov at 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
-  de: ["Quentin", "Do. 19. Nov. um 14:00", "Kerkstraat 1, Gent", "Sofie", "https://testenvqv.vercel.app/a/test"],
+  nl: ["Quentin", "do 19 nov. om 14:00", "Kerkstraat 1, Gent", "Sofie"],
+  fr: ["Quentin", "jeu. 19 nov. à 14:00", "Kerkstraat 1, Gent", "Sofie"],
+  en: ["Quentin", "Thu 19 Nov at 14:00", "Kerkstraat 1, Gent", "Sofie"],
+  de: ["Quentin", "Do. 19. Nov. um 14:00", "Kerkstraat 1, Gent", "Sofie"],
 };
+
+/** The test's link is a real short link (to the agency's privacy notice), so it looks like what clients get. */
+const sampleLink = (ctx: ToolContext, lang: "nl" | "fr" | "en" | "de") => shortenLinks(ctx, new URL(`/privacy/${ctx.agencyId}?lang=${lang}`, appOrigin()).toString(), null);
 
 /**
  * Settings → WhatsApp → Check: what Meta says about the number and token, the
@@ -683,7 +688,7 @@ export const checkWhatsApp = defineTool({
     let test: { sent: boolean; messageId?: string; error?: string; explained?: string | null } | null = null;
     if (input.phone) {
       try {
-        const messageId = await sendWhatsApp(config, input.phone, { template: { name: "booking_confirmed", language: input.language, params: sampleParams[input.language] } });
+        const messageId = await sendWhatsApp(config, input.phone, { template: { name: "booking_confirmed", language: input.language, params: [...sampleParams[input.language], await sampleLink(ctx, input.language)] } });
         test = { sent: true, messageId };
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
