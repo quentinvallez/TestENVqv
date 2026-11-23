@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { signupByToken } from "@viewing/core/public";
 import { auth } from "@/lib/auth";
-import { dpaTerms } from "./actions";
+import { DPA_PATH, dpaTerms } from "@/lib/legal";
 import { JoinForm } from "./join-form";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,12 @@ const ended = {
   closed: "This link doesn't work any more. Ask us for a new one.",
   expired: "This link has expired. Ask us for a new one and we'll send it right away.",
 } as const;
+
+/** Our own DPA opens in the requester's language. */
+function dpaFor(language: string) {
+  const dpa = dpaTerms();
+  return dpa && dpa.url === DPA_PATH ? { ...dpa, url: `${DPA_PATH}?lang=${language}` } : dpa;
+}
 
 /** The page an approved agency opens from our email: set a password and create the workspace. */
 export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
@@ -37,7 +43,7 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
       name={request.name}
       hasAccount={request.hasAccount}
       signedInAs={session?.user.email ?? null}
-      dpa={await dpaTerms()}
+      dpa={dpaFor(request.language)}
     />
   );
 }

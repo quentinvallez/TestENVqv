@@ -5,6 +5,7 @@ import { runTool, SignupError, tools, type ToolContext } from "@viewing/core";
 import { platformAgencyId } from "@viewing/core/public";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { dpaTerms } from "@/lib/legal";
 
 const slugify = (value: string) =>
   value
@@ -14,12 +15,6 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40);
-
-/** The data processing agreement to accept before the workspace is made, once its text is published (DPA_URL). */
-export async function dpaTerms() {
-  const url = process.env.DPA_URL || null;
-  return url ? { url, version: process.env.DPA_VERSION || "1" } : null;
-}
 
 export type CreateWorkspaceResult = { agencyId: string; website: string | null } | { error: string };
 
@@ -32,7 +27,7 @@ export async function createWorkspaceAction(token: string, acceptedDpa: boolean)
   if (!session) return { error: "Please set your password first." };
   const agencyId = platformAgencyId();
   if (!agencyId) return { error: "This link doesn't work any more. Ask us for a new one." };
-  const dpa = await dpaTerms();
+  const dpa = dpaTerms();
   if (dpa && !acceptedDpa) return { error: "Please accept the data processing agreement." };
   const ctx: ToolContext = { db, agencyId, actor: { type: "user", id: session.user.id } };
 
