@@ -65,6 +65,8 @@ export type RequestItem = {
   remindedAt: Date | null;
   reminders: number;
   viewing: { id: string; startsAt: Date; status: string; agentName: string | null } | null;
+  /** What the client answered to the booking questions in the widget. */
+  answers: { id: string; question: string; answer: string }[];
   /** What waits for a person, in one line. */
   draft: { id: string; summary: string } | null;
   /** The client's own words: the request, or their latest message. */
@@ -201,6 +203,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
       remindedAt: reminder?.sentAt ?? null,
       reminders: reminderMessages.length,
       viewing: viewing && { id: viewing.id, startsAt: viewing.startsAt, status: viewing.status, agentName: viewing.agent?.name ?? null },
+      answers: lead.qualification?.answers ?? [],
       draft: draftConv ? { id: draftConv.proposals[0]!.id, summary: draftConv.proposals[0]!.summary } : null,
       message: (lead.message ?? firstInbound?.body ?? null)?.slice(0, 400) ?? null,
       conversationId: (draftConv ?? convs[0])?.id ?? null,
@@ -233,6 +236,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         remindedAt: null,
         reminders: 0,
         viewing: null,
+        answers: [],
         draft: c.proposals[0] ? { id: c.proposals[0].id, summary: c.proposals[0].summary } : null,
         message: null,
         conversationId: c.id,

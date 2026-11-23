@@ -3,11 +3,11 @@ import { z } from "zod";
 import { startOfZonedDay } from "../time";
 import { defineTool } from "../tool";
 
-const { appointments, agents, contacts, listings } = schema;
+const { appointments, agents, contacts, leads, listings } = schema;
 
 export const listAppointments = defineTool({
   name: "appointments_list",
-  description: "List appointments in a time range (defaults to the next 14 days), with agent, contact and listing.",
+  description: "List appointments in a time range (defaults to the next 14 days), with agent, contact, listing and what the client answered to the booking questions.",
   mutates: false,
   input: z.object({
     from: z.coerce.date().optional(),
@@ -39,11 +39,14 @@ export const listAppointments = defineTool({
         listingStreet: listings.street,
         listingHouseNumber: listings.houseNumber,
         listingCity: listings.city,
+        leadId: appointments.leadId,
+        qualification: leads.qualification,
       })
       .from(appointments)
       .innerJoin(agents, eq(agents.id, appointments.agentId))
       .leftJoin(contacts, eq(contacts.id, appointments.contactId))
       .leftJoin(listings, eq(listings.id, appointments.listingId))
+      .leftJoin(leads, and(eq(leads.id, appointments.leadId), eq(leads.agencyId, ctx.agencyId)))
       .where(
         and(
           eq(appointments.agencyId, ctx.agencyId),
@@ -53,6 +56,7 @@ export const listAppointments = defineTool({
           input.includeCancelled ? undefined : inArray(appointments.status, ["scheduled", "confirmed", "completed"]),
         ),
       )
-      .orderBy(asc(appointments.startsAt));
+      .orderBy(asc(appointments.startsAt))
+      .then((rows) => rows.map(({ qualification, ...row }) => ({ ...row, answers: qualification?.answers ?? [] })));
   },
 });

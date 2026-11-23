@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AGENCY_TIMEZONE, runTool, startOfZonedDay, tools } from "@viewing/core";
 import { ChevronLeft, ChevronRight, List, Navigation, Phone, Plus } from "lucide-react";
+import { BookingAnswers } from "@/components/booking-answers";
 import { Avatar, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
@@ -16,6 +17,11 @@ function localMinutes(date: Date) {
     .split(":")
     .map(Number);
   return h! * 60 + m!;
+}
+
+/** A viewing opens its request (with what the client answered), else the contact or the listing. */
+function viewingHref(apt: { leadId: string | null; contactId: string | null; listingId: string | null }) {
+  return apt.leadId ? `/requests/${apt.leadId}` : apt.contactId ? `/contacts/${apt.contactId}` : apt.listingId ? `/listings/${apt.listingId}` : "/appointments";
 }
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ week?: string; day?: string }> }) {
@@ -46,6 +52,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     location: null,
     agentName: o.agent.name,
     agentColor: o.agent.color,
+    leadId: null,
+    answers: [],
   }));
   const appointments = [...all.filter((a) => !a.openHouseId), ...shows].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   const today = startOfZonedDay(now).getTime();
@@ -127,10 +135,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                       {apt.agentName.split(" ")[0]}
                     </span>
                   </div>
-                  <Link href={apt.contactId ? `/contacts/${apt.contactId}` : apt.listingId ? `/listings/${apt.listingId}` : "#"} className="mt-1 block font-medium">
+                  <Link href={viewingHref(apt)} className="mt-1 block font-medium">
                     {fullName(apt.contactFirstName, apt.contactLastName)}
                   </Link>
                   <div className="text-muted">{place}</div>
+                  <BookingAnswers answers={apt.answers} compact className="mt-2" />
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {apt.contactPhone ? (
                       <a href={`tel:${apt.contactPhone.replace(/\s/g, "")}`} className="flex h-10 items-center justify-center gap-1.5 rounded-md border border-line font-medium">
@@ -188,7 +197,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                     return (
                       <Link
                         key={apt.id}
-                        href={apt.listingId ? `/listings/${apt.listingId}` : "/appointments"}
+                        href={viewingHref(apt)}
+                        title={apt.answers.map((a) => `${a.question}: ${a.answer}`).join("\n") || undefined}
                         className="absolute inset-x-1 overflow-hidden rounded-md border-l-2 px-1.5 py-1 text-[11px] leading-4 transition hover:brightness-95"
                         style={{ top, height, borderColor: apt.agentColor ?? "#71717a", background: `color-mix(in srgb, ${apt.agentColor ?? "#71717a"} 12%, var(--panel))` }}
                       >

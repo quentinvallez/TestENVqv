@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { aiAvailable, ownMessageDraft, runTool, tools, type RequestItem } from "@viewing/core";
 import { Building2, CalendarPlus, Check, Mail, Phone, RotateCcw, Send, X } from "lucide-react";
+import { BookingAnswers } from "@/components/booking-answers";
 import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
 import { Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
@@ -173,6 +174,14 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
               )}
             </div>
           </Panel>
+
+          {item.answers.length > 0 && (
+            <Panel className="p-4">
+              <h2 className="font-medium">What {firstName} answered when booking</h2>
+              <BookingAnswers answers={item.answers} className="mt-3" />
+              <p className="mt-3 text-[11px] text-faint">Also in {agentName ? `${agentName.split(" ")[0]}'s` : "the agent's"} booking email and in the viewing in their Outlook or Google calendar.</p>
+            </Panel>
+          )}
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-medium">
