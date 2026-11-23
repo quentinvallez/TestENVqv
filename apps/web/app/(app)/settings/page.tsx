@@ -21,10 +21,7 @@ import { BrandColour } from "../widget/brand-colour";
 import { CopyText, WhatsAppCheckForm, WhatsAppForm } from "./channels";
 import { PortalLeads } from "./portal-leads";
 
-const capabilities = [
-  ["Handle cancellations and reschedules from replies", "suggest"],
-  ["Reassign a lead to another agent", "suggest"],
-] as const;
+const capabilities = [["Reassign a lead to another agent", "suggest"]] as const;
 
 /** Which "send automatically" setting belongs to which job. */
 const sendingFlag: Record<string, "sendRemindersAutomatically" | "sendFollowUpsAutomatically" | "sendNoShowsAutomatically" | "sendNudgesAutomatically"> = {
@@ -235,12 +232,25 @@ export default async function SettingsPage() {
                     </Pill>
                   </div>
                   <p className="mt-0.5 max-w-xl text-muted">
-                    When an Immoweb, Zimmo or Immovlan lead asks to visit an active listing, the planner replies right away with free times and the listing&apos;s booking link. Fixed text in the client&apos;s language; the AI only recognises the request. Listings under option or sold, questions and everything else stay drafts.
+                    When an Immoweb, Zimmo, Immovlan or Immoscoop lead, or your website's contact form, asks to visit an active listing, the planner replies right away with free times and the listing&apos;s booking link. Fixed text in the client&apos;s language; the AI only recognises the request. Listings under option or sold and plain questions show under Viewing requests → Needs you.
                   </p>
                 </div>
                 <form action={updateAutomationsAction.bind(null, { replyToPortalLeadsAutomatically: !automations.replyToPortalLeadsAutomatically })} className="shrink-0">
                   <Button type="submit">{automations.replyToPortalLeadsAutomatically ? "Ask me first instead" : "Reply automatically"}</Button>
                 </form>
+              </div>
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>Cancellations and changes of time</span>
+                    <Pill className={automations.sendBookingConfirmationsAutomatically ? "border-ai-line bg-ai-soft text-ai" : undefined}>
+                      {automations.sendBookingConfirmationsAutomatically ? autonomyLabel.act : autonomyLabel.suggest}
+                    </Pill>
+                  </div>
+                  <p className="mt-0.5 max-w-xl text-muted">
+                    Clients cancel or move their viewing themselves with the button in their confirmation, never by replying. The viewing is cancelled or moved in the agent&apos;s calendar straight away, the agent gets an email, and the client gets the confirmation of the new time, or other free times after a cancellation. Fixed text in the client&apos;s language. Replies to our emails go to the agent&apos;s own mailbox. The confirmation follows the booking confirmations setting under Automations.
+                  </p>
+                </div>
               </div>
               {capabilities.map(([label, level]) => (
                 <div key={label} className="flex items-center justify-between gap-4 px-4 py-3">

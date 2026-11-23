@@ -11,7 +11,7 @@ export const leadStageMeta = {
 
 /** The requests board's stages, in the order a request moves through them. */
 export const requestStageMeta = {
-  needs_you: { label: "Needs you", color: "#ef4444", hint: "A person has to call, answer or approve" },
+  needs_you: { label: "Needs you", color: "#ef4444", hint: "Couldn't be handled automatically: call, answer or approve" },
   contacted: { label: "Contacted", color: "#3b82f6", hint: "Got the booking link automatically" },
   not_planned: { label: "Not planned yet", color: "#f59e0b", hint: "No booking yet: reminders after 24 and 72 hours" },
   planned: { label: "Planned", color: "#16a34a", hint: "Viewing booked" },
@@ -20,8 +20,8 @@ export const requestStageMeta = {
 } as const;
 
 export const requestReasonLabel: Record<string, string> = {
-  draft: "Reply waits for your OK",
-  client_wrote: "The client wrote back",
+  draft: "Waits for your OK",
+  question: "Question: answer from your mailbox",
   phone_only: "No email address: call them",
   listing_unknown: "Listing not recognised",
   listing_unavailable: "Listing not on offer",

@@ -31,9 +31,23 @@ type Conversation = {
   channel: string;
   status: "open" | "waiting" | "done";
   summary: string | null;
+  category: string | null;
   messages: Message[];
-  proposals: { id: string; summary: string; kind: string | null }[];
+  proposals: Draft[];
+  /** A drafted reply to something the client wrote: not shown, the agent answers from their own mailbox. */
+  replyDraft?: boolean;
 };
+type Draft = { id: string; summary: string; kind: string | null; input: Record<string, unknown> };
+
+/**
+ * Drafts of our own messages (a confirmation, reminder, follow-up, owner alert… the agency set to
+ * "Ask me first") show on the board. A drafted answer to a client's own message doesn't: clients'
+ * messages go to the agent's mailbox and are answered there, so the board never becomes an inbox.
+ */
+export const ownMessageDraft = (p: { kind: string | null; input: Record<string, unknown> }) => p.kind !== "reply" || typeof p.input.kind === "string";
+
+/** Keeps only drafts of our own messages, and notes whether a reply to the client was drafted. */
+const withOwnDrafts = <C extends { proposals: Draft[] }>(c: C) => ({ ...c, proposals: c.proposals.filter(ownMessageDraft), replyDraft: c.proposals.some((p) => !ownMessageDraft(p)) });
 
 export type RequestItem = {
   /** The lead's id, or the conversation's for a message that belongs to no request. */
@@ -63,15 +77,6 @@ export type RequestItem = {
 const realMessage = (m: Message) => m.authorType !== "system";
 const latest = <T extends { sentAt: Date }>(items: T[]) => items.reduce<T | null>((a, b) => (!a || b.sentAt > a.sentAt ? b : a), null);
 
-/** A client message that still waits for a person: it came after our latest message and nobody set the conversation aside. */
-function clientWaiting(conversation: Conversation) {
-  if (conversation.status !== "open") return null;
-  const real = conversation.messages.filter(realMessage);
-  const last = real[real.length - 1];
-  if (!last || last.direction !== "inbound" || last.metadata.copyOnly) return null;
-  return last;
-}
-
 async function loadBoard(ctx: ToolContext, now: Date) {
   const leadRows = await ctx.db.query.leads.findMany({
     where: and(
@@ -91,7 +96,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
   const contactIds = [...new Set(leadRows.map((l) => l.contactId))];
   const since = new Date(now.getTime() - HISTORY);
 
-  const conversationRows: Conversation[] = await ctx.db.query.conversations.findMany({
+  const conversationRows: Conversation[] = (await ctx.db.query.conversations.findMany({
     where: and(
       eq(conversations.agencyId, ctx.agencyId),
       or(
@@ -100,16 +105,16 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         and(eq(conversations.status, "open"), gt(conversations.lastMessageAt, since)),
       ),
     ),
-    columns: { id: true, contactId: true, leadId: true, listingId: true, channel: true, status: true, summary: true },
+    columns: { id: true, contactId: true, leadId: true, listingId: true, channel: true, status: true, summary: true, category: true },
     with: {
       messages: {
         where: gt(messages.sentAt, since),
         orderBy: asc(messages.sentAt),
         columns: { id: true, direction: true, authorType: true, metadata: true, delivery: true, sentAt: true, body: true },
       },
-      proposals: { where: eq(proposals.status, "pending"), orderBy: desc(proposals.createdAt), columns: { id: true, summary: true, kind: true } },
+      proposals: { where: eq(proposals.status, "pending"), orderBy: desc(proposals.createdAt), columns: { id: true, summary: true, kind: true, input: true } },
     },
-  });
+  })).map(withOwnDrafts);
   // Conversations with a pending draft but no recent messages still count.
   const withDraft = await ctx.db
     .selectDistinct({ id: proposals.conversationId })
@@ -120,12 +125,12 @@ async function loadBoard(ctx: ToolContext, now: Date) {
     conversationRows.push(
       ...(await ctx.db.query.conversations.findMany({
         where: and(eq(conversations.agencyId, ctx.agencyId), inArray(conversations.id, missing)),
-        columns: { id: true, contactId: true, leadId: true, listingId: true, channel: true, status: true, summary: true },
+        columns: { id: true, contactId: true, leadId: true, listingId: true, channel: true, status: true, summary: true, category: true },
         with: {
           messages: { orderBy: desc(messages.sentAt), limit: 20, columns: { id: true, direction: true, authorType: true, metadata: true, delivery: true, sentAt: true, body: true } },
-          proposals: { where: eq(proposals.status, "pending"), orderBy: desc(proposals.createdAt), columns: { id: true, summary: true, kind: true } },
+          proposals: { where: eq(proposals.status, "pending"), orderBy: desc(proposals.createdAt), columns: { id: true, summary: true, kind: true, input: true } },
         },
-      })).map((c) => ({ ...c, messages: [...c.messages].reverse() })),
+      })).map((c) => withOwnDrafts({ ...c, messages: [...c.messages].reverse() })),
     );
   }
 
@@ -152,7 +157,6 @@ async function loadBoard(ctx: ToolContext, now: Date) {
     const reminder = latest(reminderMessages);
     const lastOut = latest(fromRequest.filter((m) => m.direction === "outbound" && realMessage(m)));
     const draftConv = convs.find((c) => c.proposals.length);
-    const waiting = lastOut ? convs.map(clientWaiting).find(Boolean) : null;
     const leadViewings = viewings.filter((v) => v.leadId === lead.id || (!v.leadId && v.contactId === lead.contactId && (!lead.listingId || v.listingId === lead.listingId)));
     const upcoming = leadViewings.find((v) => v.startsAt > now && (v.status === "scheduled" || v.status === "confirmed"));
     const past = [...leadViewings].reverse().find((v) => v.startsAt <= now && v.status === "completed");
@@ -171,7 +175,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         maxReminders: MAX_BOOKING_REMINDERS,
         lastDeliveryFailed: lastOut?.delivery === "failed" && !lastOut.metadata.recoveredBy,
         pendingDraft: Boolean(draftConv),
-        clientWroteLast: Boolean(waiting),
+        question: convs.some((c) => c.category === "question" || c.replyDraft),
       },
       now,
     );
@@ -198,14 +202,14 @@ async function loadBoard(ctx: ToolContext, now: Date) {
       reminders: reminderMessages.length,
       viewing: viewing && { id: viewing.id, startsAt: viewing.startsAt, status: viewing.status, agentName: viewing.agent?.name ?? null },
       draft: draftConv ? { id: draftConv.proposals[0]!.id, summary: draftConv.proposals[0]!.summary } : null,
-      message: (waiting?.body ?? lead.message ?? firstInbound?.body ?? null)?.slice(0, 400) ?? null,
-      conversationId: (draftConv ?? convs.find((c) => clientWaiting(c)) ?? convs[0])?.id ?? null,
+      message: (lead.message ?? firstInbound?.body ?? null)?.slice(0, 400) ?? null,
+      conversationId: (draftConv ?? convs[0])?.id ?? null,
       activityAt: new Date(Math.max(lead.updatedAt.getTime(), all[all.length - 1]?.sentAt.getTime() ?? 0)),
     };
   });
 
-  // Messages that belong to no request (an occupant on WhatsApp, a seller, a stranger) still reach a person when they need one.
-  const loose = conversationRows.filter((c) => !used.has(c.id) && (c.proposals.length || clientWaiting(c)));
+  // Our own messages to people outside a request (an owner's invitation, a seller's follow-up) that wait for approval.
+  const loose = conversationRows.filter((c) => !used.has(c.id) && c.proposals.length);
   if (loose.length) {
     const people = await ctx.db.query.contacts.findMany({
       where: and(eq(schema.contacts.agencyId, ctx.agencyId), inArray(schema.contacts.id, loose.map((c) => c.contactId).filter((id): id is string => Boolean(id)))),
@@ -217,7 +221,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         id: c.id,
         kind: "message",
         stage: "needs_you",
-        reason: c.proposals.length ? "draft" : "client_wrote",
+        reason: "draft",
         source: null,
         contact: person
           ? { id: person.id, name: [person.firstName, person.lastName].filter(Boolean).join(" ") || person.email || person.phone || "Unknown", email: person.email, phone: person.phone, language: person.language }
@@ -230,7 +234,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
         reminders: 0,
         viewing: null,
         draft: c.proposals[0] ? { id: c.proposals[0].id, summary: c.proposals[0].summary } : null,
-        message: (clientWaiting(c)?.body ?? c.summary ?? null)?.slice(0, 400) ?? null,
+        message: null,
         conversationId: c.id,
         activityAt: last?.sentAt ?? now,
       });

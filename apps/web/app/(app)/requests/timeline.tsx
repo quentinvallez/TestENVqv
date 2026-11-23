@@ -8,9 +8,9 @@ import { formatDateTime } from "@/lib/format";
 import { categoryMeta } from "@/lib/labels";
 
 /*
- * What happened with a request, oldest first: the client's request, what we
- * sent (and whether it arrived), their answers and the booking notes. Read
- * only: clients' email replies are answered from the agent's own mailbox.
+ * What we sent for a request, oldest first, and whether it arrived, with what
+ * the client did through their link (booked, moved, cancelled). Not a
+ * conversation: what clients write goes to the agent's own mailbox.
  */
 
 /** A message sent without a human approving it: the fixed templates the agency lets go out on their own. */
@@ -49,9 +49,9 @@ export type TimelineConversation = { id: string; channel: string; provider: stri
 
 export function Timeline({ conversations, name, agentName }: { conversations: TimelineConversation[]; name: string; agentName: string | null }) {
   const items = conversations
-    .flatMap((c) => c.messages.map((m) => ({ m, c })))
+    .flatMap((c) => c.messages.filter((m) => m.direction === "outbound" || m.authorType === "system").map((m) => ({ m, c })))
     .sort((a, b) => a.m.sentAt.getTime() - b.m.sentAt.getTime());
-  if (items.length === 0) return <p className="text-muted">Nothing sent or received yet.</p>;
+  if (items.length === 0) return <p className="text-muted">Nothing sent yet.</p>;
   return (
     <ol className="flex flex-col gap-3">
       {items.map(({ m, c }) => {

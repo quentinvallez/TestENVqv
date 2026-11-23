@@ -18,8 +18,7 @@ export function SimulateMessage({
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState("immoweb");
   const [state, formAction, pending] = useActionState(action, undefined);
-  const whatsapp = provider === "whatsapp_business";
-  const portal = !whatsapp;
+  const portal = true;
 
   return (
     <>
@@ -47,11 +46,10 @@ export function SimulateMessage({
                 <option value="immovlan">Immovlan</option>
                 <option value="immoscoop">Immoscoop</option>
                 <option value="website">Website contact form</option>
-                <option value="whatsapp_business">WhatsApp message</option>
               </select>
               <div className="grid grid-cols-2 gap-2">
                 <input name="name" placeholder="Name" className={field} required />
-                <input name="contact" placeholder={whatsapp ? "+32 470 12 34 56" : "Email or phone"} className={field} required />
+                <input name="contact" placeholder="Email or phone" className={field} required />
               </div>
               <select name="listingId" className={field} defaultValue="" required={portal}>
                 <option value="">{portal ? "Which listing?" : "About which listing? (optional)"}</option>

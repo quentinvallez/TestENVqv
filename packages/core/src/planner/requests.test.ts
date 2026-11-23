@@ -19,7 +19,7 @@ const base: RequestFacts = {
   maxReminders: 2,
   lastDeliveryFailed: false,
   pendingDraft: false,
-  clientWroteLast: false,
+  question: false,
 };
 const status = (facts: Partial<RequestFacts>) => requestStatus({ ...base, ...facts }, now);
 
@@ -50,9 +50,8 @@ describe("requestStatus", () => {
     expect(status({ leadStage: "offer" }).stage).toBe("visited");
   });
 
-  it("needs a person for drafts, client messages and failed deliveries, before anything else", () => {
+  it("needs a person for our own drafts and failed deliveries, before anything else", () => {
     expect(status({ leadStage: "booked", hasUpcomingViewing: true, pendingDraft: true })).toEqual({ stage: "needs_you", reason: "draft" });
-    expect(status({ leadStage: "invited", invitedAt: ago(30), clientWroteLast: true })).toEqual({ stage: "needs_you", reason: "client_wrote" });
     expect(status({ leadStage: "invited", invitedAt: ago(1), lastDeliveryFailed: true })).toEqual({ stage: "needs_you", reason: "not_delivered" });
   });
 
@@ -63,6 +62,7 @@ describe("requestStatus", () => {
     expect(status({ listingStatus: null })).toEqual({ stage: "needs_you", reason: "listing_unknown" });
     expect(status({ listingStatus: "under_offer" })).toEqual({ stage: "needs_you", reason: "listing_unavailable" });
     expect(status({})).toEqual({ stage: "needs_you", reason: "not_contacted" });
+    expect(status({ question: true })).toEqual({ stage: "needs_you", reason: "question" });
   });
 
   it("gives the automatic email a few minutes before asking for a person", () => {

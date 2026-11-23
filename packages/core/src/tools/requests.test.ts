@@ -86,7 +86,7 @@ describe.skipIf(!process.env.DATABASE_URL)("viewing requests board", () => {
     const question = await runTool(tools.receiveEmail, ctx, form(2, "Wat is het kadastraal inkomen?"));
     if (question.kind !== "website_form") throw new Error("not a website form");
     expect(question.autoReplied).toBeNull();
-    expect(await item(question.leadId)).toMatchObject({ stage: "needs_you", reason: "draft" });
+    expect(await item(question.leadId)).toMatchObject({ stage: "needs_you", reason: "question", draft: null });
 
     const phoneOnly = await runTool(tools.receivePortalLead, ctx, { portal: "zimmo", name: "Bart Bel", phone: "0477 11 22 33", listingId, visitRequested: true, useAi: false });
     expect(await item(phoneOnly.leadId)).toMatchObject({ stage: "needs_you", reason: "phone_only", source: "zimmo" });
