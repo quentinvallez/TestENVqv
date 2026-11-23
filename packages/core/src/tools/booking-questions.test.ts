@@ -88,6 +88,7 @@ describe.skipIf(!process.env.DATABASE_URL)("booking questions", () => {
       startsAt: slots[2]!.start,
       contact: { firstName: "Questions", email: "questions@example.com", language: "fr", whatsappOptIn: false },
       qualification: { parking: "y", budget: " 450.000 euro ", purpose: "own" },
+      message: "with answers",
     });
     const apt = await db.query.appointments.findFirst({ where: (a, { eq }) => eq(a.id, booked.appointmentId), with: { lead: true } });
     expect(apt!.lead!.qualification).toEqual({
@@ -96,6 +97,20 @@ describe.skipIf(!process.env.DATABASE_URL)("booking questions", () => {
         { id: "budget", question: "Wat is uw budget?", answer: "450.000 euro" },
       ],
     });
+  });
+
+  it("shows the answers on the planned viewing: calendar, viewing list and the request", async () => {
+    const apt = await db.query.appointments.findFirst({ where: (a, { eq }) => eq(a.notes, "with answers"), with: { contact: true } });
+    expect(apt).toBeTruthy();
+    const listed = await runTool(tools.listAppointments, ctx, { from: new Date(apt!.startsAt.getTime() - 60_000), to: new Date(apt!.endsAt.getTime() + 60_000) });
+    const row = listed.find((a) => a.id === apt!.id)!;
+    expect(row.leadId).toBe(apt!.leadId);
+    expect(row.answers.map((a) => a.answer)).toEqual(["Ja", "450.000 euro"]);
+    const request = await runTool(tools.getRequest, ctx, { id: apt!.leadId! });
+    expect(request!.answers.map((a) => a.id)).toEqual(["parking", "budget"]);
+    // Another agency's list never carries them.
+    const other = await runTool(tools.listAppointments, otherCtx, { from: new Date(apt!.startsAt.getTime() - 60_000), to: new Date(apt!.endsAt.getTime() + 60_000) });
+    expect(other.some((a) => a.id === apt!.id)).toBe(false);
   });
 
   it("goes back to the default questions", async () => {

@@ -5,7 +5,7 @@ import { recordEvent } from "../events";
 import { defineTool } from "../tool";
 import { activeAgent, cancelAppointment, lockAgent, lockListing, resolveAgentForListing } from "./booking";
 
-const { appointments, contacts, listings, openHouses } = schema;
+const { appointments, contacts, leads, listings, openHouses } = schema;
 
 const MINUTE = 60_000;
 const MAX_HOURS = 10;
@@ -139,14 +139,16 @@ export const listOpenHouses = defineTool({
             phone: contacts.phone,
             email: contacts.email,
             whatsappOptIn: contacts.whatsappOptIn,
+            qualification: leads.qualification,
           })
           .from(appointments)
           .leftJoin(contacts, eq(contacts.id, appointments.contactId))
+          .leftJoin(leads, and(eq(leads.id, appointments.leadId), eq(leads.agencyId, ctx.agencyId)))
           .where(and(eq(appointments.agencyId, ctx.agencyId), inArray(appointments.openHouseId, rows.map((r) => r.id)), inArray(appointments.status, ["scheduled", "confirmed", "completed", "no_show"])))
           .orderBy(asc(appointments.startsAt), asc(appointments.createdAt))
       : [];
     return rows.map((o) => {
-      const own = visitors.filter((v) => v.openHouseId === o.id);
+      const own = visitors.filter((v) => v.openHouseId === o.id).map(({ qualification, ...v }) => ({ ...v, answers: qualification?.answers ?? [] }));
       const capacity = openHouseCapacity(o);
       return {
         id: o.id,

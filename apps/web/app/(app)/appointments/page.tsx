@@ -69,7 +69,13 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
                   <div className="text-[11px] text-muted">{formatDay(apt.startsAt)}</div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{fullName(apt.contactFirstName, apt.contactLastName)}</div>
+                  {apt.leadId ? (
+                    <Link href={`/requests/${apt.leadId}`} className="block truncate font-medium">
+                      {fullName(apt.contactFirstName, apt.contactLastName)}
+                    </Link>
+                  ) : (
+                    <div className="truncate font-medium">{fullName(apt.contactFirstName, apt.contactLastName)}</div>
+                  )}
                   <div className="truncate text-[12px] text-muted">
                     {address(apt.listingStreet, apt.listingHouseNumber, apt.listingCity) || apt.location}
                     {apt.openHouseId && " · open house"}
@@ -103,7 +109,16 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
                   <td className="py-2.5 pr-3 pl-5 whitespace-nowrap tabular-nums">
                     {formatDay(apt.startsAt)} · {formatTime(apt.startsAt)}
                   </td>
-                  <td className="px-3 font-medium">{fullName(apt.contactFirstName, apt.contactLastName)}</td>
+                  <td className="px-3 font-medium">
+                    {apt.leadId ? (
+                      <Link href={`/requests/${apt.leadId}`} className="hover:underline">
+                        {fullName(apt.contactFirstName, apt.contactLastName)}
+                      </Link>
+                    ) : (
+                      fullName(apt.contactFirstName, apt.contactLastName)
+                    )}
+                    {apt.answers.length > 0 && <span className="ml-1.5 text-[12px] font-normal text-muted">{apt.answers.length} answers</span>}
+                  </td>
                   <td className="px-3">
                     {apt.listingId ? (
                       <Link href={`/listings/${apt.listingId}`} className="hover:underline">

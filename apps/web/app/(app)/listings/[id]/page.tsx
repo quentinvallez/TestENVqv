@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { runTool, tools } from "@viewing/core";
 import { CalendarDays, ExternalLink, FileText, ImagePlus, KeyRound, Megaphone, MessageSquare, NotebookPen, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { BookingAnswers } from "@/components/booking-answers";
 import { CopyLinkButton } from "@/components/copy-link";
 import { addOccupantAction, assignAgentAction, cancelOpenHouseAction, planOpenHouseAction, setListingAccessAction, suggestToMatchesAction, updateOccupantAction } from "../../actions";
 import { OccupantForm } from "./occupant-form";
@@ -208,6 +209,7 @@ export default async function ListingPage({ params, searchParams }: { params: Pr
                               {fullName(v.firstName, v.lastName)}
                             </Link>
                             <span className="text-[12px] text-muted">{[v.phone, v.email].filter(Boolean).join(" · ")}</span>
+                            <BookingAnswers answers={v.answers} compact className="w-full pl-15" />
                           </li>
                         ))}
                       </ul>
