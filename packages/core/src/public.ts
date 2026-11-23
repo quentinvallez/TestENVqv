@@ -1,4 +1,5 @@
-import { and, db, eq, getTableColumns, inArray, schema, sql } from "@viewing/db";
+import { and, db, eq, getTableColumns, gt, inArray, schema, sql } from "@viewing/db";
+import { hashSignupToken, platformAgencyId } from "./tools/signups";
 import type { ToolContext } from "./tool";
 import { looksLikeListingUrl, normalizeUrl, sameSite } from "./website/extract";
 import { previewPageHtml } from "./website/preview";
@@ -233,6 +234,55 @@ export async function invitationForLink(invitationId: string) {
   };
 }
 
+/** An approved workspace request, from the secret in its link (/join/<token>). */
+export async function signupByToken(token: string) {
+  const agencyId = platformAgencyId();
+  if (!agencyId || token.length < 10) return null;
+  const [row] = await db
+    .select()
+    .from(schema.signupRequests)
+    .where(and(eq(schema.signupRequests.agencyId, agencyId), eq(schema.signupRequests.tokenHash, hashSignupToken(token))));
+  if (!row) return null;
+  const [existing] = await db.select({ id: schema.user.id }).from(schema.user).where(sql`lower(${schema.user.email}) = ${row.email.toLowerCase()}`);
+  return {
+    platformAgencyId: agencyId,
+    agencyName: row.agencyName,
+    website: row.website,
+    name: row.name,
+    email: row.email,
+    hasAccount: Boolean(existing),
+    state:
+      row.status === "completed"
+        ? ("used" as const)
+        : row.status !== "approved"
+          ? ("closed" as const)
+          : (row.tokenExpiresAt?.getTime() ?? 0) < Date.now()
+            ? ("expired" as const)
+            : ("open" as const),
+  };
+}
+
+/**
+ * Whether a new login may be created for this email: only with an agent invitation still
+ * open, or a workspace request we approved whose link still works. Nobody signs up on their own.
+ */
+export async function mayCreateLogin(email: string) {
+  const address = email.trim().toLowerCase();
+  const now = new Date();
+  const [invited] = await db
+    .select({ id: schema.invitation.id })
+    .from(schema.invitation)
+    .where(and(sql`lower(${schema.invitation.email}) = ${address}`, eq(schema.invitation.status, "pending"), gt(schema.invitation.expiresAt, now)))
+    .limit(1);
+  if (invited) return true;
+  const [approved] = await db
+    .select({ id: schema.signupRequests.id })
+    .from(schema.signupRequests)
+    .where(and(sql`lower(${schema.signupRequests.email}) = ${address}`, eq(schema.signupRequests.status, "approved"), gt(schema.signupRequests.tokenExpiresAt, now)))
+    .limit(1);
+  return Boolean(approved);
+}
+
 /** The agency a login belongs to (its oldest membership), for emails sent before anyone is logged in. */
 export async function agencyOfUser(userId: string) {
   const [row] = await db
@@ -277,3 +327,5 @@ export async function shortLinkTarget(code: string): Promise<string | null> {
   const [row] = await db.select({ target: schema.shortLinks.target }).from(schema.shortLinks).where(eq(schema.shortLinks.code, code));
   return row && /^https?:\/\//i.test(row.target) ? row.target : null;
 }
+
+export { platformAgencyId } from "./tools/signups";

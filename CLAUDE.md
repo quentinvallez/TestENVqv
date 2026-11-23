@@ -48,6 +48,7 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 ## Team and logins
 
 - Logins are Better Auth organization members (`member`, `invitation`); an agent record is tied to its login by `agents.userId`, matched by email on accept (`team_*` tools in `tools/team.ts`). Admins (`owner`/`admin`) invite agents from the agent page (link at `/invite/<id>`, emailed in the agent's language via `emailAgent`, valid 7 days), change roles and remove logins; removing a login keeps the agent and their viewings. Agents (`member`) can't change settings: server actions that change settings start with `requireAdmin()`. "Forgot password" (`/forgot-password`, `/reset-password`) emails a 1-hour link through `team_send_password_reset` (the login's agency via `agencyOfUser`); `team_get_my_agent` gives the menu's "My page" link.
+- New agencies never sign up on their own (`signups_*` tools in `tools/signups.ts`): `/signup` stores a request for the platform agency (`PLATFORM_AGENCY_ID`, else `PREVIEW_AGENCY_ID`), whose admins approve it at `/signups`; the emailed `/join/<token>` link (7 days, token stored hashed) creates the login and, on the server (`auth.api.createOrganization` with `userId`), the workspace. Logins are only created from such a link or an agent invitation (`mayCreateLogin` in the Better Auth user hook); clients can't create organizations. `DPA_URL`/`DPA_VERSION` turn on DPA acceptance at join.
 
 ## Client data (GDPR)
 

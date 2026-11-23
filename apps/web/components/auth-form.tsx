@@ -18,22 +18,8 @@ function Field({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> 
   );
 }
 
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-
-async function createAgency(name: string) {
-  const suffix = Math.random().toString(36).slice(2, 6);
-  const { error } = await authClient.organization.create({ name, slug: `${slugify(name) || "agency"}-${suffix}` });
-  if (error) throw new Error(error.message);
-}
-
-export function AuthForm({ mode, notice }: { mode: "login" | "signup" | "onboarding"; notice?: string }) {
+/** The login form. New logins come from an invitation or an approved workspace request, never from here. */
+export function AuthForm({ notice }: { notice?: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -45,18 +31,9 @@ export function AuthForm({ mode, notice }: { mode: "login" | "signup" | "onboard
     setError(null);
     setPending(true);
     try {
-      if (mode === "login") {
-        const { error } = await authClient.signIn.email({ email: get("email"), password: get("password") });
-        if (error) throw new Error(error.message);
-      } else if (mode === "signup") {
-        const { error } = await authClient.signUp.email({ name: get("name"), email: get("email"), password: get("password") });
-        if (error) throw new Error(error.message);
-        await createAgency(get("agency"));
-      } else {
-        await createAgency(get("agency"));
-      }
-      // A new workspace starts with the two setup steps: its website, and the line to put on it.
-      router.push(mode === "login" ? "/" : "/widget");
+      const { error } = await authClient.signIn.email({ email: get("email"), password: get("password") });
+      if (error) throw new Error(error.message);
+      router.push("/");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -64,60 +41,29 @@ export function AuthForm({ mode, notice }: { mode: "login" | "signup" | "onboard
     }
   }
 
-  const title = { login: "Log in", signup: "Create your workspace", onboarding: "Name your agency" }[mode];
-  const subtitle = {
-    login: "Welcome back.",
-    signup: "Set up your agency in under a minute.",
-    onboarding: "You need an agency workspace to continue.",
-  }[mode];
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-tight">{title}</h1>
-        <p className="mt-1 text-muted">{subtitle}</p>
+        <h1 className="text-[20px] font-semibold tracking-tight">Log in</h1>
+        <p className="mt-1 text-muted">Welcome back.</p>
       </div>
-      {mode === "signup" && <Field label="Your name" name="name" required autoComplete="name" placeholder="Sofie Peeters" />}
-      {mode !== "login" && <Field label="Agency name" name="agency" required placeholder="Immo Peeters" />}
       {notice && <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-success">{notice}</p>}
-      {mode !== "onboarding" && (
-        <>
-          <Field label="Work email" name="email" type="email" required autoComplete="email" placeholder="you@agency.be" />
-          <Field
-            label="Password"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-          />
-          {mode === "login" && (
-            <Link href="/forgot-password" className="-mt-2 self-end text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">
-              Forgot password?
-            </Link>
-          )}
-        </>
-      )}
+      <Field label="Work email" name="email" type="email" required autoComplete="email" placeholder="you@agency.be" />
+      <Field label="Password" name="password" type="password" required minLength={8} autoComplete="current-password" />
+      <Link href="/forgot-password" className="-mt-2 self-end text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">
+        Forgot password?
+      </Link>
       {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{error}</p>}
       <Button variant="primary" className="h-9" disabled={pending}>
-        {pending ? "One moment…" : mode === "login" ? "Log in" : "Continue"}
+        {pending ? "One moment…" : "Log in"}
       </Button>
-      {mode === "login" && (
-        <p className="text-center text-muted">
-          New here?{" "}
-          <Link href="/signup" className="text-fg underline-offset-2 hover:underline">
-            Create a workspace
-          </Link>
-        </p>
-      )}
-      {mode === "signup" && (
-        <p className="text-center text-muted">
-          Already have an account?{" "}
-          <Link href="/login" className="text-fg underline-offset-2 hover:underline">
-            Log in
-          </Link>
-        </p>
-      )}
+      <p className="text-center text-muted">
+        New agency?{" "}
+        <Link href="/signup" className="text-fg underline-offset-2 hover:underline">
+          Request access
+        </Link>
+      </p>
     </form>
   );
 }

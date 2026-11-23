@@ -1,6 +1,7 @@
 import { db, schema } from "@viewing/db";
 import { runTool, tools, type ToolContext } from "@viewing/core";
-import { agencyOfUser } from "@viewing/core/public";
+import { agencyOfUser, mayCreateLogin } from "@viewing/core/public";
+import { APIError } from "better-auth/api";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
@@ -28,9 +29,25 @@ export const auth = betterAuth({
       await runTool(tools.sendPasswordReset, ctx, { userId: user.id, email: user.email, name: user.name, link: url });
     },
   },
+  databaseHooks: {
+    user: {
+      create: {
+        // Nobody signs up on their own: a login is made from an agent invitation or from a
+        // workspace request we approved. Both links were emailed, so the address is verified.
+        before: async (user) => {
+          if (!(await mayCreateLogin(user.email))) {
+            throw new APIError("FORBIDDEN", { message: "Logins are created from an invitation. Ask your office for one, or request access on the sign-up page." });
+          }
+          return { data: { ...user, emailVerified: true } };
+        },
+      },
+    },
+  },
   session: { cookieCache: { enabled: true, maxAge: 5 * 60 } },
   plugins: [
     organization({
+      // Workspaces are only created on the server, from an approved request (/join/<link>).
+      allowUserToCreateOrganization: false,
       // Agents get a week to accept; inviting again replaces the old invitation (and its link).
       invitationExpiresIn: 7 * 24 * 60 * 60,
       cancelPendingInvitationsOnReInvite: true,
