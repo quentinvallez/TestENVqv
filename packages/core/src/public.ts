@@ -250,6 +250,7 @@ export async function signupByToken(token: string) {
     website: row.website,
     name: row.name,
     email: row.email,
+    language: row.language,
     hasAccount: Boolean(existing),
     state:
       row.status === "completed"

@@ -42,7 +42,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         title: "Wie ziet ze?",
         body: [
           `De medewerkers van ${f.agency}. De eigenaar of huurder van een woning ziet enkel uw voornaam, de eerste letter van uw achternaam en het tijdstip van uw bezoek.`,
-          "Dienstverleners die de software laten werken: hosting en database in Frankfurt, e-mail via de mailbox van uw makelaar of een Europese e-maildienst, WhatsApp (Meta) als u daarvoor kiest, en een AI-dienst die antwoorden helpt opstellen, die een medewerker naleest (buiten de EU, met de standaardcontractbepalingen van de EU). Uw gegevens worden nooit verkocht.",
+          "Dienstverleners die de software laten werken: hosting en database in Frankfurt, e-mail via de mailbox van uw makelaar of een Europese e-maildienst, WhatsApp (Meta, ook in de VS) als u daarvoor kiest, en een AI-dienst die antwoorden helpt opstellen, die een medewerker naleest (buiten de EU, met de standaardcontractbepalingen van de EU). Uw gegevens worden nooit verkocht.",
         ],
       },
       {
@@ -96,7 +96,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         title: "Qui les voit ?",
         body: [
           `Le personnel de ${f.agency}. Le propriétaire ou locataire d'un bien ne voit que votre prénom, l'initiale de votre nom et l'heure de votre visite.`,
-          "Les prestataires qui font fonctionner le logiciel : hébergement et base de données à Francfort, e-mail via la boîte de votre agent ou un service e-mail européen, WhatsApp (Meta) si vous le choisissez, et un service d'IA qui aide à rédiger des réponses, relues par un membre de l'agence (hors de l'UE, avec les clauses contractuelles types de l'UE). Vos données ne sont jamais vendues.",
+          "Les prestataires qui font fonctionner le logiciel : hébergement et base de données à Francfort, e-mail via la boîte de votre agent ou un service e-mail européen, WhatsApp (Meta, y compris aux États-Unis) si vous le choisissez, et un service d'IA qui aide à rédiger des réponses, relues par un membre de l'agence (hors de l'UE, avec les clauses contractuelles types de l'UE). Vos données ne sont jamais vendues.",
         ],
       },
       {
@@ -150,7 +150,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         title: "Who sees it?",
         body: [
           `The staff of ${f.agency}. The owner or tenant of a home only sees your first name, the initial of your last name and the time of your viewing.`,
-          "The providers that run the software: hosting and database in Frankfurt, email through your agent's mailbox or a European email service, WhatsApp (Meta) if you choose it, and an AI service that helps draft replies, which a member of staff reads first (outside the EU, under the EU's standard contractual clauses). Your data is never sold.",
+          "The providers that run the software: hosting and database in Frankfurt, email through your agent's mailbox or a European email service, WhatsApp (Meta, also in the US) if you choose it, and an AI service that helps draft replies, which a member of staff reads first (outside the EU, under the EU's standard contractual clauses). Your data is never sold.",
         ],
       },
       {
@@ -204,7 +204,7 @@ export const privacyText: Record<WidgetLang, { title: (agency: string) => string
         title: "Wer sieht sie?",
         body: [
           `Die Mitarbeitenden von ${f.agency}. Der Eigentümer oder Mieter einer Immobilie sieht nur Ihren Vornamen, den ersten Buchstaben Ihres Nachnamens und die Uhrzeit Ihrer Besichtigung.`,
-          "Dienstleister, die die Software betreiben: Hosting und Datenbank in Frankfurt, E-Mail über das Postfach Ihres Maklers oder einen europäischen E-Mail-Dienst, WhatsApp (Meta), wenn Sie es wählen, und ein KI-Dienst, der beim Formulieren von Antworten hilft, die ein Mitarbeiter zuerst liest (außerhalb der EU, mit den Standardvertragsklauseln der EU). Ihre Daten werden nie verkauft.",
+          "Dienstleister, die die Software betreiben: Hosting und Datenbank in Frankfurt, E-Mail über das Postfach Ihres Maklers oder einen europäischen E-Mail-Dienst, WhatsApp (Meta, auch in den USA), wenn Sie es wählen, und ein KI-Dienst, der beim Formulieren von Antworten hilft, die ein Mitarbeiter zuerst liest (außerhalb der EU, mit den Standardvertragsklauseln der EU). Ihre Daten werden nie verkauft.",
         ],
       },
       {
