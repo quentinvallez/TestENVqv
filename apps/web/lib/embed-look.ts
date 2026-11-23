@@ -3,21 +3,11 @@
  * turned into the design tokens of the embedded widget so it blends into the site.
  * Only plain hex colours and font names get through; anything else falls back to our defaults.
  */
+import { luminance, textOn } from "@viewing/core/colour";
+
 type Query = { bg?: string; fg?: string; brand?: string; font?: string; hfont?: string; fontsrc?: string; hfontsrc?: string };
 
 const HEX = /^#[0-9a-f]{6}$/i;
-
-function channels(hex: string) {
-  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-}
-
-function luminance(hex: string) {
-  const [r, g, b] = channels(hex).map((n) => {
-    const v = n / 255;
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
-}
 
 function expand(value?: string) {
   if (!value) return null;
@@ -42,8 +32,7 @@ export function embedLook(query: Query, savedBrand?: string | null): React.CSSPr
   if (brand) {
     style["--brand"] = brand;
     // White or near-black text on the brand colour, whichever reads better.
-    const l = luminance(brand);
-    style["--brand-fg"] = (1.05 / (l + 0.05)) >= ((l + 0.05) / 0.0555) ? "#ffffff" : "#111111";
+    style["--brand-fg"] = textOn(brand);
   } else {
     style["--brand"] = "var(--primary)";
     style["--brand-fg"] = "var(--primary-fg)";

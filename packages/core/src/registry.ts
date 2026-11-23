@@ -14,7 +14,7 @@ import { availableSlots, bookValuationVisit, bookViewing, cancelAppointment, get
 import { getValuation, listValuations, requestValuation, verifyValuation } from "./tools/valuations";
 import { findMatchingClients, recommendForContact, similarListings, suggestListings, suggestListingToMatches } from "./tools/recommendations";
 import { bookingQuestionsForWidget, getBookingQuestions, updateBookingQuestions } from "./tools/booking-questions";
-import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateWidgetSettings } from "./tools/settings";
+import { getWidgetSettings, noteWidgetSeen, readWebsiteLook, updateBrandColour, updateWidgetSettings } from "./tools/settings";
 import { channelsStatus, checkWhatsApp, connectCalendar, connectWhatsApp, disconnectCalendar, listAgentsWithoutMailbox, listConnections, listUndeliveredMessages, markEmailBounced, receiveEmail, receivePortalLead, receiveWhatsApp } from "./tools/channels";
 import { getAutomationSettings, listAutomationRuns, markAttendance, runAutomationsNow, updateAutomationSettings } from "./tools/automations";
 import { approveSignup, claimSignup, declineSignup, finishSignup, listSignups, releaseSignup, requestSignup } from "./tools/signups";
@@ -31,6 +31,7 @@ export const tools = {
   listListings,
   getWidgetSettings,
   updateWidgetSettings,
+  updateBrandColour,
   getBookingQuestions,
   bookingQuestionsForWidget,
   updateBookingQuestions,

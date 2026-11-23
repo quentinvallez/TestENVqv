@@ -42,6 +42,28 @@ describe.skipIf(!process.env.DATABASE_URL)("setting up the agency's website", ()
     expect(look).toMatchObject({ brandColor: "#aa0000", colourFromSite: false });
   });
 
+  it("lets the agency type its own colour, and go back to the one read from its website", async () => {
+    await db.update(schema.agencySettings).set({ branding: {} }).where(eq(schema.agencySettings.agencyId, agencyId));
+    await runTool(tools.readWebsiteLook, ctx, {});
+    expect(await runTool(tools.getWidgetSettings, ctx, {})).toMatchObject({ brandColor: "#1e3a31", detectedColor: "#1e3a31", colourChosen: false });
+
+    expect(await runTool(tools.updateBrandColour, ctx, { brandColor: "rgb(200, 16, 46)" })).toEqual({ brandColor: "#c8102e", detectedColor: "#1e3a31", colourChosen: true });
+    // Reading the website again keeps the chosen colour but notes what the site shows now.
+    expect(await runTool(tools.readWebsiteLook, ctx, {})).toMatchObject({ brandColor: "#c8102e", colourFromSite: false });
+    await expect(runTool(tools.updateBrandColour, ctx, { brandColor: "red" })).rejects.toThrow(/colour code/);
+
+    expect(await runTool(tools.updateBrandColour, ctx, { brandColor: null })).toEqual({ brandColor: "#1e3a31", detectedColor: "#1e3a31", colourChosen: false });
+    // Typing the website's own colour is the same as going back to it: a later read may update it.
+    expect(await runTool(tools.updateBrandColour, ctx, { brandColor: "#1E3A31" })).toMatchObject({ colourChosen: false });
+  });
+
+  it("without a colour from the website, a reset leaves each page's own colour", async () => {
+    await db.update(schema.agencySettings).set({ branding: { primaryColor: "#aa0000", logoUrl: "https://x/logo.png" } }).where(eq(schema.agencySettings.agencyId, agencyId));
+    expect(await runTool(tools.updateBrandColour, ctx, { brandColor: null })).toEqual({ brandColor: null, detectedColor: null, colourChosen: false });
+    const [row] = await db.select({ branding: schema.agencySettings.branding }).from(schema.agencySettings).where(eq(schema.agencySettings.agencyId, agencyId));
+    expect(row?.branding).toEqual({ logoUrl: "https://x/logo.png" });
+  });
+
   it("notes where the script runs, once every few minutes, and whether that is the agency's website", async () => {
     expect(await runTool(tools.noteWidgetSeen, ctx, { url: `${home}/pand/villa` })).toEqual({ noted: true });
     expect(await runTool(tools.noteWidgetSeen, ctx, { url: `${home}/contact` })).toEqual({ noted: false });

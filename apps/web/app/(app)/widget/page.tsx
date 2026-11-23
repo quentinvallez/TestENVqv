@@ -47,10 +47,11 @@ export default async function WidgetPage({ searchParams }: { searchParams: Promi
                   {listings.length} listings on offer · see what we found
                 </Link>
                 {widget.brandColor && (
-                  <span className="inline-flex items-center gap-1.5">
+                  <Link href="/settings#colour" className="inline-flex items-center gap-1.5 underline-offset-2 hover:underline">
                     <span className="size-3 rounded-full border border-line" style={{ background: widget.brandColor }} />
                     Button colour {widget.brandColor}
-                  </span>
+                    {widget.colourChosen ? " (yours)" : ""} · change
+                  </Link>
                 )}
               </p>
             )}

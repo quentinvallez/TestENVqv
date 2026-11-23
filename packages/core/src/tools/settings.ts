@@ -1,5 +1,6 @@
 import { eq, schema } from "@viewing/db";
 import { z } from "zod";
+import { parseColour } from "../colour";
 import { recordEvent } from "../events";
 import { defineTool } from "../tool";
 import { normalizeUrl, sameSite } from "../website/extract";
@@ -25,6 +26,7 @@ export const getWidgetSettings = defineTool({
       bookingLauncher: row?.widget.bookingLauncher ?? true,
       websiteUrl: row?.websiteUrl ?? null,
       brandColor: row?.branding.primaryColor ?? null,
+      ...brandSource(row?.branding),
       siteBuilder: row?.widget.siteBuilder ?? null,
       /** The install check: where the script last ran, and whether that is the agency's own website (where booking works). */
       seen: seen && { ...seen, onWebsite: Boolean(row?.websiteUrl && sameSite(seen.url, row.websiteUrl)) },
@@ -46,6 +48,52 @@ export const updateWidgetSettings = defineTool({
       .onConflictDoUpdate({ target: agencySettings.agencyId, set: { widget } });
     await recordEvent(ctx, { type: "settings.widget_updated", subjectType: "agency", subjectId: ctx.agencyId, data: widget });
     return widget;
+  },
+});
+
+/**
+ * Where the button colour comes from: read from the website, or chosen by the agency.
+ * Colours read before `detectedColor` existed count as read when `detectedFrom` is set.
+ */
+function brandSource(branding?: schema.Branding) {
+  const detectedColor = branding?.detectedColor ?? (branding?.detectedFrom ? branding.primaryColor : undefined) ?? null;
+  return { detectedColor, colourChosen: Boolean(branding?.primaryColor && !branding.detectedFrom) };
+}
+
+export const updateBrandColour = defineTool({
+  name: "settings_update_brand_colour",
+  description:
+    "Set the agency's own colour for the widget and the floating buttons on its website, as a hex or RGB code; null goes back to the colour read from the website (or, when none was read, to the colour of each page).",
+  mutates: true,
+  input: z.object({ brandColor: z.string().max(40).nullable() }),
+  run: async (ctx, input) => {
+    const colour = input.brandColor === null ? null : parseColour(input.brandColor);
+    if (input.brandColor !== null && !colour) throw new Error("Use a colour code like #1e3a31 or rgb(30, 58, 49).");
+    const [row] = await ctx.db
+      .select({ websiteUrl: agencySettings.websiteUrl, branding: agencySettings.branding })
+      .from(agencySettings)
+      .where(eq(agencySettings.agencyId, ctx.agencyId));
+    const { detectedColor } = brandSource(row?.branding);
+    const { primaryColor: _p, detectedFrom: _d, detectedColor: _c, ...rest } = row?.branding ?? {};
+    const site = row?.branding.detectedFrom ?? row?.websiteUrl ?? undefined;
+    const fromSite = (colour ?? detectedColor) && (colour ?? detectedColor) === detectedColor;
+    const branding: schema.Branding = {
+      ...rest,
+      ...(detectedColor ? { detectedColor } : {}),
+      ...(colour ? { primaryColor: colour } : detectedColor ? { primaryColor: detectedColor } : {}),
+      ...(fromSite && site ? { detectedFrom: site } : {}),
+    };
+    await ctx.db
+      .insert(agencySettings)
+      .values({ agencyId: ctx.agencyId, branding })
+      .onConflictDoUpdate({ target: agencySettings.agencyId, set: { branding } });
+    await recordEvent(ctx, {
+      type: "settings.brand_colour_updated",
+      subjectType: "agency",
+      subjectId: ctx.agencyId,
+      data: { brandColor: branding.primaryColor ?? null, reset: input.brandColor === null },
+    });
+    return { brandColor: branding.primaryColor ?? null, ...brandSource(branding) };
   },
 });
 
@@ -98,7 +146,8 @@ export const readWebsiteLook = defineTool({
     const builder = siteBuilder(home.html);
     // A colour someone chose stays; one we read earlier is replaced when the site changed.
     const keepColour = row?.branding.primaryColor && !row.branding.detectedFrom;
-    const branding = keepColour || !colour ? (row?.branding ?? {}) : { ...row?.branding, primaryColor: colour, detectedFrom: site };
+    const read = colour ? { detectedColor: colour } : {};
+    const branding = keepColour || !colour ? { ...row?.branding, ...read } : { ...row?.branding, primaryColor: colour, detectedFrom: site, ...read };
     const widget = { ...row?.widget, siteBuilder: builder ?? undefined };
     await ctx.db
       .insert(agencySettings)

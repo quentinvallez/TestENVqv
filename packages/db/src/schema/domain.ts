@@ -27,7 +27,10 @@ export type Branding = {
   primaryColor?: string;
   accentColor?: string;
   fontFamily?: string;
+  /** Set while primaryColor is the colour read from this website; unset once the agency picks its own. */
   detectedFrom?: string;
+  /** The colour last read from the agency's website, kept for "reset to my website's colour". */
+  detectedColor?: string;
 };
 
 /** Text in the client languages; a missing language falls back to the agency's own, then any other. */
