@@ -5,16 +5,19 @@ import { Avatar, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui
 import { getToolContext } from "@/lib/context";
 import { saveAgentAction } from "../actions";
 import { AddAgent, AgentEmail } from "./agent-forms";
+import { getT } from "@/lib/i18n/server";
+import { msg } from "@/lib/i18n";
 
 type Agent = Awaited<ReturnType<typeof tools.listAgents.run>>[number];
 
 /** Connected calendar, or the buttons to connect one; Outlook first, also for personal Microsoft accounts. */
-function CalendarCell({ agent, available }: { agent: Agent; available: { google: boolean; microsoft: boolean } }) {
+async function CalendarCell({ agent, available }: { agent: Agent; available: { google: boolean; microsoft: boolean } }) {
+  const t = await getT();
   if (agent.calendarProvider) {
     return (
       <span className="flex items-center gap-1.5">
         <StatusDot color="var(--success)" />
-        {agent.calendarProvider === "google" ? "Google Calendar" : "Outlook"}
+        {agent.calendarProvider === "google" ? t("Google Calendar") : "Outlook"}
       </span>
     );
   }
@@ -23,7 +26,7 @@ function CalendarCell({ agent, available }: { agent: Agent; available: { google:
     return (
       <span className="flex items-center gap-1.5 text-muted">
         <StatusDot color="var(--line-strong)" />
-        Not connected
+        {t("Not connected")}
       </span>
     );
   }
@@ -31,7 +34,7 @@ function CalendarCell({ agent, available }: { agent: Agent; available: { google:
     <span className="flex flex-wrap gap-1.5">
       {providers.map((p) => (
         <a key={p} href={`/api/calendar/${p}/start?agentId=${agent.id}`} className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover">
-          Connect {p === "google" ? "Google" : "Outlook"}
+          {t("Connect {provider}", { provider: p === "google" ? "Google" : "Outlook" })}
         </a>
       ))}
     </span>
@@ -39,13 +42,14 @@ function CalendarCell({ agent, available }: { agent: Agent; available: { google:
 }
 
 /** Can the agent log in: role, invited, or not yet. */
-function LoginCell({ agent }: { agent: Agent }) {
+async function LoginCell({ agent }: { agent: Agent }) {
+  const t = await getT();
   const { login } = agent;
   if (login.status === "member") {
     return (
       <span className="flex items-center gap-1.5">
         <StatusDot color="var(--success)" />
-        {{ owner: "Owner", admin: "Admin", member: "Agent" }[login.role]}
+        {t({ owner: msg("Owner"), admin: msg("Admin"), member: msg("Agent") }[login.role])}
       </span>
     );
   }
@@ -53,27 +57,28 @@ function LoginCell({ agent }: { agent: Agent }) {
     return (
       <span className="flex items-center gap-1.5 text-muted">
         <StatusDot color={login.expired ? "var(--danger)" : "var(--warning)"} />
-        {login.expired ? "Invitation expired" : "Invited"}
+        {login.expired ? t("Invitation expired") : t("Invited")}
       </span>
     );
   }
   return (
     <Link href={`/agents/${agent.id}`} className="flex items-center gap-1.5 text-muted hover:text-fg">
       <StatusDot color="var(--line-strong)" />
-      No login
+      {t("No login")}
     </Link>
   );
 }
 
 export default async function AgentsPage() {
+  const t = await getT();
   const agents = await runTool(tools.listAgents, await getToolContext(), {});
   const available = { google: oauthConfigured("google"), microsoft: oauthConfigured("microsoft") };
   return (
     <>
-      <PageHeader crumbs={[{ label: "Agents" }]} actions={<AddAgent action={saveAgentAction} />} />
+      <PageHeader crumbs={[{ label: t("Agents") }]} actions={<AddAgent action={saveAgentAction} />} />
       <div className="flex-1 overflow-auto">
         {agents.length === 0 ? (
-          <EmptyState icon={<Users className="size-5" />} title="No agents" description="Add the agents whose calendars the planner should fill." />
+          <EmptyState icon={<Users className="size-5" />} title={t("No agents")} description={t("Add the agents whose calendars the planner should fill.")} />
         ) : (
           <>
           <ul className="divide-y divide-line md:hidden">
@@ -84,10 +89,10 @@ export default async function AgentsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{a.name}</span>
-                      {a.source === "website" && <Pill>From website</Pill>}
+                      {a.source === "website" && <Pill>{t("From website")}</Pill>}
                     </div>
                     <div className="truncate text-[12px] text-muted">
-                      {a.officeName ?? "No office"} · {a.activeListings} listings · {a.upcomingAppointments} viewings
+                      {a.officeName ?? t("No office")} · {t("{n} listings", { n: a.activeListings })} · {t("{n} viewings", { n: a.upcomingAppointments })}
                     </div>
                   </div>
                   <StatusDot color={a.calendarProvider ? "var(--success)" : "var(--line-strong)"} />
@@ -103,12 +108,12 @@ export default async function AgentsPage() {
           <table className="hidden w-full min-w-[860px] text-left md:table">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
-                <th className="py-2 pr-3 pl-5 font-normal">Agent</th>
-                <th className="px-3 font-normal">Office</th>
-                <th className="px-3 font-normal">Active listings</th>
-                <th className="px-3 font-normal">Upcoming viewings</th>
-                <th className="px-3 font-normal">Login</th>
-                <th className="py-2 pr-5 pl-3 font-normal">Calendar</th>
+                <th className="py-2 pr-3 pl-5 font-normal">{t("Agent")}</th>
+                <th className="px-3 font-normal">{t("Office")}</th>
+                <th className="px-3 font-normal">{t("Active listings")}</th>
+                <th className="px-3 font-normal">{t("Upcoming viewings")}</th>
+                <th className="px-3 font-normal">{t("Login")}</th>
+                <th className="py-2 pr-5 pl-3 font-normal">{t("Calendar")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -122,7 +127,7 @@ export default async function AgentsPage() {
                       <div className="min-w-0">
                         <Link href={`/agents/${a.id}`} className="flex items-center gap-2">
                           <span className="font-medium hover:underline">{a.name}</span>
-                          {a.source === "website" && <Pill>From website</Pill>}
+                          {a.source === "website" && <Pill>{t("From website")}</Pill>}
                         </Link>
                         <div className="text-[12px] text-muted">
                           <AgentEmail agentId={a.id} email={a.email} action={saveAgentAction} />

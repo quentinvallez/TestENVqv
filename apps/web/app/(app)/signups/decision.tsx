@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { Button } from "@/components/ui";
 import type { DecisionState } from "./actions";
+import { useT } from "@/lib/i18n/client";
 
 export function Decision({
   approve,
@@ -13,19 +14,20 @@ export function Decision({
   decline: (() => Promise<void>) | null;
   approveLabel: string;
 }) {
+  const t = useT();
   const [state, approveAction, pending] = useActionState(approve, undefined);
   return (
     <div className="flex flex-col items-start gap-1.5 md:items-end">
       <div className="flex items-center gap-1.5">
         <form action={approveAction}>
           <Button size="sm" variant="primary" disabled={pending}>
-            {pending ? "Sending…" : approveLabel}
+            {pending ? t("Sending…") : approveLabel}
           </Button>
         </form>
         {decline && (
           <form action={decline}>
             <Button size="sm" variant="ghost">
-              Decline
+              {t("Decline")}
             </Button>
           </form>
         )}

@@ -6,10 +6,26 @@ import { ChannelMark, providerOf } from "@/components/channel";
 import { AiPill, Avatar, Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getSession, getToolContext } from "@/lib/context";
-import { address, formatDateTime, fullName } from "@/lib/format";
+import { address, fullName } from "@/lib/format";
 import { appointmentStatusMeta, categoryMeta, leadStageMeta, reasonLabel, sourceLabel, temperatureMeta } from "@/lib/labels";
 import { draftFollowUpAction, eraseContactAction, suggestListingsAction } from "../../actions";
 import { PrivacyPanel } from "./privacy-panel";
+import { getT } from "@/lib/i18n/server";
+import type { T } from "@/lib/i18n";
+
+/** The history titles come from the contacts tool in English; known ones are shown in the back-office language. */
+function entryTitle(t: T, entry: TimelineEntry) {
+  const fixed: Record<string, string> = {
+    "Booked on the website": t("Booked on the website"),
+    "Changed via booking link": t("Changed via booking link"),
+    "Message from client": t("Message from client"),
+    "Reply sent": t("Reply sent"),
+  };
+  if (fixed[entry.title]) return fixed[entry.title];
+  if (entry.kind === "lead" && entry.title.startsWith("Interested in ")) return t("Interested in {place}", { place: entry.title.slice("Interested in ".length) });
+  if (entry.kind === "viewing" && entry.title.startsWith("Viewing ")) return t("Viewing {place}", { place: entry.title.slice("Viewing ".length) });
+  return entry.title;
+}
 
 function EntryIcon({ entry }: { entry: TimelineEntry }) {
   if (entry.kind === "message" || entry.kind === "draft") {
@@ -24,6 +40,7 @@ function EntryIcon({ entry }: { entry: TimelineEntry }) {
 }
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = await getT();
   const { id } = await params;
   const ctx = await getToolContext();
   const { isAdmin } = await getSession();
@@ -41,13 +58,13 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
   return (
     <>
       <PageHeader
-        crumbs={[{ label: "Contacts", href: "/contacts" }, { label: name }]}
+        crumbs={[{ label: t("Contacts"), href: "/contacts" }, { label: name }]}
         actions={
           <Link
             href={`/appointments/new?contactId=${contact.id}${contact.leads.find((l) => l.listing?.status === "active")?.listingId ? `&listingId=${contact.leads.find((l) => l.listing?.status === "active")!.listingId}` : ""}`}
             className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover"
           >
-            Book a viewing
+            {t("Book a viewing")}
           </Link>
         }
       />
@@ -69,7 +86,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                     <span className="flex items-center gap-1.5">
                       <Phone className="size-3.5" />
                       {contact.phone}
-                      {contact.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label="WhatsApp opt-in" />}
+                      {contact.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label={t("WhatsApp opt-in")} />}
                     </span>
                   )}
                   {contact.language && <Pill>{contact.language.toUpperCase()}</Pill>}
@@ -82,18 +99,18 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                 <Sparkles className="size-4 shrink-0" />
                 <span className="flex-1">
                   {hasDraft
-                    ? "The planner has a draft waiting for this client."
-                    : `Viewed ${address(needsFollowUp!.listing?.street, needsFollowUp!.listing?.houseNumber, needsFollowUp!.listing?.city)}; no follow-up sent yet.`}
+                    ? t("The planner has a draft waiting for this client.")
+                    : t("Viewed {place}; no follow-up sent yet.", { place: address(needsFollowUp!.listing?.street, needsFollowUp!.listing?.houseNumber, needsFollowUp!.listing?.city) })}
                 </span>
                 {hasDraft && conversationId ? (
                   <Link href={`/requests/${conversationId}`} className="font-medium underline-offset-2 hover:underline">
-                    Review the draft
+                    {t("Review the draft")}
                   </Link>
                 ) : (
                   needsFollowUp && (
                     <form action={draftFollowUpAction.bind(null, needsFollowUp.id)}>
                       <Button size="sm" variant="ai">
-                        Draft a personal follow-up
+                        {t("Draft a personal follow-up")}
                       </Button>
                     </form>
                   )
@@ -101,7 +118,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            <h2 className="mt-8 mb-3 font-medium">History</h2>
+            <h2 className="mt-8 mb-3 font-medium">{t("History")}</h2>
             <ol className="relative flex flex-col gap-4 border-l border-line pl-6">
               {timeline.map((entry, i) => (
                 <li key={i} className="relative">
@@ -109,17 +126,17 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                     <EntryIcon entry={entry} />
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={cn("font-medium", entry.ai && "text-ai")}>{entry.title}</span>
+                    <span className={cn("font-medium", entry.ai && "text-ai")}>{entryTitle(t, entry)}</span>
                     {entry.kind === "viewing" && entry.status && (
                       <span className="flex items-center gap-1 text-[12px] text-muted">
                         <StatusDot color={appointmentStatusMeta[entry.status as keyof typeof appointmentStatusMeta]?.color ?? "#a1a1aa"} className="size-1.5" />
-                        {appointmentStatusMeta[entry.status as keyof typeof appointmentStatusMeta]?.label}
+                        {t(appointmentStatusMeta[entry.status as keyof typeof appointmentStatusMeta]?.label ?? entry.status)}
                       </span>
                     )}
-                    {entry.kind === "message" && entry.status && categoryMeta[entry.status] && <AiPill>{categoryMeta[entry.status]!.label}</AiPill>}
-                    {entry.kind === "draft" && <AiPill>Draft, not sent</AiPill>}
-                    {entry.kind === "lead" && entry.channel && <Pill>{sourceLabel[entry.channel] ?? entry.channel}</Pill>}
-                    <span className="text-[12px] text-faint tabular-nums">{formatDateTime(entry.at)}</span>
+                    {entry.kind === "message" && entry.status && categoryMeta[entry.status] && <AiPill>{t(categoryMeta[entry.status]!.label)}</AiPill>}
+                    {entry.kind === "draft" && <AiPill>{t("Draft, not sent")}</AiPill>}
+                    {entry.kind === "lead" && entry.channel && <Pill>{sourceLabel[entry.channel] ? t(sourceLabel[entry.channel]!) : entry.channel}</Pill>}
+                    <span className="text-[12px] text-faint tabular-nums">{t.dateTime(entry.at)}</span>
                   </div>
                   {entry.detail && (
                     <p
@@ -140,11 +157,11 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
           <aside className="flex min-w-0 flex-col gap-4">
             <Panel className="p-4">
               <div className="flex items-center justify-between">
-                <span className="font-medium">What they told us</span>
+                <span className="font-medium">{t("What they told us")}</span>
                 {qualification?.temperature && (
                   <Pill>
                     <StatusDot color={temperatureMeta[qualification.temperature].color} className="size-1.5" />
-                    {temperatureMeta[qualification.temperature].label}
+                    {t(temperatureMeta[qualification.temperature].label)}
                   </Pill>
                 )}
               </div>
@@ -158,13 +175,13 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                   ))}
                 </dl>
               ) : (
-                <p className="mt-2 text-muted">No answers yet. Clients answer a few questions when they book through the widget.</p>
+                <p className="mt-2 text-muted">{t("No answers yet. Clients answer a few questions when they book through the widget.")}</p>
               )}
-              <p className="mt-3 text-[11px] text-faint">Hot / warm / cold is a simple rule on these answers, not an AI judgement.</p>
+              <p className="mt-3 text-[11px] text-faint">{t("Hot / warm / cold is a simple rule on these answers, not an AI judgement.")}</p>
             </Panel>
 
             <Panel className="p-4">
-              <div className="mb-2 font-medium">Interested in</div>
+              <div className="mb-2 font-medium">{t("Interested in")}</div>
               <ul className="flex flex-col gap-2.5">
                 {leads.map((lead) => (
                   <li key={lead.id}>
@@ -173,11 +190,11 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                         {lead.listing.reference} · {address(lead.listing.street, lead.listing.houseNumber, lead.listing.city)}
                       </Link>
                     ) : (
-                      <span>{lead.intent === "sell" ? "Selling their home (valuation)" : "General enquiry"}</span>
+                      <span>{lead.intent === "sell" ? t("Selling their home (valuation)") : t("General enquiry")}</span>
                     )}
                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
                       <StatusDot color={leadStageMeta[lead.stage].color} className="size-1.5" />
-                      {leadStageMeta[lead.stage].label}
+                      {t(leadStageMeta[lead.stage].label)}
                       {lead.agent && <span>· {lead.agent.name}</span>}
                     </div>
                   </li>
@@ -189,7 +206,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
               <Panel className="border-ai-line p-4">
                 <div className="mb-2 flex items-center gap-2 font-medium">
                   <Sparkles className="size-4 text-ai" />
-                  May also like
+                  {t("May also like")}
                 </div>
                 <ul className="flex flex-col gap-2.5">
                   {recommendations.map((r) => (
@@ -197,13 +214,13 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
                       <Link href={`/listings/${r.listing.id}`} className="hover:underline">
                         {r.listing.reference} · {address(r.listing.street, r.listing.houseNumber, r.listing.city)}
                       </Link>
-                      <div className="text-[12px] text-muted">{r.reasons.map((x) => reasonLabel[x]).join(" · ")}</div>
+                      <div className="text-[12px] text-muted">{r.reasons.map((x) => (reasonLabel[x] ? t(reasonLabel[x]!) : x)).join(" · ")}</div>
                     </li>
                   ))}
                 </ul>
                 <form action={suggestListingsAction.bind(null, contact.id)} className="mt-3">
                   <Button size="sm" variant="ai" className="w-full">
-                    Draft a suggestion message
+                    {t("Draft a suggestion message")}
                   </Button>
                 </form>
               </Panel>
@@ -220,9 +237,9 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
             <Panel className="p-4 text-muted">
               <div className="mb-1 flex items-center gap-2 font-medium text-fg">
                 <Sparkles className="size-4 text-ai" />
-                Coming: AI notetaker
+                {t("Coming: AI notetaker")}
               </div>
-              Notes from the viewing itself will feed these follow-ups, so they mention what the client actually said on site.
+              {t("Notes from the viewing itself will feed these follow-ups, so they mention what the client actually said on site.")}
             </Panel>
           </aside>
         </div>

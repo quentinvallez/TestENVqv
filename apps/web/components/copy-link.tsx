@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Check, Link2 } from "lucide-react";
 import { Button } from "./ui";
+import { useT } from "@/lib/i18n/client";
 
 export function CopyLinkButton({ path, label }: { path: string; label: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <Button
@@ -17,7 +19,7 @@ export function CopyLinkButton({ path, label }: { path: string; label: string })
       }}
     >
       {copied ? <Check className="size-3.5" /> : <Link2 className="size-3.5" />}
-      <span className="hidden sm:inline">{copied ? "Copied" : label}</span>
+      <span className="hidden sm:inline">{copied ? t("Copied") : label}</span>
     </Button>
   );
 }

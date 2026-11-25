@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui";
 import { authClient } from "@/lib/auth-client";
 import { createWorkspaceAction } from "./actions";
+import { useT } from "@/lib/i18n/client";
 
 const inputClass =
   "h-9 w-full rounded-md border border-line bg-panel px-3 outline-none transition-colors placeholder:text-faint focus:border-line-strong focus:ring-2 focus:ring-hover";
@@ -20,6 +21,7 @@ type Props = {
 };
 
 export function JoinForm({ token, agencyName, email, name, hasAccount, signedInAs, dpa }: Props) {
+  const t = useT();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -43,7 +45,7 @@ export function JoinForm({ token, agencyName, email, name, hasAccount, signedInA
       router.push(created.website ? `/widget?website=${encodeURIComponent(created.website)}` : "/widget");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : t("Something went wrong"));
       setPending(false);
     }
   }
@@ -51,9 +53,9 @@ export function JoinForm({ token, agencyName, email, name, hasAccount, signedInA
   if (signedInAs && !sameUser) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-[20px] font-semibold tracking-tight">Create {agencyName}</h1>
+        <h1 className="text-[20px] font-semibold tracking-tight">{t("Create {name}", { name: agencyName })}</h1>
         <p className="rounded-md border border-line px-3 py-2 text-muted">
-          You&apos;re logged in as {signedInAs}, but this workspace is for {email}. Log out first, then open the link again.
+          {t("You're logged in as {current}, but this workspace is for {email}. Log out first, then open the link again.", { current: signedInAs, email })}
         </p>
         <Button
           className="h-9"
@@ -62,7 +64,7 @@ export function JoinForm({ token, agencyName, email, name, hasAccount, signedInA
             router.refresh();
           }}
         >
-          Log out
+          {t("Log out")}
         </Button>
       </div>
     );
@@ -77,24 +79,24 @@ export function JoinForm({ token, agencyName, email, name, hasAccount, signedInA
       className="flex flex-col gap-4"
     >
       <div>
-        <h1 className="text-[20px] font-semibold tracking-tight">Create {agencyName}</h1>
+        <h1 className="text-[20px] font-semibold tracking-tight">{t("Create {name}", { name: agencyName })}</h1>
         <p className="mt-1 text-muted">
-          {sameUser ? "You're logged in. Create the workspace to start." : hasAccount ? "Log in to create the workspace." : "Choose a password for your login."}
+          {sameUser ? t("You're logged in. Create the workspace to start.") : hasAccount ? t("Log in to create the workspace.") : t("Choose a password for your login.")}
         </p>
       </div>
       <label className="flex flex-col gap-1.5">
-        <span className="text-[12px] font-medium text-muted">Email</span>
+        <span className="text-[12px] font-medium text-muted">{t("Email")}</span>
         <input className={`${inputClass} text-muted`} value={email} readOnly />
       </label>
       {!sameUser && !hasAccount && (
         <label className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-medium text-muted">Your name</span>
+          <span className="text-[12px] font-medium text-muted">{t("Your name")}</span>
           <input className={inputClass} name="name" defaultValue={name} required autoComplete="name" />
         </label>
       )}
       {!sameUser && (
         <label className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-medium text-muted">{hasAccount ? "Password" : "Choose a password"}</span>
+          <span className="text-[12px] font-medium text-muted">{hasAccount ? t("Password") : t("Choose a password")}</span>
           <input className={inputClass} name="password" type="password" required minLength={8} autoComplete={hasAccount ? "current-password" : "new-password"} />
         </label>
       )}
@@ -102,17 +104,19 @@ export function JoinForm({ token, agencyName, email, name, hasAccount, signedInA
         <label className="flex items-start gap-2 text-muted">
           <input type="checkbox" name="dpa" required className="mt-0.5 size-4 flex-none accent-[var(--primary)]" />
           <span>
-            I accept the{" "}
-            <a href={dpa.url} target="_blank" rel="noreferrer" className="text-fg underline underline-offset-2">
-              data processing agreement
-            </a>{" "}
-            on behalf of {agencyName}.
+            {t.rich("I accept the <a>data processing agreement</a> on behalf of {name}.", {
+              a: (c) => (
+                <a href={dpa.url} target="_blank" rel="noreferrer" className="text-fg underline underline-offset-2">
+                  {c}
+                </a>
+              ),
+            }, { name: agencyName })}
           </span>
         </label>
       )}
       {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{error}</p>}
       <Button variant="primary" className="h-9" disabled={pending}>
-        {pending ? "One moment…" : "Create the workspace"}
+        {pending ? t("One moment…") : t("Create the workspace")}
       </Button>
     </form>
   );

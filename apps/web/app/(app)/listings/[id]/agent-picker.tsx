@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ui";
 import type { AssignState } from "../../actions";
+import { useT } from "@/lib/i18n/client";
 
 /**
  * Pick the agent responsible for a listing; saves as soon as it changes.
@@ -18,6 +19,7 @@ export function AgentPicker({
   currentId: string | null;
   action: (state: AssignState, form: FormData) => Promise<AssignState>;
 }) {
+  const t = useT();
   const [state, setState] = useState<AssignState>(undefined);
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState(currentId ?? "");
@@ -51,9 +53,9 @@ export function AgentPicker({
           onChange={(e) => change(e.target.value)}
           disabled={pending}
           className="h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2 font-medium outline-none focus:border-line-strong"
-          aria-label="Responsible agent"
+          aria-label={t("Responsible agent")}
         >
-          {!selected && <option value="">Unassigned</option>}
+          {!selected && <option value="">{t("Unassigned")}</option>}
           {agents.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -63,7 +65,7 @@ export function AgentPicker({
         </select>
       </div>
       <p className="mt-1 h-4 text-[11px]">
-        {pending ? <span className="text-muted">Saving…</span> : state?.error ? <span className="text-danger">{state.error}</span> : state?.saved ? <span className="text-success">{state.saved}</span> : <span className="text-faint">Planned viewings stay with their agent.</span>}
+        {pending ? <span className="text-muted">{t("Saving…")}</span> : state?.error ? <span className="text-danger">{state.error}</span> : state?.saved ? <span className="text-success">{state.saved}</span> : <span className="text-faint">{t("Planned viewings stay with their agent.")}</span>}
       </p>
     </div>
   );

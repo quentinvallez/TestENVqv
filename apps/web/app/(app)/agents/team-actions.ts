@@ -1,4 +1,5 @@
 "use server";
+import { getT } from "@/lib/i18n/server";
 
 import { runTool, tools } from "@viewing/core";
 import { revalidatePath } from "next/cache";
@@ -15,16 +16,17 @@ const refresh = (agentId: string) => {
 
 /** Invite (or invite again) an agent to log in: Better Auth stores the invitation and we email the link. */
 export async function inviteAgentAction(agentId: string, _state: InviteState): Promise<InviteState> {
+  const t = await getT();
   try {
     const { agency } = await requireAdmin();
     const { email, login } = await runTool(tools.getAgentLogin, await getToolContext(), { agentId });
-    if (!email) return { error: "Add the agent's email address first." };
-    if (login.status === "member") return { error: "This agent can already log in." };
+    if (!email) return { error: t("Add the agent's email address first.") };
+    if (login.status === "member") return { error: t("This agent can already log in.") };
     await auth.api.createInvitation({ headers: await headers(), body: { email, role: "member", organizationId: agency.id } });
     refresh(agentId);
     return { sent: true };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Inviting failed." };
+    return { error: error instanceof Error ? error.message : t("Inviting failed.") };
   }
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "./ui";
+import { useT } from "@/lib/i18n/client";
 
 const inputClass =
   "h-9 w-full rounded-md border border-line bg-panel px-3 outline-none transition-colors placeholder:text-faint focus:border-line-strong focus:ring-2 focus:ring-hover";
@@ -20,6 +21,7 @@ function Field({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> 
 
 /** The login form. New logins come from an invitation or an approved workspace request, never from here. */
 export function AuthForm({ notice }: { notice?: string }) {
+  const t = useT();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -32,11 +34,11 @@ export function AuthForm({ notice }: { notice?: string }) {
     setPending(true);
     try {
       const { error } = await authClient.signIn.email({ email: get("email"), password: get("password") });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(error.code === "INVALID_EMAIL_OR_PASSWORD" ? t("Wrong email or password.") : error.message);
       router.push("/");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : t("Something went wrong"));
       setPending(false);
     }
   }
@@ -45,23 +47,23 @@ export function AuthForm({ notice }: { notice?: string }) {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-tight">Log in</h1>
-        <p className="mt-1 text-muted">Welcome back.</p>
+        <h1 className="text-[20px] font-semibold tracking-tight">{t("Log in")}</h1>
+        <p className="mt-1 text-muted">{t("Welcome back.")}</p>
       </div>
       {notice && <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2 text-success">{notice}</p>}
-      <Field label="Work email" name="email" type="email" required autoComplete="email" placeholder="you@agency.be" />
-      <Field label="Password" name="password" type="password" required minLength={8} autoComplete="current-password" />
+      <Field label={t("Work email")} name="email" type="email" required autoComplete="email" placeholder="you@agency.be" />
+      <Field label={t("Password")} name="password" type="password" required minLength={8} autoComplete="current-password" />
       <Link href="/forgot-password" className="-mt-2 self-end text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">
-        Forgot password?
+        {t("Forgot password?")}
       </Link>
       {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{error}</p>}
       <Button variant="primary" className="h-9" disabled={pending}>
-        {pending ? "One moment…" : "Log in"}
+        {pending ? t("One moment…") : t("Log in")}
       </Button>
       <p className="text-center text-muted">
-        New agency?{" "}
+        {t("New agency?")}{" "}
         <Link href="/signup" className="text-fg underline-offset-2 hover:underline">
-          Request access
+          {t("Request access")}
         </Link>
       </p>
     </form>

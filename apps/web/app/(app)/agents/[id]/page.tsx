@@ -12,11 +12,13 @@ import { AvailabilityForm } from "./availability-form";
 import { InviteButton } from "./login-panel";
 import { cancelInvitationAction, inviteAgentAction, removeLoginAction, setLoginRoleAction } from "../team-actions";
 import { CopyText } from "../../settings/channels";
+import { getT } from "@/lib/i18n/server";
+import { msg } from "@/lib/i18n";
 
 const connectNotice: Record<string, string> = {
-  ok: "Connected.",
-  denied: "Access was not granted.",
-  failed: "Connecting failed. Try again, and allow calendar access.",
+  ok: msg("Connected."),
+  denied: msg("Access was not granted."),
+  failed: msg("Connecting failed. Try again, and allow calendar access."),
 };
 
 /** The admin approval link for organisations that don't let staff approve apps themselves. */
@@ -26,10 +28,11 @@ async function adminLink() {
   return adminConsentUrl({ redirectUri: new URL("/api/calendar/microsoft/callback", origin).toString() });
 }
 
-const roleLabel = { owner: "Owner", admin: "Admin", member: "Agent" } as const;
+const roleLabel = { owner: msg("Owner"), admin: msg("Admin"), member: msg("Agent") } as const;
 
 /** Whether the agent can log in, and for admins the invite, role and remove buttons. */
 async function LoginPanel({ agentId, email }: { agentId: string; email: string | null }) {
+  const t = await getT();
   const { user, isAdmin } = await getSession();
   const { login, link } = await runTool(tools.getAgentLogin, await getToolContext(), { agentId });
   const self = login.status === "member" && login.userId === user.id;
@@ -37,25 +40,25 @@ async function LoginPanel({ agentId, email }: { agentId: string; email: string |
     <Panel className="p-4">
       <div className="flex items-center gap-2 font-medium">
         <KeyRound className="size-4 text-muted" />
-        Login
+        {t("Login")}
       </div>
       {login.status === "member" && (
         <>
           <p className="mt-1 flex items-center gap-1.5">
             <StatusDot color="var(--success)" />
-            Can log in · {roleLabel[login.role]}
-            {self && <span className="text-muted">(you)</span>}
+            {t("Can log in · {role}", { role: t(roleLabel[login.role]) })}
+            {self && <span className="text-muted">{t("(you)")}</span>}
           </p>
           <p className="mt-1 text-[12px] text-muted">
-            {login.role === "member" ? "Sees the whole agency and runs their own viewings. Can't change settings or invite colleagues." : "Can change settings and invite colleagues."}
+            {login.role === "member" ? t("Sees the whole agency and runs their own viewings. Can't change settings or invite colleagues.") : t("Can change settings and invite colleagues.")}
           </p>
           {isAdmin && !self && login.role !== "owner" && (
             <div className="mt-3 flex flex-wrap gap-2">
               <form action={setLoginRoleAction.bind(null, agentId, login.memberId, login.role === "admin" ? "member" : "admin")}>
-                <button className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover">{login.role === "admin" ? "Make agent" : "Make admin"}</button>
+                <button className="inline-flex h-7 items-center rounded-md border border-line px-2.5 text-[12px] font-medium hover:bg-hover">{login.role === "admin" ? t("Make agent") : t("Make admin")}</button>
               </form>
               <form action={removeLoginAction.bind(null, agentId, login.memberId)}>
-                <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-danger">Remove login</button>
+                <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-danger">{t("Remove login")}</button>
               </form>
             </div>
           )}
@@ -65,13 +68,13 @@ async function LoginPanel({ agentId, email }: { agentId: string; email: string |
         <>
           <p className="mt-1 flex items-center gap-1.5">
             <StatusDot color={login.expired ? "var(--danger)" : "var(--warning)"} />
-            {login.expired ? "Invitation expired" : `Invited ${formatRelative(login.invitedAt)}`}
+            {login.expired ? t("Invitation expired") : t("Invited {when}", { when: t.relative(login.invitedAt) })}
           </p>
           {isAdmin && (
             <>
               {!login.expired && link && (
                 <div className="mt-2">
-                  <p className="mb-1 text-[12px] text-muted">The invitation went to {email}. You can also send this link yourself:</p>
+                  <p className="mb-1 text-[12px] text-muted">{t("The invitation went to {email}. You can also send this link yourself:", { email: email ?? "" })}</p>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{link}</span>
                     <CopyText text={link} />
@@ -82,7 +85,7 @@ async function LoginPanel({ agentId, email }: { agentId: string; email: string |
                 <InviteButton action={inviteAgentAction.bind(null, agentId)} again />
                 {!login.expired && (
                   <form action={cancelInvitationAction.bind(null, agentId, login.invitationId)}>
-                    <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-fg">Cancel invitation</button>
+                    <button className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] text-muted hover:bg-hover hover:text-fg">{t("Cancel invitation")}</button>
                   </form>
                 )}
               </div>
@@ -94,12 +97,12 @@ async function LoginPanel({ agentId, email }: { agentId: string; email: string |
         <>
           <p className="mt-1 flex items-center gap-1.5 text-muted">
             <StatusDot color="var(--line-strong)" />
-            No login yet
+            {t("No login yet")}
           </p>
           {isAdmin && (
             <>
               <p className="mt-1 text-[12px] text-muted">
-                {email ? `We email ${email} a link to set a password. They then connect their own Outlook or Gmail.` : "Add the agent's email address above to invite them."}
+                {email ? t("We email {email} a link to set a password. They then connect their own Outlook or Gmail.", { email }) : t("Add the agent's email address above to invite them.")}
               </p>
               <div className="mt-3">
                 <InviteButton action={inviteAgentAction.bind(null, agentId)} disabled={!email} />
@@ -113,6 +116,7 @@ async function LoginPanel({ agentId, email }: { agentId: string; email: string |
 }
 
 export default async function AgentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ connect?: string; welcome?: string }> }) {
+  const t = await getT();
   const { id } = await params;
   const { connect, welcome } = await searchParams;
   const ctx = await getToolContext();
@@ -126,7 +130,7 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Agents", href: "/agents" }, { label: agent.name }]} />
+      <PageHeader crumbs={[{ label: t("Agents"), href: "/agents" }, { label: agent.name }]} />
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto grid max-w-[1000px] gap-6 px-5 py-6 lg:grid-cols-[1fr_300px]">
           <div className="min-w-0">
@@ -141,21 +145,21 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
             </div>
             {welcome && !connections.some((c) => c.scopes.includes("mail") && c.status === "active") && (available.google || available.microsoft) && (
               <Panel className="mb-6 p-4">
-                <div className="font-medium">Welcome, {agent.name.split(" ")[0]}</div>
-                <p className="mt-1 text-muted">One step left: connect your mailbox. Messages to your clients then go out from your own address, and your busy times block bookings. With Outlook, portal leads also reach the planner on their own.</p>
+                <div className="font-medium">{t("Welcome, {name}", { name: agent.name.split(" ")[0]! })}</div>
+                <p className="mt-1 text-muted">{t("One step left: connect your mailbox. Messages to your clients then go out from your own address, and your busy times block bookings. With Outlook, portal leads also reach the planner on their own.")}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(["microsoft", "google"] as const)
                     .filter((p) => available[p])
                     .map((p) => (
                       <a key={p} href={`/api/calendar/${p}/start?agentId=${agent.id}`} className="inline-flex h-8 items-center rounded-md bg-primary px-3 font-medium text-primary-fg hover:opacity-90">
-                        Connect {p === "google" ? "Gmail" : "Outlook"}
+                        {t("Connect {provider}", { provider: p === "google" ? "Gmail" : "Outlook" })}
                       </a>
                     ))}
                 </div>
               </Panel>
             )}
-            <h2 className="mb-1 font-medium">Working hours for viewings</h2>
-            <p className="mb-3 text-muted">Clients can only book inside these hours, never over existing appointments or calendar events.</p>
+            <h2 className="mb-1 font-medium">{t("Working hours for viewings")}</h2>
+            <p className="mb-3 text-muted">{t("Clients can only book inside these hours, never over existing appointments or calendar events.")}</p>
             <AvailabilityForm
               workingHours={workingHours}
               slotMinutes={agent.slotMinutes}
@@ -168,22 +172,22 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
             <Panel className="p-4">
               <div className="flex items-center gap-2 font-medium">
                 <CalendarPlus className="size-4 text-muted" />
-                Calendar and mailbox
+                {t("Calendar and mailbox")}
               </div>
               {connect === "admin" && (
                 <div className="mt-2 rounded-md border border-line p-2.5 text-[12px]">
-                  <p className="font-medium text-danger">Your company needs an admin to approve the planner first.</p>
-                  <p className="mt-1 text-muted">Send this link to your Microsoft 365 administrator. They approve once for everyone, then click Connect Outlook again.</p>
+                  <p className="font-medium text-danger">{t("Your company needs an admin to approve the planner first.")}</p>
+                  <p className="mt-1 text-muted">{t("Send this link to your Microsoft 365 administrator. They approve once for everyone, then click Connect Outlook again.")}</p>
                   <div className="mt-2">
                     <CopyText text={await adminLink()} />
                   </div>
                 </div>
               )}
-              {connectNotice[connect ?? ""] && <p className={cn("mt-2 text-[12px]", connect === "ok" ? "text-success" : "text-danger")}>{connectNotice[connect!]}</p>}
+              {connectNotice[connect ?? ""] && <p className={cn("mt-2 text-[12px]", connect === "ok" ? "text-success" : "text-danger")}>{t(connectNotice[connect!]!)}</p>}
               {connections.length === 0 && (
                 <p className="mt-1 flex items-center gap-1.5 text-muted">
                   <StatusDot color="var(--line-strong)" />
-                  Not connected
+                  {t("Not connected")}
                 </p>
               )}
               <ul className="mt-2 flex flex-col gap-2">
@@ -193,11 +197,11 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                     <div className="min-w-0 flex-1">
                       <div className="truncate">{c.accountEmail}</div>
                       <div className="text-[12px] text-muted">
-                        {c.provider === "google" ? "Google" : "Outlook"} · {c.status === "active" ? [c.scopes.includes("calendar") && "calendar", c.scopes.includes("mail") && "sends email", c.scopes.includes("leads") && "reads lead emails"].filter(Boolean).join(", ") : "expired, connect again"}
+                        {c.provider === "google" ? "Google" : "Outlook"} · {c.status === "active" ? [c.scopes.includes("calendar") && t("calendar"), c.scopes.includes("mail") && t("sends email"), c.scopes.includes("leads") && t("reads lead emails")].filter(Boolean).join(", ") : t("expired, connect again")}
                       </div>
                     </div>
                     <form action={disconnectCalendarAction.bind(null, agent.id, c.id)}>
-                      <button className="text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">Disconnect</button>
+                      <button className="text-[12px] text-muted underline-offset-2 hover:text-fg hover:underline">{t("Disconnect")}</button>
                     </form>
                   </li>
                 ))}
@@ -208,25 +212,25 @@ export default async function AgentPage({ params, searchParams }: { params: Prom
                   .map((p) =>
                     available[p] ? (
                       <a key={p} href={`/api/calendar/${p}/start?agentId=${agent.id}`} className="inline-flex h-8 items-center rounded-md border border-line px-3 hover:bg-hover">
-                        Connect {p === "google" ? "Google" : "Outlook"}
+                        {t("Connect {provider}", { provider: p === "google" ? "Google" : "Outlook" })}
                       </a>
                     ) : null,
                   )}
               </div>
               <p className="mt-2 text-[12px] text-faint">
                 {available.google || available.microsoft
-                  ? "Busy times block bookings, viewings are added to the agenda, and messages to clients go out from this mailbox. With Outlook we also pick up lead emails from Immoweb, Zimmo, Immovlan, Immoscoop and your website as they arrive. We never open any other email."
-                  : "Connecting needs the Google and Microsoft app registrations (docs/setup-calendars.md)."}
+                  ? t("Busy times block bookings, viewings are added to the agenda, and messages to clients go out from this mailbox. With Outlook we also pick up lead emails from Immoweb, Zimmo, Immovlan, Immoscoop and your website as they arrive. We never open any other email.")
+                  : t("Connecting needs the Google and Microsoft app registrations (docs/setup-calendars.md).")}
               </p>
             </Panel>
             <LoginPanel agentId={agent.id} email={agent.email} />
             <Panel className="p-4">
-              <div className="font-medium">Next free times</div>
+              <div className="font-medium">{t("Next free times")}</div>
               <ul className="mt-2 flex flex-col gap-1 text-muted tabular-nums">
-                {slots.length === 0 && <li>No free times in the next 7 days.</li>}
+                {slots.length === 0 && <li>{t("No free times in the next 7 days.")}</li>}
                 {slots.slice(0, 8).map((s) => (
                   <li key={s.start.toISOString()}>
-                    {formatDay(s.start)} · {formatTime(s.start)}
+                    {t.day(s.start)} · {t.time(s.start)}
                   </li>
                 ))}
               </ul>

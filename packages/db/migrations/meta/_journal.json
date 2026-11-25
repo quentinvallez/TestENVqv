@@ -141,6 +141,13 @@
       "when": 1795370632637,
       "tag": "0019_signup_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795619964800,
+      "tag": "0020_ui_language",
+      "breakpoints": true
     }
   ]
 }

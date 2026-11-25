@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui";
 import { authClient } from "@/lib/auth-client";
+import { useT } from "@/lib/i18n/client";
 
 const inputClass =
   "h-9 w-full rounded-md border border-line bg-panel px-3 outline-none transition-colors placeholder:text-faint focus:border-line-strong focus:ring-2 focus:ring-hover";
@@ -20,6 +21,7 @@ type Props = {
 };
 
 export function AcceptInvitation({ invitationId, agencyId, agencyName, email, name, agentId, hasAccount, signedInAs }: Props) {
+  const t = useT();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -43,7 +45,7 @@ export function AcceptInvitation({ invitationId, agencyId, agencyName, email, na
       router.push(agentId ? `/agents/${agentId}?welcome=1` : "/");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : t("Something went wrong"));
       setPending(false);
     }
   }
@@ -51,15 +53,15 @@ export function AcceptInvitation({ invitationId, agencyId, agencyName, email, na
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-tight">Join {agencyName}</h1>
+        <h1 className="text-[20px] font-semibold tracking-tight">{t("Join {name}", { name: agencyName })}</h1>
         <p className="mt-1 text-muted">
-          {sameUser ? "You're logged in. Join to see your viewings and connect your mailbox." : hasAccount ? "Log in to accept the invitation." : "Choose a password to set up your login."}
+          {sameUser ? t("You're logged in. Join to see your viewings and connect your mailbox.") : hasAccount ? t("Log in to accept the invitation.") : t("Choose a password to set up your login.")}
         </p>
       </div>
       {signedInAs && !sameUser ? (
         <>
           <p className="rounded-md border border-line px-3 py-2 text-muted">
-            You&apos;re logged in as {signedInAs}, but this invitation is for {email}. Log out first, then open the link again.
+            {t("You're logged in as {current}, but this invitation is for {email}. Log out first, then open the link again.", { current: signedInAs, email })}
           </p>
           <Button
             className="h-9"
@@ -68,7 +70,7 @@ export function AcceptInvitation({ invitationId, agencyId, agencyName, email, na
               router.refresh();
             }}
           >
-            Log out
+            {t("Log out")}
           </Button>
         </>
       ) : (
@@ -80,24 +82,24 @@ export function AcceptInvitation({ invitationId, agencyId, agencyName, email, na
           className="flex flex-col gap-4"
         >
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-muted">Email</span>
+            <span className="text-[12px] font-medium text-muted">{t("Email")}</span>
             <input className={`${inputClass} text-muted`} value={email} readOnly />
           </label>
           {!sameUser && !hasAccount && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-muted">Your name</span>
+              <span className="text-[12px] font-medium text-muted">{t("Your name")}</span>
               <input className={inputClass} name="name" defaultValue={name} required autoComplete="name" />
             </label>
           )}
           {!sameUser && (
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-muted">{hasAccount ? "Password" : "Choose a password"}</span>
+              <span className="text-[12px] font-medium text-muted">{hasAccount ? t("Password") : t("Choose a password")}</span>
               <input className={inputClass} name="password" type="password" required minLength={8} autoComplete={hasAccount ? "current-password" : "new-password"} />
             </label>
           )}
           {error && <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-danger">{error}</p>}
           <Button variant="primary" className="h-9" disabled={pending}>
-            {pending ? "One moment…" : `Join ${agencyName}`}
+            {pending ? t("One moment…") : t("Join {name}", { name: agencyName })}
           </Button>
         </form>
       )}

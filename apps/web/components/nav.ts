@@ -1,4 +1,5 @@
 import { Building2, CalendarDays, ClipboardList, LayoutGrid, Settings, UserRound, Users, type LucideIcon } from "lucide-react";
+import { msg } from "@/lib/i18n";
 
 /** `also`: other pages that belong to this entry (highlighted with it). */
 export type NavItem = { href: string; label: string; icon: LucideIcon; also?: string[] };
@@ -11,21 +12,21 @@ export type NavItem = { href: string; label: string; icon: LucideIcon; also?: st
 export const navSections: { title?: string; items: NavItem[] }[] = [
   {
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutGrid },
-      { href: "/requests", label: "Viewing requests", icon: ClipboardList },
-      { href: "/calendar", label: "Calendar", icon: CalendarDays, also: ["/appointments"] },
+      { href: "/", label: msg("Dashboard"), icon: LayoutGrid },
+      { href: "/requests", label: msg("Viewing requests"), icon: ClipboardList },
+      { href: "/calendar", label: msg("Calendar"), icon: CalendarDays, also: ["/appointments"] },
     ],
   },
   {
-    title: "Records",
+    title: msg("Records"),
     items: [
-      { href: "/listings", label: "Listings", icon: Building2 },
-      { href: "/contacts", label: "Contacts", icon: UserRound },
-      { href: "/agents", label: "Agents", icon: Users },
+      { href: "/listings", label: msg("Listings"), icon: Building2 },
+      { href: "/contacts", label: msg("Contacts"), icon: UserRound },
+      { href: "/agents", label: msg("Agents"), icon: Users },
     ],
   },
   {
-    items: [{ href: "/settings", label: "Settings", icon: Settings, also: ["/widget"] }],
+    items: [{ href: "/settings", label: msg("Settings"), icon: Settings, also: ["/widget"] }],
   },
 ];
 

@@ -6,7 +6,9 @@ import { BookingAnswers } from "@/components/booking-answers";
 import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
 import { Button, PageHeader, Panel, Pill, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
-import { address, formatDateTime, formatRelative } from "@/lib/format";
+import { address } from "@/lib/format";
+import type { T } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 import { requestReasonLabel, requestStageMeta, sourceLabel } from "@/lib/labels";
 import { dismissDraftAction, markRequestAction, redraftAction, sendDraftAction } from "../actions";
 import { DraftComposer } from "../composer";
@@ -15,19 +17,20 @@ import { Timeline } from "../timeline";
 type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.run>>>;
 
 /** What a person should do, in a sentence, per reason the request waits. */
-const needsYouText: Record<string, (name: string) => string> = {
-  draft: () => "This message goes out after your OK (you set it to “Ask me first” in Settings). Check it and send it.",
-  question: (name) => `${name} asked a question without asking to visit, so no booking link went out. Answer from your own mailbox, then mark it as handled.`,
-  phone_only: (name) => `${name} left no email address, so nothing went out automatically. Call them to plan the viewing, or book it for them.`,
-  listing_unknown: () => "We couldn't tell which listing this is about, so no booking link went out. Contact them yourself.",
-  listing_unavailable: () => "The listing is under option, sold or off the website, so no booking link went out.",
-  not_delivered: () => "Our last message didn't reach them. Call them, or email them from your own mailbox.",
-  not_contacted: () => "Nothing went out automatically. Contact them yourself.",
+const needsYouText: Record<string, (t: T, name: string) => string> = {
+  draft: (t) => t("This message goes out after your OK (you set it to “Ask me first” in Settings). Check it and send it."),
+  question: (t, name) => t("{name} asked a question without asking to visit, so no booking link went out. Answer from your own mailbox, then mark it as handled.", { name }),
+  phone_only: (t, name) => t("{name} left no email address, so nothing went out automatically. Call them to plan the viewing, or book it for them.", { name }),
+  listing_unknown: (t) => t("We couldn't tell which listing this is about, so no booking link went out. Contact them yourself."),
+  listing_unavailable: (t) => t("The listing is under option, sold or off the website, so no booking link went out."),
+  not_delivered: (t) => t("Our last message didn't reach them. Call them, or email them from your own mailbox."),
+  not_contacted: (t) => t("Nothing went out automatically. Contact them yourself."),
 };
 
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await getToolContext();
+  const t = await getT();
   let item = await runTool(tools.getRequest, ctx, { id });
 
   // An old link to a conversation: show the request it belongs to.
@@ -56,21 +59,21 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   for (const c of conversations) if (c.unread) await runTool(tools.updateConversation, ctx, { conversationId: c.id, unread: false });
   // Only drafts of our own messages; answers to what clients write are given from the agent's own mailbox.
   const withDraft = conversations.find((c) => c.draft && ownMessageDraft(c.draft));
-  const name = item.contact?.name ?? "Unknown";
+  const name = item.contact?.name ?? t("Unknown");
   const firstName = name.split(" ")[0]!;
   const origin = leadOrigin(item.source);
   const meta = requestStageMeta[item.stage];
   const agentName = item.agent?.name ?? conversations.find((c) => c.agent)?.agent?.name ?? null;
   const listingLine = item.listing ? `${item.listing.reference} · ${address(item.listing.street, item.listing.houseNumber, item.listing.city)}` : null;
   const mailto = item.contact?.email
-    ? `mailto:${item.contact.email}?subject=${encodeURIComponent(item.listing ? `${address(item.listing.street, item.listing.houseNumber, item.listing.city)}` : "Your viewing request")}`
+    ? `mailto:${item.contact.email}?subject=${encodeURIComponent(item.listing ? `${address(item.listing.street, item.listing.houseNumber, item.listing.city)}` : t("Your viewing request"))}`
     : null;
   const bookHref = `/appointments/new?${new URLSearchParams({ ...(item.listing && { listingId: item.listing.id }), ...(item.contact && { contactId: item.contact.id }), ...(item.agent && { agentId: item.agent.id }) })}`;
   const lead = item.kind === "lead";
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Viewing requests", href: "/requests" }, { label: name }]} />
+      <PageHeader crumbs={[{ label: t("Viewing requests"), href: "/requests" }, { label: name }]} />
       <div className="flex-1 overflow-y-auto bg-canvas">
         <div className="mx-auto flex max-w-[760px] flex-col gap-4 px-4 py-5 md:px-5">
           <div>
@@ -84,10 +87,10 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   name
                 )}
               </h1>
-              {origin ? <LeadSourcePill origin={origin} prefix="Via" /> : item.source && <Pill>{sourceLabel[item.source] ?? item.source}</Pill>}
+              {origin ? <LeadSourcePill origin={origin} prefix={t("Via")} /> : item.source && <Pill>{sourceLabel[item.source] ? t(sourceLabel[item.source]!) : item.source}</Pill>}
               <Pill>
                 <StatusDot color={meta.color} className="size-1.5" />
-                {meta.label}
+                {t(meta.label)}
               </Pill>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
@@ -97,8 +100,8 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   <span className="truncate">{listingLine}</span>
                 </Link>
               )}
-              {agentName && <span>Agent: {agentName}</span>}
-              <span>Came in {formatRelative(item.createdAt)}</span>
+              {agentName && <span>{t("Agent: {name}", { name: agentName })}</span>}
+              <span>{t("Came in {when}", { when: t.relative(item.createdAt) })}</span>
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 text-[12px] text-muted">
               {item.contact?.email && <span className="break-all">{item.contact.email}</span>}
@@ -107,7 +110,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
           </div>
 
           <Panel className="p-4">
-            <NextStep item={item} firstName={firstName} />
+            <NextStep t={t} item={item} firstName={firstName} />
             {item.stage === "needs_you" && item.message && item.kind === "lead" && (
               <blockquote className="mt-3 border-l-2 border-line pl-3 whitespace-pre-line text-muted">{item.message}</blockquote>
             )}
@@ -117,10 +120,10 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                 <DraftComposer
                   key={withDraft.draft.id}
                   initialBody={withDraft.draft.input.body}
-                  slots={Array.isArray(withDraft.draft.input.offeredSlots) ? (withDraft.draft.input.offeredSlots as string[]).map((s) => formatDateTime(new Date(s))) : []}
+                  slots={Array.isArray(withDraft.draft.input.offeredSlots) ? (withDraft.draft.input.offeredSlots as string[]).map((s) => t.dateTime(new Date(s))) : []}
                   generatedBy={withDraft.draft.generatedBy}
                   kind={withDraft.draft.kind}
-                  channelLabel={withDraft.route.ready ? withDraft.route.via : withDraft.channel === "whatsapp" ? "WhatsApp" : "email"}
+                  channelLabel={withDraft.route.ready ? withDraft.route.via : withDraft.channel === "whatsapp" ? "WhatsApp" : t("email")}
                   ready={withDraft.route.ready}
                   send={sendDraftAction.bind(null, withDraft.draft.id)}
                   dismiss={dismissDraftAction.bind(null, withDraft.draft.id)}
@@ -133,26 +136,26 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
               {item.contact?.phone && (
                 <a href={`tel:${item.contact.phone.replace(/\s/g, "")}`} className="inline-flex h-10 items-center gap-1.5 rounded-md border border-line bg-panel px-3 font-medium hover:bg-hover sm:h-8">
                   <Phone className="size-3.5" />
-                  Call
+                  {t("Call")}
                 </a>
               )}
               {mailto && (
                 <a href={mailto} className="inline-flex h-10 items-center gap-1.5 rounded-md border border-line bg-panel px-3 font-medium hover:bg-hover sm:h-8">
                   <Mail className="size-3.5" />
-                  Email from my mailbox
+                  {t("Email from my mailbox")}
                 </a>
               )}
               {item.listing && item.contact && item.stage !== "planned" && item.stage !== "closed" && (
                 <Link href={bookHref} className="inline-flex h-10 items-center gap-1.5 rounded-md border border-line bg-panel px-3 font-medium hover:bg-hover sm:h-8">
                   <CalendarPlus className="size-3.5" />
-                  Book a viewing
+                  {t("Book a viewing")}
                 </Link>
               )}
               {item.stage === "needs_you" && (
                 <form action={markRequestAction.bind(null, item.id, "handled")}>
                   <Button className="h-10 sm:h-8">
                     <Check className="size-3.5" />
-                    Mark as handled
+                    {t("Mark as handled")}
                   </Button>
                 </form>
               )}
@@ -160,7 +163,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                 <form action={markRequestAction.bind(null, item.id, "not_interested")}>
                   <Button variant="ghost" className="h-10 sm:h-8">
                     <X className="size-3.5" />
-                    Not interested
+                    {t("Not interested")}
                   </Button>
                 </form>
               )}
@@ -168,7 +171,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                 <form action={markRequestAction.bind(null, item.id, "reopen")}>
                   <Button className="h-10 sm:h-8">
                     <RotateCcw className="size-3.5" />
-                    Open again
+                    {t("Open again")}
                   </Button>
                 </form>
               )}
@@ -177,20 +180,26 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 
           {item.answers.length > 0 && (
             <Panel className="p-4">
-              <h2 className="font-medium">What {firstName} answered when booking</h2>
+              <h2 className="font-medium">{t("What {name} answered when booking", { name: firstName })}</h2>
               <BookingAnswers answers={item.answers} className="mt-3" />
-              <p className="mt-3 text-[11px] text-faint">Also in {agentName ? `${agentName.split(" ")[0]}'s` : "the agent's"} booking email and in the viewing in their Outlook or Google calendar.</p>
+              <p className="mt-3 text-[11px] text-faint">
+                {agentName
+                  ? t("Also in the booking email to {agent} and in the viewing in their Outlook or Google calendar.", { agent: agentName.split(" ")[0]! })
+                  : t("Also in the agent's booking email and in the viewing in their Outlook or Google calendar.")}
+              </p>
             </Panel>
           )}
 
           <section>
             <h2 className="mb-2 flex items-center gap-2 font-medium">
               <Send className="size-4 text-muted" />
-              What we sent
+              {t("What we sent")}
             </h2>
             <Timeline conversations={conversations} name={name} agentName={agentName} />
             <p className="mt-3 text-[12px] text-faint">
-              Only what went out automatically, and what {firstName} did with their link. Their replies go to {agentName ? `${agentName.split(" ")[0]}'s` : "the agent's"} own mailbox and are answered there.
+              {agentName
+                ? t("Only what went out automatically, and what {name} did with their link. Their replies go to the mailbox of {agent} and are answered there.", { name: firstName, agent: agentName.split(" ")[0]! })
+                : t("Only what went out automatically, and what {name} did with their link. Their replies go to the agent's own mailbox and are answered there.", { name: firstName })}
             </p>
           </section>
         </div>
@@ -199,63 +208,64 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
   );
 }
 
-function NextStep({ item, firstName }: { item: RequestItem; firstName: string }) {
+function NextStep({ t, item, firstName }: { t: T; item: RequestItem; firstName: string }) {
   const viewing = item.viewing;
   switch (item.stage) {
     case "needs_you":
       return (
         <div>
-          <p className="font-medium text-danger">{requestReasonLabel[item.reason ?? "not_contacted"]}</p>
-          <p className="mt-0.5 text-muted">{needsYouText[item.reason ?? "not_contacted"]?.(firstName)}</p>
+          <p className="font-medium text-danger">{t(requestReasonLabel[item.reason ?? "not_contacted"]!)}</p>
+          <p className="mt-0.5 text-muted">{needsYouText[item.reason ?? "not_contacted"]?.(t, firstName)}</p>
         </div>
       );
     case "contacted":
       return (
         <div>
-          <p className="font-medium">{item.invitedAt ? `Booking link sent ${formatRelative(item.invitedAt)}` : "Contacted by phone"}</p>
+          <p className="font-medium">{item.invitedAt ? t("Booking link sent {when}", { when: t.relative(item.invitedAt) }) : t("Contacted by phone")}</p>
           <p className="mt-0.5 text-muted">
             {item.invitedAt
-              ? `${firstName} can pick a time with the link. If they haven't booked, they get a reminder with free times after 24 hours, and another after 72 hours.`
-              : "If they call back or book through the website, it shows up here."}
+              ? t("{name} can pick a time with the link. If they haven't booked, they get a reminder with free times after 24 hours, and another after 72 hours.", { name: firstName })
+              : t("If they call back or book through the website, it shows up here.")}
           </p>
         </div>
       );
     case "not_planned":
       return (
         <div>
-          <p className="font-medium">{item.remindedAt ? `Reminder ${item.reminders} of 2 sent ${formatRelative(item.remindedAt)}` : "No booking yet"}</p>
+          <p className="font-medium">{item.remindedAt ? t("Reminder {n} of 2 sent {when}", { n: item.reminders, when: t.relative(item.remindedAt) }) : t("No booking yet")}</p>
           <p className="mt-0.5 text-muted">
             {!item.remindedAt
-              ? `${firstName} got the booking link ${item.invitedAt ? formatRelative(item.invitedAt) : ""} and hasn't booked. The first reminder goes out with the next automatic run (once a day, late afternoon), the second 72 hours after the link.`
+              ? t("{name} got the booking link {when} and hasn't booked. The first reminder goes out with the next automatic run (once a day, late afternoon), the second 72 hours after the link.", { name: firstName, when: item.invitedAt ? t.relative(item.invitedAt) : "" })
               : item.reminders < 2
-                ? "No booking since. A second reminder goes out 72 hours after the link. A call can still help."
-                : "No booking since. Without one, the request closes 3 days after this last reminder. A call can still help."}
+                ? t("No booking since. A second reminder goes out 72 hours after the link. A call can still help.")
+                : t("No booking since. Without one, the request closes 3 days after this last reminder. A call can still help.")}
           </p>
         </div>
       );
     case "planned":
       return (
         <div>
-          <p className="font-medium">{viewing ? `Viewing ${formatDateTime(viewing.startsAt)}` : "Viewing booked"}</p>
+          <p className="font-medium">{viewing ? t("Viewing {when}", { when: t.dateTime(viewing.startsAt) }) : t("Viewing booked")}</p>
           <p className="mt-0.5 text-muted">
-            {viewing?.agentName ? `With ${viewing.agentName}. ` : ""}
-            {firstName} got the confirmation and gets a reminder the day before. <Link href="/calendar" className="underline-offset-2 hover:underline">See the calendar</Link>
+            {viewing?.agentName ? `${t("With {name}.", { name: viewing.agentName })} ` : ""}
+            {t("{name} got the confirmation and gets a reminder the day before.", { name: firstName })}{" "}
+            <Link href="/calendar" className="underline-offset-2 hover:underline">{t("See the calendar")}</Link>
           </p>
         </div>
       );
     case "visited":
       return (
         <div>
-          <p className="font-medium">{viewing ? `Visited ${formatDateTime(viewing.startsAt)}` : "Visited"}</p>
-          <p className="mt-0.5 text-muted">The follow-up after the viewing goes out on its own the next day.</p>
+          <p className="font-medium">{viewing ? t("Visited {when}", { when: t.dateTime(viewing.startsAt) }) : t("Visited")}</p>
+          <p className="mt-0.5 text-muted">{t("The follow-up after the viewing goes out on its own the next day.")}</p>
         </div>
       );
     case "closed":
       return (
         <div>
-          <p className="font-medium">{requestReasonLabel[item.reason ?? "no_response"]}</p>
+          <p className="font-medium">{t(requestReasonLabel[item.reason ?? "no_response"]!)}</p>
           <p className="mt-0.5 text-muted">
-            {item.reason === "no_response" ? `${firstName} didn't book after the link and two reminders. We stopped writing.` : "Closed. Nothing more goes out."}
+            {item.reason === "no_response" ? t("{name} didn't book after the link and two reminders. We stopped writing.", { name: firstName }) : t("Closed. Nothing more goes out.")}
           </p>
         </div>
       );

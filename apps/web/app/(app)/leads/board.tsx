@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { formatRelative, fullName } from "@/lib/format";
 import { leadStageMeta, sourceLabel } from "@/lib/labels";
 import { moveLeadStageAction } from "../actions";
+import { useT } from "@/lib/i18n/client";
 
 type Stage = keyof typeof leadStageMeta;
 export type BoardLead = {
@@ -30,6 +31,7 @@ export type BoardLead = {
 const columns: Stage[] = ["new", "invited", "booked", "visited", "follow_up", "offer"];
 
 export function LeadBoard({ leads }: { leads: BoardLead[] }) {
+  const t = useT();
   const [, startTransition] = useTransition();
   const [optimistic, move] = useOptimistic(leads, (state, { id, stage }: { id: string; stage: Stage }) =>
     state.map((lead) => (lead.id === id ? { ...lead, stage } : lead)),
@@ -65,13 +67,13 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
             className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5", mobileStage === stage ? "bg-primary text-primary-fg" : "text-muted")}
           >
             <StatusDot color={leadStageMeta[stage].color} />
-            {leadStageMeta[stage].label}
+            {t(leadStageMeta[stage].label)}
             <span className="tabular-nums opacity-70">{optimistic.filter((l) => l.stage === stage).length}</span>
           </button>
         ))}
       </div>
       <ul className="flex-1 divide-y divide-line overflow-y-auto">
-        {optimistic.filter((l) => l.stage === mobileStage).length === 0 && <li className="px-4 py-10 text-center text-muted">No leads in this stage.</li>}
+        {optimistic.filter((l) => l.stage === mobileStage).length === 0 && <li className="px-4 py-10 text-center text-muted">{t("No leads in this stage.")}</li>}
         {optimistic
           .filter((l) => l.stage === mobileStage)
           .map((lead) => (
@@ -89,22 +91,22 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
                 {lead.phone && (
                   <a href={`tel:${lead.phone.replace(/\s/g, "")}`} className="flex h-9 items-center gap-1.5 rounded-md border border-line px-3">
                     <Phone className="size-3.5" />
-                    Call
+                    {t("Call")}
                   </a>
                 )}
                 <select
                   value={lead.stage}
                   onChange={(e) => moveTo(lead.id, e.target.value as Stage)}
                   className="h-9 flex-1 rounded-md border border-line bg-panel px-2"
-                  aria-label="Move to stage"
+                  aria-label={t("Move to stage")}
                 >
                   {columns.map((stage) => (
                     <option key={stage} value={stage}>
-                      {stage === lead.stage ? leadStageMeta[stage].label : `Move to ${leadStageMeta[stage].label}`}
+                      {stage === lead.stage ? t(leadStageMeta[stage].label) : t("Move to {stage}", { stage: t(leadStageMeta[stage].label) })}
                     </option>
                   ))}
                 </select>
-                <span className="text-[11px] text-faint">{formatRelative(lead.createdAt)}</span>
+                <span className="text-[11px] text-faint">{t.relative(lead.createdAt)}</span>
               </div>
             </li>
           ))}
@@ -122,7 +124,7 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
           >
             <header className="flex h-9 items-center gap-2 px-1.5">
               <StatusDot color={leadStageMeta[stage].color} />
-              <span className="font-medium">{leadStageMeta[stage].label}</span>
+              <span className="font-medium">{t(leadStageMeta[stage].label)}</span>
               <span className="text-faint tabular-nums">{items.length}</span>
             </header>
             <div className="flex flex-1 flex-col gap-2 overflow-y-auto pb-2">
@@ -162,7 +164,7 @@ export function LeadBoard({ leads }: { leads: BoardLead[] }) {
                   <footer className="mt-2.5 flex items-center justify-between text-[12px] text-faint">
                     <span className="flex items-center gap-1">
                       <Clock className="size-3.5" />
-                      {formatRelative(lead.createdAt)}
+                      {t.relative(lead.createdAt)}
                     </span>
                     {lead.agentName && <Avatar name={lead.agentName} color={lead.agentColor} size={18} />}
                   </footer>

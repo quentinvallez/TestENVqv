@@ -1,5 +1,7 @@
 "use server";
 
+import { getT } from "@/lib/i18n/server";
+
 import { leadStages, PreviewError, runTool, SlotUnavailableError, tools, zonedTime } from "@viewing/core";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -30,6 +32,7 @@ export async function decideProposalAction(proposalId: string, decision: "approv
 export type AvailabilityState = { saved?: boolean; error?: string } | undefined;
 
 export async function saveAvailabilityAction(agentId: string, _state: AvailabilityState, form: FormData): Promise<AvailabilityState> {
+  const t = await getT();
   const toMinutes = (value: FormDataEntryValue | null) => {
     const [h, m] = String(value ?? "").split(":").map(Number);
     return (h ?? 0) * 60 + (m ?? 0);
@@ -37,7 +40,7 @@ export async function saveAvailabilityAction(agentId: string, _state: Availabili
   const workingHours = [0, 1, 2, 3, 4, 5, 6]
     .filter((day) => form.get(`on-${day}`) === "on")
     .map((weekday) => ({ weekday, startMinute: toMinutes(form.get(`start-${weekday}`)), endMinute: toMinutes(form.get(`end-${weekday}`)) }));
-  if (workingHours.some((w) => w.endMinute <= w.startMinute)) return { error: "End times must be after start times." };
+  if (workingHours.some((w) => w.endMinute <= w.startMinute)) return { error: t("End times must be after start times.") };
   try {
     await runTool(tools.setAgentAvailability, await getToolContext(), {
       agentId,
@@ -46,7 +49,7 @@ export async function saveAvailabilityAction(agentId: string, _state: Availabili
       bufferMinutes: Number(form.get("bufferMinutes")),
     });
   } catch {
-    return { error: "Could not save. Please check the times." };
+    return { error: t("Could not save. Please check the times.") };
   }
   revalidatePath("/agents", "layout");
   return { saved: true };
@@ -66,13 +69,14 @@ export async function draftFollowUpAction(appointmentId: string) {
 export type AssignState = { saved?: string; error?: string } | undefined;
 
 export async function assignAgentAction(listingId: string, _state: AssignState, form: FormData): Promise<AssignState> {
+  const t = await getT();
   try {
     const result = await runTool(tools.assignListingAgent, await getToolContext(), { listingId, agentId: String(form.get("agentId") ?? "") });
     revalidatePath("/", "layout");
-    if (!result.changed) return { saved: "No change" };
-    return { saved: result.leadsMoved ? `Saved · ${result.leadsMoved} open ${result.leadsMoved === 1 ? "lead" : "leads"} moved` : "Saved" };
+    if (!result.changed) return { saved: t("No change") };
+    return { saved: result.leadsMoved ? result.leadsMoved === 1 ? t("Saved · 1 open lead moved") : t("Saved · {n} open leads moved", { n: result.leadsMoved }) : t("Saved") };
   } catch {
-    return { error: "Could not change the agent" };
+    return { error: t("Could not change the agent") };
   }
 }
 
@@ -103,6 +107,7 @@ export type AgentFormState = { error?: string; saved?: boolean } | undefined;
 
 /** Adds an agent, or changes one when the form carries an agentId. Empty fields clear email and phone. */
 export async function saveAgentAction(_state: AgentFormState, form: FormData): Promise<AgentFormState> {
+  const t = await getT();
   const text = (key: string) => (form.has(key) ? String(form.get(key) ?? "").trim() : undefined);
   const agentId = text("agentId");
   const name = text("name");
@@ -118,7 +123,7 @@ export async function saveAgentAction(_state: AgentFormState, form: FormData): P
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    return { error: message.startsWith("[") ? "Check the name and email address." : message || "Saving failed." };
+    return { error: message.startsWith("[") ? t("Check the name and email address.") : message || t("Saving failed.") };
   }
   revalidatePath("/agents");
   return { saved: true };
@@ -127,6 +132,7 @@ export async function saveAgentAction(_state: AgentFormState, form: FormData): P
 export type WhatsAppState = { error?: string; saved?: boolean } | undefined;
 
 export async function connectWhatsAppAction(_state: WhatsAppState, form: FormData): Promise<WhatsAppState> {
+  const t = await getT();
   await requireAdmin();
   try {
     await runTool(tools.connectWhatsApp, await getToolContext(), {
@@ -135,7 +141,7 @@ export async function connectWhatsAppAction(_state: WhatsAppState, form: FormDat
       accessToken: String(form.get("accessToken") ?? ""),
     });
   } catch (error) {
-    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : "Check the phone number id, number and token." };
+    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : t("Check the phone number id, number and token.") };
   }
   revalidatePath("/settings");
   return { saved: true };
@@ -146,6 +152,7 @@ export type WhatsAppCheckState = { result?: WhatsAppCheck; error?: string } | un
 
 /** Settings → WhatsApp → Check: Meta's view of the number, recent sends and an optional test template. */
 export async function checkWhatsAppAction(_state: WhatsAppCheckState, form: FormData): Promise<WhatsAppCheckState> {
+  const t = await getT();
   await requireAdmin();
   const phone = String(form.get("phone") ?? "").trim();
   const language = String(form.get("language") ?? "nl");
@@ -153,7 +160,7 @@ export async function checkWhatsAppAction(_state: WhatsAppCheckState, form: Form
     const result = await runTool(tools.checkWhatsApp, await getToolContext(), { phone: phone || undefined, language: ["nl", "fr", "en", "de"].includes(language) ? (language as "nl") : "nl" });
     return { result };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "The check failed." };
+    return { error: error instanceof Error ? error.message : t("The check failed.") };
   }
 }
 
@@ -214,6 +221,7 @@ export type WebsiteImportState =
   | undefined;
 
 export async function importWebsiteAction(_state: WebsiteImportState, form: FormData): Promise<WebsiteImportState> {
+  const t = await getT();
   const websiteUrl = String(form.get("websiteUrl") ?? "").trim();
   try {
     // Stays under the page's time limit; the page starts the next run while pages are left.
@@ -229,7 +237,7 @@ export async function importWebsiteAction(_state: WebsiteImportState, form: Form
       searching: summary.searching,
     };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "The website could not be read." };
+    return { error: error instanceof Error ? error.message : t("The website could not be read.") };
   }
 }
 
@@ -264,17 +272,18 @@ export type MissingListingState = { message?: string; listingId?: string | null;
 
 /** A listing the agency sees on its site but not here: read that page now. */
 export async function importMissingListingAction(_state: MissingListingState, form: FormData): Promise<MissingListingState> {
+  const t = await getT();
   const url = String(form.get("url") ?? "").trim();
   try {
     const result = await runTool(tools.importWebsitePage, await getToolContext(), { url, force: true });
     revalidatePath("/listings", "layout");
-    if (result.status === "skipped") return { error: "That page isn't on your website's address. Paste the link as it appears in the browser." };
-    if (result.status === "blocked") return { error: "Your website's robots.txt doesn't let us read that page." };
-    if (result.status === "failed") return { error: "The page could not be read. Check the link and try again." };
-    if (result.status === "other" || result.status === "removed") return { error: "We read the page, but it doesn't look like a listing that is on offer." };
-    return { message: result.status === "created" ? "Added. We noted that our search missed it, so the search gets better." : "We had it already; it is up to date now.", listingId: result.listingId };
+    if (result.status === "skipped") return { error: t("That page isn't on your website's address. Paste the link as it appears in the browser.") };
+    if (result.status === "blocked") return { error: t("Your website's robots.txt doesn't let us read that page.") };
+    if (result.status === "failed") return { error: t("The page could not be read. Check the link and try again.") };
+    if (result.status === "other" || result.status === "removed") return { error: t("We read the page, but it doesn't look like a listing that is on offer.") };
+    return { message: result.status === "created" ? t("Added. We noted that our search missed it, so the search gets better.") : t("We had it already; it is up to date now."), listingId: result.listingId };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "The page could not be read." };
+    return { error: error instanceof Error ? error.message : t("The page could not be read.") };
   }
 }
 
@@ -297,6 +306,7 @@ export async function setListingAccessAction(listingId: string, form: FormData) 
 export type OccupantState = { added?: boolean; error?: string } | undefined;
 
 export async function addOccupantAction(listingId: string, _state: OccupantState, form: FormData): Promise<OccupantState> {
+  const t = await getT();
   const text = (key: string) => String(form.get(key) ?? "").trim() || undefined;
   try {
     await runTool(tools.addListingOccupant, await getToolContext(), {
@@ -312,7 +322,7 @@ export async function addOccupantAction(listingId: string, _state: OccupantState
       },
     });
   } catch {
-    return { error: "Add a first name and an email address or phone number." };
+    return { error: t("Add a first name and an email address or phone number.") };
   }
   revalidatePath("/", "layout");
   return { added: true };
@@ -327,8 +337,9 @@ export type PreviewState = { token?: string; error?: string } | undefined;
 
 /** A preview of our widget on a prospect agency's own listings, for sales. */
 export async function createPreviewAction(_state: PreviewState, form: FormData): Promise<PreviewState> {
+  const t = await getT();
   const website = String(form.get("website") ?? "").trim();
-  if (!website) return { error: "Enter the agency's website." };
+  if (!website) return { error: t("Enter the agency's website.") };
   try {
     const preview = await runTool(tools.createWidgetPreview, await getToolContext(), { website });
     revalidatePath("/previews");
@@ -336,7 +347,7 @@ export async function createPreviewAction(_state: PreviewState, form: FormData):
   } catch (error) {
     if (error instanceof PreviewError) return { error: error.message };
     console.error("The preview failed", error);
-    return { error: "The website could not be read. Check the address and try again." };
+    return { error: t("The website could not be read. Check the address and try again.") };
   }
 }
 
@@ -349,6 +360,7 @@ export type ForwardingState = { error?: string; done?: boolean } | undefined;
 
 /** One click in Settings → Portal leads: the rule in the agent's Outlook, created or removed. */
 export async function portalForwardingAction(agentId: string, remove: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  const t = await getT();
   await requireAdmin();
   try {
     const ctx = await getToolContext();
@@ -356,7 +368,7 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
     else await runTool(tools.setupPortalForwarding, ctx, { agentId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    return { error: /^(Connect|The inbox)/.test(message) ? message : "Outlook refused the rule. Try again, or connect Outlook again." };
+    return { error: /^(Connect|The inbox)/.test(message) ? message : t("Outlook refused the rule. Try again, or connect Outlook again.") };
   }
   revalidatePath("/settings");
   return { done: true };
@@ -364,6 +376,7 @@ export async function portalForwardingAction(agentId: string, remove: boolean, _
 
 /** Settings → Portal leads: start or stop reading lead emails from an agent's Outlook. */
 export async function mailboxLeadsAction(connectionId: string, stop: boolean, _state: ForwardingState): Promise<ForwardingState> {
+  const t = await getT();
   await requireAdmin();
   try {
     const ctx = await getToolContext();
@@ -371,7 +384,7 @@ export async function mailboxLeadsAction(connectionId: string, stop: boolean, _s
     else await runTool(tools.startMailboxLeads, ctx, { connectionId });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    return { error: /^Connect/.test(message) ? message : "Outlook refused. Try again, or connect Outlook again." };
+    return { error: /^Connect/.test(message) ? message : t("Outlook refused. Try again, or connect Outlook again.") };
   }
   revalidatePath("/settings");
   return { done: true };
@@ -379,22 +392,24 @@ export async function mailboxLeadsAction(connectionId: string, stop: boolean, _s
 
 /** Settings → Portal leads: disconnect the office mailbox (info@). */
 export async function disconnectOfficeMailboxAction(connectionId: string, _state: ForwardingState): Promise<ForwardingState> {
+  const t = await getT();
   await requireAdmin();
   try {
     await runTool(tools.disconnectCalendar, await getToolContext(), { connectionId });
   } catch {
-    return { error: "Couldn't disconnect. Try again." };
+    return { error: t("Couldn't disconnect. Try again.") };
   }
   revalidatePath("/settings");
   return { done: true };
 }
 
 export async function leadCopyAddressAction(_state: ForwardingState, form: FormData): Promise<ForwardingState> {
+  const t = await getT();
   await requireAdmin();
   try {
     await runTool(tools.setLeadCopyAddress, await getToolContext(), { address: String(form.get("address") ?? "") });
   } catch {
-    return { error: "That doesn't look like an email address." };
+    return { error: t("That doesn't look like an email address.") };
   }
   revalidatePath("/settings");
   return { done: true };
@@ -420,20 +435,21 @@ export type BookForClientState = { error?: string } | undefined;
 
 /** A viewing the agent books for a client, usually while on the phone with them. */
 export async function bookForClientAction(_state: BookForClientState, form: FormData): Promise<BookForClientState> {
+  const t = await getT();
   const ctx = await getToolContext();
   const text = (key: string) => String(form.get(key) ?? "").trim() || undefined;
   const listingId = text("listingId");
-  if (!listingId) return { error: "Choose a listing." };
+  if (!listingId) return { error: t("Choose a listing.") };
   const choice = text("slot");
   const anyTime = choice === "other";
   const startsAt = anyTime ? localInstant(form.get("otherDate"), form.get("otherTime")) : choice ? new Date(choice) : null;
-  if (!startsAt || Number.isNaN(startsAt.getTime())) return { error: anyTime ? "Fill in the date and time you agreed." : "Choose a time." };
+  if (!startsAt || Number.isNaN(startsAt.getTime())) return { error: anyTime ? t("Fill in the date and time you agreed.") : t("Choose a time.") };
 
   let contact: { firstName: string; lastName?: string; email?: string; phone?: string; language?: "nl" | "fr" | "en" | "de"; whatsappOptIn: boolean };
   const contactId = text("contactId");
   if (contactId) {
     const existing = (await runTool(tools.getContact, ctx, { contactId }))?.contact;
-    if (!existing) return { error: "That client no longer exists." };
+    if (!existing) return { error: t("That client no longer exists.") };
     contact = {
       firstName: existing.firstName ?? "Client",
       lastName: existing.lastName ?? undefined,
@@ -444,10 +460,10 @@ export async function bookForClientAction(_state: BookForClientState, form: Form
     };
   } else {
     const firstName = text("firstName");
-    if (!firstName) return { error: "Fill in the client's first name." };
+    if (!firstName) return { error: t("Fill in the client's first name.") };
     const email = text("email")?.toLowerCase();
     const phone = text("phone");
-    if (!email && !phone) return { error: "Fill in a phone number or an email address." };
+    if (!email && !phone) return { error: t("Fill in a phone number or an email address.") };
     const language = text("language");
     contact = {
       firstName,
@@ -472,8 +488,8 @@ export async function bookForClientAction(_state: BookForClientState, form: Form
       confirmToClient: form.get("confirm") === "on",
     });
   } catch (error) {
-    if (error instanceof SlotUnavailableError) return { error: "That time was just taken. Choose another one." };
-    return { error: error instanceof Error ? error.message : "The viewing couldn't be booked." };
+    if (error instanceof SlotUnavailableError) return { error: t("That time was just taken. Choose another one.") };
+    return { error: error instanceof Error ? error.message : t("The viewing couldn't be booked.") };
   }
   revalidatePath("/", "layout");
   redirect(`/appointments?booked=${booked.appointmentId}`);
@@ -482,9 +498,10 @@ export async function bookForClientAction(_state: BookForClientState, form: Form
 export type OpenHouseState = { planned?: boolean; error?: string } | undefined;
 
 export async function planOpenHouseAction(listingId: string, _state: OpenHouseState, form: FormData): Promise<OpenHouseState> {
+  const t = await getT();
   const startsAt = localInstant(form.get("date"), form.get("start"));
   const endsAt = localInstant(form.get("date"), form.get("end"));
-  if (!startsAt || !endsAt) return { error: "Fill in the date, start and end." };
+  if (!startsAt || !endsAt) return { error: t("Fill in the date, start and end.") };
   const slotMinutes = Number(form.get("slotMinutes") ?? 15);
   try {
     await runTool(tools.planOpenHouse, await getToolContext(), {
@@ -499,7 +516,7 @@ export async function planOpenHouseAction(listingId: string, _state: OpenHouseSt
     });
   } catch (error) {
     const issue = (error as { issues?: { message: string }[] }).issues?.[0]?.message;
-    return { error: issue ?? (error instanceof Error ? error.message : "The open house couldn't be planned.") };
+    return { error: issue ?? (error instanceof Error ? error.message : t("The open house couldn't be planned.")) };
   }
   revalidatePath(`/listings/${listingId}`);
   return { planned: true };
@@ -515,13 +532,14 @@ export type BookingQuestionsState = { error?: string; savedAt?: number; question
 
 /** Saves the booking questions for listings for sale or to rent; `null` goes back to our default questions. */
 export async function saveBookingQuestionsAction(transaction: "sale" | "rent", questions: BookingQuestion[] | null): Promise<BookingQuestionsState> {
+  const t = await getT();
   await requireAdmin();
   try {
     const saved = await runTool(tools.updateBookingQuestions, await getToolContext(), { transaction, questions });
     revalidatePath("/settings/questions");
     return { savedAt: Date.now(), ...saved };
   } catch (error) {
-    if (error instanceof z.ZodError) return { error: error.issues[0]?.message ?? "Check the questions." };
+    if (error instanceof z.ZodError) return { error: error.issues[0]?.message ?? t("Check the questions.") };
     throw error;
   }
 }
@@ -530,11 +548,12 @@ export type BrandColourState = { error?: string; saved?: boolean } | undefined;
 
 /** The agency's own button and widget colour (a hex or RGB code), or back to its website's colour when `colour` is null. */
 export async function setBrandColourAction(colour: string | null): Promise<BrandColourState> {
+  const t = await getT();
   await requireAdmin();
   try {
     await runTool(tools.updateBrandColour, await getToolContext(), { brandColor: colour });
   } catch (error) {
-    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : "Use a colour code like #1e3a31 or rgb(30, 58, 49)." };
+    return { error: error instanceof Error && !error.message.startsWith("[") ? error.message : t("Use a colour code like #1e3a31 or rgb(30, 58, 49).") };
   }
   revalidatePath("/settings");
   revalidatePath("/widget");
