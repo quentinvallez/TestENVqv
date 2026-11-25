@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Copy, Mail } from "lucide-react";
 import { Button } from "@/components/ui";
 import { developerEmail, guideFor, installGuides } from "@/lib/install-guides";
+import { useT } from "@/lib/i18n/client";
 
 /**
  * Step 2 of setup: the one line for the agency's website, ready to copy or to
@@ -11,9 +12,10 @@ import { developerEmail, guideFor, installGuides } from "@/lib/install-guides";
  * is built with (detected from its home page) and the other common ones.
  */
 export function Install({ snippet, agencyName, builder }: { snippet: string; agencyName: string; builder: string | null }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const detected = builder ? guideFor(builder) : null;
-  const email = developerEmail(snippet, agencyName, builder);
+  const email = developerEmail(snippet, agencyName, builder, t);
   const mailto = `mailto:?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`;
   const others = installGuides.filter((g) => g.id !== detected?.id);
 
@@ -31,34 +33,34 @@ export function Install({ snippet, agencyName, builder }: { snippet: string; age
           }}
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-          {copied ? "Copied" : "Copy the line"}
+          {copied ? t("Copied") : t("Copy the line")}
         </Button>
         <a href={mailto} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-panel px-3 font-medium hover:border-line-strong">
           <Mail className="size-3.5" />
-          Send to my web developer
+          {t("Send to my web developer")}
         </a>
       </div>
 
       {detected && (
         <div className="rounded-md border border-line p-3">
           <div className="font-medium">
-            Your site looks built with {detected.name}
-            {detected.who === "supplier" && <span className="font-normal text-muted"> · they add the line for you</span>}
+            {t("Your site looks built with {name}", { name: t(detected.name) })}
+            {detected.who === "supplier" && <span className="font-normal text-muted"> · {t("they add the line for you")}</span>}
           </div>
-          <Steps steps={detected.steps} />
+          <Steps steps={detected.steps.map((s) => t(s, { name: detected.name }))} />
         </div>
       )}
 
       <div className="rounded-md border border-line">
-        <div className="border-b border-line px-3 py-2 text-[12px] text-muted">{detected ? "Built with something else?" : "Where to paste it"}</div>
+        <div className="border-b border-line px-3 py-2 text-[12px] text-muted">{detected ? t("Built with something else?") : t("Where to paste it")}</div>
         {others.map((guide) => (
           <details key={guide.id} className="group border-b border-line last:border-b-0">
             <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 hover:bg-hover">
-              <span>{guide.name}</span>
-              <span className="text-[12px] text-faint group-open:hidden">{guide.who === "supplier" ? "Ask them" : "Do it yourself"}</span>
+              <span>{t(guide.name)}</span>
+              <span className="text-[12px] text-faint group-open:hidden">{guide.who === "supplier" ? t("Ask them") : t("Do it yourself")}</span>
             </summary>
             <div className="px-3 pb-3">
-              <Steps steps={guide.steps} />
+              <Steps steps={guide.steps.map((s) => t(s, { name: guide.name }))} />
             </div>
           </details>
         ))}

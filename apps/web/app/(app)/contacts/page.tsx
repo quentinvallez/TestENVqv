@@ -4,17 +4,19 @@ import { MessageCircle, UserRound } from "lucide-react";
 import { EmptyState, PageHeader, Pill } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
 import { formatRelative, fullName } from "@/lib/format";
+import { getT } from "@/lib/i18n/server";
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<{ erased?: string }> }) {
+  const t = await getT();
   const { erased } = await searchParams;
   const contacts = await runTool(tools.listContacts, await getToolContext(), {});
   return (
     <>
-      <PageHeader crumbs={[{ label: "Contacts" }]} />
+      <PageHeader crumbs={[{ label: t("Contacts") }]} />
       <div className="flex-1 overflow-auto">
-        {erased && <div className="border-b border-line px-5 py-2.5 text-muted">The client was erased. Their details, messages and valuations are gone; past viewings stay without their name.</div>}
+        {erased && <div className="border-b border-line px-5 py-2.5 text-muted">{t("The client was erased. Their details, messages and valuations are gone; past viewings stay without their name.")}</div>}
         {contacts.length === 0 ? (
-          <EmptyState icon={<UserRound className="size-5" />} title="No contacts yet" description="Everyone who sends a request or books a viewing is added here automatically." />
+          <EmptyState icon={<UserRound className="size-5" />} title={t("No contacts yet")} description={t("Everyone who sends a request or books a viewing is added here automatically.")} />
         ) : (
           <>
           <ul className="divide-y divide-line md:hidden">
@@ -25,11 +27,11 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{fullName(c.firstName, c.lastName)}</span>
                       {c.language && <Pill>{c.language.toUpperCase()}</Pill>}
-                      {c.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label="WhatsApp opt-in" />}
+                      {c.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label={t("WhatsApp opt-in")} />}
                     </div>
                     <div className="truncate text-[12px] text-muted">{c.email ?? c.phone}</div>
                   </div>
-                  {c.openLeads > 0 && <span className="text-[12px] text-muted tabular-nums">{c.openLeads} open</span>}
+                  {c.openLeads > 0 && <span className="text-[12px] text-muted tabular-nums">{t("{n} open", { n: c.openLeads })}</span>}
                 </Link>
               </li>
             ))}
@@ -37,12 +39,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <table className="hidden w-full min-w-[760px] text-left md:table">
             <thead className="sticky top-0 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
-                <th className="py-2 pr-3 pl-5 font-normal">Name</th>
-                <th className="px-3 font-normal">Email</th>
-                <th className="px-3 font-normal">Phone</th>
-                <th className="px-3 font-normal">Language</th>
-                <th className="px-3 font-normal">Open leads</th>
-                <th className="py-2 pr-5 pl-3 font-normal">Added</th>
+                <th className="py-2 pr-3 pl-5 font-normal">{t("Name")}</th>
+                <th className="px-3 font-normal">{t("Email")}</th>
+                <th className="px-3 font-normal">{t("Phone")}</th>
+                <th className="px-3 font-normal">{t("Language")}</th>
+                <th className="px-3 font-normal">{t("Open leads")}</th>
+                <th className="py-2 pr-5 pl-3 font-normal">{t("Added")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -57,12 +59,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   <td className="px-3 whitespace-nowrap text-muted">
                     <span className="flex items-center gap-1.5">
                       {c.phone}
-                      {c.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label="WhatsApp opt-in" />}
+                      {c.whatsappOptIn && <MessageCircle className="size-3.5 text-success" aria-label={t("WhatsApp opt-in")} />}
                     </span>
                   </td>
                   <td className="px-3">{c.language && <Pill>{c.language.toUpperCase()}</Pill>}</td>
                   <td className="px-3 tabular-nums">{c.openLeads}</td>
-                  <td className="py-2.5 pr-5 pl-3 text-muted">{formatRelative(c.createdAt)}</td>
+                  <td className="py-2.5 pr-5 pl-3 text-muted">{t.relative(c.createdAt)}</td>
                 </tr>
               ))}
             </tbody>

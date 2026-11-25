@@ -4,20 +4,22 @@ import { Building2, CalendarDays, Globe, MessageSquare } from "lucide-react";
 import { ListingPhoto } from "@/components/listing-photo";
 import { Avatar, EmptyState, PageHeader, StatusDot } from "@/components/ui";
 import { getToolContext } from "@/lib/context";
-import { address, formatPrice } from "@/lib/format";
+import { address } from "@/lib/format";
+import { getT } from "@/lib/i18n/server";
 import { listingStatusMeta, propertyTypeLabel } from "@/lib/labels";
 
 export default async function ListingsPage() {
+  const t = await getT();
   const listings = await runTool(tools.listListings, await getToolContext(), {});
 
   return (
     <>
       <PageHeader
-        crumbs={[{ label: "Listings" }]}
+        crumbs={[{ label: t("Listings") }]}
         actions={
           <Link href="/listings/website" className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12px] font-medium text-primary-fg hover:opacity-90">
             <Globe className="size-3.5" />
-            <span className="hidden sm:inline">Import from website</span>
+            <span className="hidden sm:inline">{t("Import from website")}</span>
           </Link>
         }
       />
@@ -25,12 +27,12 @@ export default async function ListingsPage() {
         {listings.length === 0 ? (
           <EmptyState
             icon={<Building2 className="size-5" />}
-            title="No listings yet"
-            description="Give your website address and we read your listings from it, with their agents. They stay in sync every night."
+            title={t("No listings yet")}
+            description={t("Give your website address and we read your listings from it, with their agents. They stay in sync every night.")}
             action={
               <Link href="/listings/website" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-primary-fg hover:opacity-90">
                 <Globe className="size-4" />
-                Import from your website
+                {t("Import from your website")}
               </Link>
             }
           />
@@ -45,7 +47,7 @@ export default async function ListingsPage() {
                     <div className="truncate font-medium">{address(l.street, l.houseNumber, l.city)}</div>
                     <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted">
                       <StatusDot color={listingStatusMeta[l.status].color} className="size-1.5" />
-                      {listingStatusMeta[l.status].label} · {formatPrice(l.price, l.transaction)}
+                      {t(listingStatusMeta[l.status].label)} · {t.price(l.price, l.transaction)}
                     </div>
                     <div className="mt-1 flex items-center gap-3 text-[12px] text-muted">
                       <span className="inline-flex items-center gap-1">
@@ -70,12 +72,12 @@ export default async function ListingsPage() {
           <table className="hidden w-full min-w-[860px] text-left md:table">
             <thead className="sticky top-0 z-10 bg-panel text-[12px] text-muted">
               <tr className="border-b border-line">
-                <th className="py-2 pr-3 pl-5 font-normal">Property</th>
-                <th className="px-3 font-normal">Status</th>
-                <th className="px-3 font-normal">Price</th>
-                <th className="px-3 font-normal">Details</th>
-                <th className="px-3 font-normal">Activity</th>
-                <th className="py-2 pr-5 pl-3 font-normal">Agent</th>
+                <th className="py-2 pr-3 pl-5 font-normal">{t("Property")}</th>
+                <th className="px-3 font-normal">{t("Status")}</th>
+                <th className="px-3 font-normal">{t("Price")}</th>
+                <th className="px-3 font-normal">{t("Details")}</th>
+                <th className="px-3 font-normal">{t("Activity")}</th>
+                <th className="py-2 pr-5 pl-3 font-normal">{t("Agent")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -87,7 +89,7 @@ export default async function ListingsPage() {
                       <div className="min-w-0">
                         <div className="truncate font-medium group-hover:underline">{address(l.street, l.houseNumber, l.city)}</div>
                         <div className="truncate text-[12px] text-muted">
-                          {l.reference} · {propertyTypeLabel[l.propertyType] ?? l.propertyType} · {l.transaction === "rent" ? "For rent" : "For sale"}
+                          {l.reference} · {propertyTypeLabel[l.propertyType] ? t(propertyTypeLabel[l.propertyType]!) : l.propertyType} · {l.transaction === "rent" ? t("For rent") : t("For sale")}
                         </div>
                       </div>
                     </Link>
@@ -95,22 +97,22 @@ export default async function ListingsPage() {
                   <td className="px-3">
                     <span className="flex items-center gap-1.5 whitespace-nowrap">
                       <StatusDot color={listingStatusMeta[l.status].color} />
-                      {listingStatusMeta[l.status].label}
+                      {t(listingStatusMeta[l.status].label)}
                     </span>
                   </td>
-                  <td className="px-3 whitespace-nowrap tabular-nums">{formatPrice(l.price, l.transaction)}</td>
+                  <td className="px-3 whitespace-nowrap tabular-nums">{t.price(l.price, l.transaction)}</td>
                   <td className="px-3 whitespace-nowrap text-muted">
-                    {[l.bedrooms != null && `${l.bedrooms} bd`, l.livingArea && `${l.livingArea} m²`, l.epcLabel && `EPC ${l.epcLabel}`]
+                    {[l.bedrooms != null && t("{n} bd", { n: l.bedrooms }), l.livingArea && `${l.livingArea} m²`, l.epcLabel && `EPC ${l.epcLabel}`]
                       .filter(Boolean)
                       .join(" · ")}
                   </td>
                   <td className="px-3 whitespace-nowrap text-muted">
                     <span className="inline-flex items-center gap-3">
-                      <span className="inline-flex items-center gap-1" title="Open leads">
+                      <span className="inline-flex items-center gap-1" title={t("Open leads")}>
                         <MessageSquare className="size-3.5" />
                         {l.openLeads}
                       </span>
-                      <span className="inline-flex items-center gap-1" title="Upcoming viewings">
+                      <span className="inline-flex items-center gap-1" title={t("Upcoming viewings")}>
                         <CalendarDays className="size-3.5" />
                         {l.upcomingViewings}
                       </span>
@@ -123,7 +125,7 @@ export default async function ListingsPage() {
                         {l.agentName}
                       </span>
                     ) : (
-                      <span className="text-faint">Unassigned</span>
+                      <span className="text-faint">{t("Unassigned")}</span>
                     )}
                   </td>
                 </tr>

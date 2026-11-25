@@ -1,4 +1,5 @@
 "use server";
+import { getT } from "@/lib/i18n/server";
 
 import { db } from "@viewing/db";
 import { runTool, SignupError, tools, type ToolContext } from "@viewing/core";
@@ -23,12 +24,13 @@ export type CreateWorkspaceResult = { agencyId: string; website: string | null }
  * the request's email. The request is taken first, so the link can't make a second workspace.
  */
 export async function createWorkspaceAction(token: string, acceptedDpa: boolean): Promise<CreateWorkspaceResult> {
+  const t = await getT();
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return { error: "Please set your password first." };
+  if (!session) return { error: t("Please set your password first.") };
   const agencyId = platformAgencyId();
-  if (!agencyId) return { error: "This link doesn't work any more. Ask us for a new one." };
+  if (!agencyId) return { error: t("This link doesn't work any more. Ask us for a new one.") };
   const dpa = dpaTerms();
-  if (dpa && !acceptedDpa) return { error: "Please accept the data processing agreement." };
+  if (dpa && !acceptedDpa) return { error: t("Please accept the data processing agreement.") };
   const ctx: ToolContext = { db, agencyId, actor: { type: "user", id: session.user.id } };
 
   let request;
@@ -49,6 +51,6 @@ export async function createWorkspaceAction(token: string, acceptedDpa: boolean)
   } catch (error) {
     console.error("Creating the workspace failed", error);
     await runTool(tools.releaseSignup, ctx, { requestId: request.id });
-    return { error: "We couldn't create the workspace. Please try again in a minute." };
+    return { error: t("We couldn't create the workspace. Please try again in a minute.") };
   }
 }

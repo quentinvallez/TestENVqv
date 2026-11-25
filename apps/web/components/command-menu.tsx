@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { navSections } from "./nav";
+import { useT } from "@/lib/i18n/client";
 
 const OPEN_EVENT = "open-command-menu";
 export const openCommandMenu = () => window.dispatchEvent(new Event(OPEN_EVENT));
@@ -14,6 +15,7 @@ export const openCommandMenu = () => window.dispatchEvent(new Event(OPEN_EVENT))
  * in plain language. Both run through the same tool registry.
  */
 export function CommandMenu({ listings }: { listings: { id: string; label: string }[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const router = useRouter();
@@ -53,39 +55,39 @@ export function CommandMenu({ listings }: { listings: { id: string; label: strin
           autoFocus
           value={query}
           onValueChange={setQuery}
-          placeholder="Search listings, pages, or ask the agent…"
+          placeholder={t("Search listings, pages, or ask the agent…")}
           className="h-12 w-full border-b border-line bg-transparent px-4 text-[14px] outline-none placeholder:text-faint"
         />
         <Command.List className="max-h-[360px] overflow-y-auto p-1.5 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-faint">
-          <Command.Empty className="px-3 py-6 text-center text-muted">No results.</Command.Empty>
+          <Command.Empty className="px-3 py-6 text-center text-muted">{t("No results.")}</Command.Empty>
           {query && (
-            <Command.Group heading="Agent">
+            <Command.Group heading={t("Agent")}>
               <Command.Item
                 value={`ask ${query}`}
                 disabled
                 className="flex h-9 items-center gap-2.5 rounded-md px-2.5 text-ai opacity-70"
               >
                 <Sparkles className="size-4" />
-                <span className="truncate">Ask the planner: “{query}”</span>
-                <span className="ml-auto text-[11px] text-faint">Coming with the planner agent</span>
+                <span className="truncate">{t("Ask the planner: “{query}”", { query })}</span>
+                <span className="ml-auto text-[11px] text-faint">{t("Coming with the planner agent")}</span>
               </Command.Item>
             </Command.Group>
           )}
-          <Command.Group heading="Go to">
+          <Command.Group heading={t("Go to")}>
             {navSections.flatMap((s) => s.items).map((item) => (
               <Command.Item
                 key={item.href}
-                value={item.label}
+                value={t(item.label)}
                 onSelect={() => go(item.href)}
                 className="flex h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-muted data-[selected=true]:bg-hover data-[selected=true]:text-fg"
               >
                 <item.icon className="size-4" strokeWidth={1.75} />
-                {item.label}
+                {t(item.label)}
               </Command.Item>
             ))}
           </Command.Group>
           {listings.length > 0 && (
-            <Command.Group heading="Listings">
+            <Command.Group heading={t("Listings")}>
               {listings.map((listing) => (
                 <Command.Item
                   key={listing.id}

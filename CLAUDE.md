@@ -4,7 +4,7 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 
 ## Rules
 
-- **New behaviour goes in a tool** in `packages/core/src/tools`, registered in `packages/core/src/index.ts`. Pages and server actions call `runTool(tools.x, ctx, input)`; never query the database for domain data directly from `apps/web` (Better Auth session lookups and settings reads in `lib/context.ts` are the exception).
+- **New behaviour goes in a tool** in `packages/core/src/tools`, registered in `packages/core/src/index.ts`. Pages and server actions call `runTool(tools.x, ctx, input)`; never query the database for domain data directly from `apps/web` (Better Auth session lookups and settings reads in `lib/context.ts` and the login's interface language in `lib/i18n/server.ts` are the exception).
 - **Every tool scopes by `ctx.agencyId`.** No exceptions; this is the tenant boundary.
 - **Mutating tools call `recordEvent`** with a dotted type such as `appointment.booked`.
 - **AI actions that need approval** create a row in `proposals` instead of acting.
@@ -14,6 +14,13 @@ AI-native platform for Belgian real estate agencies. Read README.md for the arch
 - **Dashboard and menu** (kept simple on purpose, owner's request): the dashboard shows viewings planned, time saved (`dashboard_summary`, 30 min per viewing), who's not connected (admins) and upcoming viewings; nothing else. Menu: Dashboard, Viewing requests, Calendar, Listings, Contacts, Agents, Settings. Leads board, Appointments (reached from Calendar → List / Book) and Widget previews (internal, `/previews`) have no menu entry; Website & widget is a tab of Settings.
 - **Design**: tokens in `apps/web/app/globals.css`. Near-monochrome, thin borders, status as small coloured dots. Violet (`ai` colour) only for things an AI agent did or proposes. Check light, dark and phone width (390px). On phones: bottom tab bar (`components/mobile-nav.tsx`), card lists instead of tables (`md:hidden` list + `hidden md:table`), no hover-only or drag-only actions.
 - **Data residency**: everything in the EU (Vercel `fra1`, Neon `eu-central-1`). New services must offer EU hosting. Exception agreed with the owner: the Claude API (AI triage and drafts) runs outside the EU, disclosed in the privacy notice; any other non-EU processing must be disclosed there too.
+
+## Back-office languages
+
+- The back office is in Dutch, French and English (`apps/web/lib/i18n`). Each login picks its language (sidebar and the phone's More sheet, also on the login pages), stored in `user.language`; until then the `ui-lang` cookie, else the browser's Accept-Language, else English.
+- The English text is the key: every new text in pages, components and server actions goes through `t("…")` (`await getT()` on the server, `useT()` in client components), `t.rich("… <a>link</a>", { a: (c) => … })` for inline markup, or `msg("…")` in label maps that are translated at render time with `t(label)`. Variables are `{name}`; plurals are separate keys ("1 viewing" / "{n} viewings"); never build a key at runtime (`t(cond ? msg("a") : msg("b"))` is fine).
+- Add the Dutch and French in `lib/i18n/nl.ts` and `fr.ts` in the same change; `pnpm --filter @viewing/web test` fails on a missing or unused text or a different `{placeholder}`/`<tag>`. Dutch uses "je" and Flemish terms (pand, makelaar, bezoek, kijkdag, schatting), French "vous" (bien, agent, visite, portes ouvertes, estimation). Brand names (Outlook, Gmail, WhatsApp, Immoweb…) aren't translated.
+- Dates, times and amounts follow the login's language through `t.day`, `t.time`, `t.dateTime`, `t.relative`, `t.price`, always in Europe/Brussels. Texts stored in the database (event titles, notes) stay in English; translate them at display time. Client-facing pages and messages keep their own language (the client's), not the login's.
 
 ## Checks before pushing
 

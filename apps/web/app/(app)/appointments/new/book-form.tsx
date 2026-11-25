@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Button, Panel } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/i18n/client";
 import type { BookForClientState } from "../../actions";
 
 const field = "h-8 w-full rounded-md border border-line bg-panel px-2 outline-none focus:border-line-strong";
@@ -31,6 +32,7 @@ export function BookForm({
   awaitingOccupant: boolean;
   contact: { id: string; name: string; detail: string; canConfirm: boolean } | null;
 }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState(action, undefined);
   const [choice, setChoice] = useState<string>("");
   const [email, setEmail] = useState("");
@@ -45,34 +47,34 @@ export function BookForm({
       {agentId && <input type="hidden" name="agentId" value={agentId} />}
 
       <Panel className="p-4">
-        <div className="font-medium">When</div>
-        <p className="mt-0.5 text-[12px] text-muted">Free times of {agentName} for this listing in the next two weeks.</p>
-        {awaitingOccupant && <p className="mt-2 text-[12px] text-muted">The occupants haven't given their times yet, so there are no free times. A time you agree on must still suit them.</p>}
+        <div className="font-medium">{t("When")}</div>
+        <p className="mt-0.5 text-[12px] text-muted">{t("Free times of {name} for this listing in the next two weeks.", { name: agentName })}</p>
+        {awaitingOccupant && <p className="mt-2 text-[12px] text-muted">{t("The occupants haven't given their times yet, so there are no free times. A time you agree on must still suit them.")}</p>}
         <div className="mt-3 flex flex-col gap-3">
           {days.map((day) => (
             <div key={day.label}>
               <div className="mb-1.5 text-[12px] text-muted">{day.label}</div>
               <div className="flex flex-wrap gap-1.5">
-                {day.times.map((t) => (
+                {day.times.map((time) => (
                   <label
-                    key={t.value}
+                    key={time.value}
                     className={cn(
                       "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 tabular-nums",
-                      choice === t.value ? "border-fg bg-hover font-medium" : "border-line hover:bg-hover",
+                      choice === time.value ? "border-fg bg-hover font-medium" : "border-line hover:bg-hover",
                     )}
                   >
-                    <input type="radio" name="slot" value={t.value} className="sr-only" checked={choice === t.value} onChange={() => setChoice(t.value)} />
-                    {t.label}
-                    {t.openHouse && <span className="text-[11px] text-muted">open house · {t.spotsLeft} left</span>}
+                    <input type="radio" name="slot" value={time.value} className="sr-only" checked={choice === time.value} onChange={() => setChoice(time.value)} />
+                    {time.label}
+                    {time.openHouse && <span className="text-[11px] text-muted">{t("open house · {n} left", { n: time.spotsLeft ?? 0 })}</span>}
                   </label>
                 ))}
               </div>
             </div>
           ))}
-          {days.length === 0 && !awaitingOccupant && <p className="text-muted">No free times in the next two weeks.</p>}
+          {days.length === 0 && !awaitingOccupant && <p className="text-muted">{t("No free times in the next two weeks.")}</p>}
           <label className={cn("flex cursor-pointer items-center gap-2", choice === "other" && "font-medium")}>
             <input type="radio" name="slot" value="other" checked={choice === "other"} onChange={() => setChoice("other")} />
-            Another time we agreed
+            {t("Another time we agreed")}
           </label>
           {choice === "other" && (
             <div className="flex flex-col gap-2 pl-6">
@@ -80,58 +82,58 @@ export function BookForm({
                 <input type="date" name="otherDate" required className={field} />
                 <input type="time" name="otherTime" required step={300} className={field} />
               </div>
-              <p className="text-[12px] text-muted">Outside the usual hours is fine. The agent must be free then, and an occupied home must allow it.</p>
+              <p className="text-[12px] text-muted">{t("Outside the usual hours is fine. The agent must be free then, and an occupied home must allow it.")}</p>
             </div>
           )}
         </div>
       </Panel>
 
       <Panel className="p-4">
-        <div className="font-medium">Who</div>
+        <div className="font-medium">{t("Who")}</div>
         {contact ? (
           <div className="mt-2">
             <input type="hidden" name="contactId" value={contact.id} />
             <div>{contact.name}</div>
-            <div className="text-[12px] text-muted">{contact.detail || "No phone or email yet"}</div>
+            <div className="text-[12px] text-muted">{contact.detail || t("No phone or email yet")}</div>
           </div>
         ) : (
           <>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <input name="firstName" required placeholder="First name" autoComplete="off" className={field} />
-              <input name="lastName" placeholder="Last name" autoComplete="off" className={field} />
-              <input name="phone" type="tel" placeholder="Phone" autoComplete="off" className={field} value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <input name="email" type="email" placeholder="Email" autoComplete="off" className={field} value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input name="firstName" required placeholder={t("First name")} autoComplete="off" className={field} />
+              <input name="lastName" placeholder={t("Last name")} autoComplete="off" className={field} />
+              <input name="phone" type="tel" placeholder={t("Phone")} autoComplete="off" className={field} value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <input name="email" type="email" placeholder={t("Email")} autoComplete="off" className={field} value={email} onChange={(e) => setEmail(e.target.value)} />
               <select name="language" defaultValue="" className={field}>
-                <option value="">Language: unknown (English)</option>
+                <option value="">{t("Language: unknown (English)")}</option>
                 <option value="nl">Nederlands</option>
                 <option value="fr">Français</option>
                 <option value="en">English</option>
                 <option value="de">Deutsch</option>
               </select>
             </div>
-            <p className="mt-2 text-[12px] text-muted">A phone number or an email is enough. A client we already know by that number or email is reused.</p>
+            <p className="mt-2 text-[12px] text-muted">{t("A phone number or an email is enough. A client we already know by that number or email is reused.")}</p>
             <label className="mt-2 flex items-center gap-2 text-muted">
               <input type="checkbox" name="whatsapp" checked={whatsapp} onChange={(e) => setWhatsapp(e.target.checked)} />
-              They agree to messages on WhatsApp
+              {t("They agree to messages on WhatsApp")}
             </label>
           </>
         )}
-        <textarea name="note" rows={2} placeholder="Note for the agent (optional)" className="mt-3 w-full rounded-md border border-line bg-panel px-2 py-1.5 outline-none focus:border-line-strong" />
+        <textarea name="note" rows={2} placeholder={t("Note for the agent (optional)")} className="mt-3 w-full rounded-md border border-line bg-panel px-2 py-1.5 outline-none focus:border-line-strong" />
       </Panel>
 
       <div className="flex flex-col gap-3">
         <label className={cn("flex items-start gap-2", !canConfirm && "text-muted")}>
           <input type="checkbox" name="confirm" checked={canConfirm && confirm} onChange={(e) => setConfirm(e.target.checked)} disabled={!canConfirm} className="mt-0.5" />
           <span>
-            Send them the confirmation with the link to move or cancel
+            {t("Send them the confirmation with the link to move or cancel")}
             <span className="block text-[12px] text-muted">
-              {canConfirm ? "By email, or WhatsApp when they agreed. Fixed text in their language." : "Needs an email address, or a phone number with WhatsApp."}
+              {canConfirm ? t("By email, or WhatsApp when they agreed. Fixed text in their language.") : t("Needs an email address, or a phone number with WhatsApp.")}
             </span>
           </span>
         </label>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="primary" disabled={pending || !choice}>
-            {pending ? "Booking…" : "Book the viewing"}
+            {pending ? t("Booking…") : t("Book the viewing")}
           </Button>
           {state?.error && <span className="text-danger">{state.error}</span>}
         </div>

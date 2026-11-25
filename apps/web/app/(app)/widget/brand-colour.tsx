@@ -5,6 +5,7 @@ import { Check, RotateCcw } from "lucide-react";
 import { contrast, parseColour, rgbText, textOn } from "@viewing/core/colour";
 import { Button } from "@/components/ui";
 import type { BrandColourState } from "../actions";
+import { useT } from "@/lib/i18n/client";
 
 const field = "h-8 w-full min-w-0 rounded-md border border-line bg-panel px-2.5 font-mono text-[12px] outline-none focus:border-line-strong";
 /** What the buttons and the widget use when there is no colour at all (as widget.js). */
@@ -27,6 +28,7 @@ export function BrandColour({
   canEdit: boolean;
   save: (colour: string | null) => Promise<BrandColourState>;
 }) {
+  const t = useT();
   const [text, setText] = useState(current ?? "");
   const [state, setState] = useState<BrandColourState>();
   const [pending, start] = useTransition();
@@ -47,11 +49,11 @@ export function BrandColour({
       <div className="flex min-w-0 flex-col gap-3">
         <div className="text-muted">
           {chosen ? (
-            <>Your own colour.</>
+            <>{t("Your own colour.")}</>
           ) : current ? (
-            <>Read from your website.</>
+            <>{t("Read from your website.")}</>
           ) : (
-            <>No colour yet: the buttons take the most common button colour of each page they show on.</>
+            <>{t("No colour yet: the buttons take the most common button colour of each page they show on.")}</>
           )}{" "}
           {detected && chosen && (
             <>
@@ -71,11 +73,11 @@ export function BrandColour({
             }}
           >
             <label htmlFor="brand-code" className="text-[12px] font-medium text-muted">
-              Colour code (hex or RGB)
+              {t("Colour code (hex or RGB)")}
             </label>
             <div className="flex items-center gap-2">
               <label className="relative size-8 shrink-0 cursor-pointer overflow-hidden rounded-md border border-line" style={{ background: shown }}>
-                <span className="sr-only">Pick a colour</span>
+                <span className="sr-only">{t("Pick a colour")}</span>
                 <input
                   type="color"
                   value={shown}
@@ -101,37 +103,37 @@ export function BrandColour({
                 className={`${field} ${invalid ? "border-danger focus:border-danger" : ""}`}
               />
               <Button type="submit" variant="primary" disabled={!changed || pending}>
-                {pending ? "Saving…" : "Save"}
+                {pending ? t("Saving…") : t("Save")}
               </Button>
             </div>
             <p id="brand-hint" className="text-[12px] text-faint">
               {invalid ? (
-                <span className="text-danger">Not a colour code. Try #1e3a31, 1e3a31 or rgb(30, 58, 49).</span>
+                <span className="text-danger">{t("Not a colour code. Try #1e3a31, 1e3a31 or rgb(30, 58, 49).")}</span>
               ) : typed ? (
                 <>
                   <span className="font-mono">{typed}</span> · <span className="font-mono">rgb({rgbText(typed)})</span>
                 </>
               ) : (
-                "Type a code from your brand guide or pick one."
+                t("Type a code from your brand guide or pick one.")
               )}
             </p>
             {typed && contrast(typed, "#ffffff") < 1.6 && (
               <p className="text-[12px] text-muted">
                 <span className="mr-1.5 inline-block size-1.5 rounded-full bg-warning align-middle" />
-                Very light: on a white page the buttons will hardly stand out.
+                {t("Very light: on a white page the buttons will hardly stand out.")}
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
               {chosen && (
                 <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => submit(null)}>
                   <RotateCcw className="size-3.5" />
-                  {detected ? "Use my website's colour" : "Use each page's own colour"}
+                  {detected ? t("Use my website's colour") : t("Use each page's own colour")}
                 </Button>
               )}
               {state?.saved && (
                 <span className="inline-flex items-center gap-1 text-[12px] text-muted" role="status">
                   <Check className="size-3.5 text-success" />
-                  Saved. Your website shows it on the next page view.
+                  {t("Saved. Your website shows it on the next page view.")}
                 </span>
               )}
               {state?.error && (
@@ -145,7 +147,7 @@ export function BrandColour({
           <p className="flex items-center gap-2 text-muted">
             <span className="inline-block size-4 rounded-full border border-line" style={{ background: shown }} />
             <span className="font-mono text-[12px]">{current ?? "—"}</span>
-            <span className="text-[12px]">Only the agency&apos;s admins can change it.</span>
+            <span className="text-[12px]">{t("Only the agency's admins can change it.")}</span>
           </p>
         )}
       </div>
@@ -156,9 +158,10 @@ export function BrandColour({
 
 /** A small listing page with the widget's day and time choice and the floating button, in the colour. */
 function Preview({ colour }: { colour: string }) {
+  const t = useT();
   const on = textOn(colour);
   return (
-    <div aria-label="Preview" className="relative h-[220px] overflow-hidden rounded-md border border-line bg-[#ffffff] text-[#1a1a1a] [color-scheme:light]">
+    <div aria-label={t("Preview")} className="relative h-[220px] overflow-hidden rounded-md border border-line bg-[#ffffff] text-[#1a1a1a] [color-scheme:light]">
       <div className="flex h-6 items-center gap-1 border-b border-[#e8e8e8] px-2">
         {[0, 1, 2].map((i) => (
           <span key={i} className="size-1.5 rounded-full bg-[#d4d4d4]" />
@@ -167,7 +170,7 @@ function Preview({ colour }: { colour: string }) {
       <div className="p-3">
         <div className="h-2 w-24 rounded-full bg-[#e5e5e5]" />
         <div className="mt-1.5 h-2 w-16 rounded-full bg-[#efefef]" />
-        <div className="mt-3 text-[11px] font-semibold">Plan een bezoek</div>
+        <div className="mt-3 text-[11px] font-semibold">{t("Plan een bezoek")}</div>
         <div className="mt-1.5 flex gap-1">
           {["di 24", "wo 25", "do 26"].map((d, i) => (
             <span
@@ -191,7 +194,7 @@ function Preview({ colour }: { colour: string }) {
           ))}
         </div>
         <div className="mt-2 inline-flex h-6 items-center rounded-md px-2.5 text-[10px] font-medium" style={{ background: colour, color: on }}>
-          Bevestig bezoek
+          {t("Bevestig bezoek")}
         </div>
       </div>
       <div
@@ -202,7 +205,7 @@ function Preview({ colour }: { colour: string }) {
           <rect x="3" y="5" width="18" height="16" rx="2" />
           <path d="M16 3v4M8 3v4M3 10h18" />
         </svg>
-        Plan een bezoek
+        {t("Plan een bezoek")}
       </div>
     </div>
   );

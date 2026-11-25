@@ -4,8 +4,10 @@ import { ChannelMark, providerOf } from "@/components/channel";
 import { leadOrigin, LeadSourcePill, type LeadOrigin } from "@/components/lead-source";
 import { AiPill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { formatDateTime } from "@/lib/format";
+import type { T } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 import { categoryMeta } from "@/lib/labels";
+import { msg } from "@/lib/i18n";
 
 /*
  * What we sent for a request, oldest first, and whether it arrived, with what
@@ -15,20 +17,20 @@ import { categoryMeta } from "@/lib/labels";
 
 /** A message sent without a human approving it: the fixed templates the agency lets go out on their own. */
 const automaticLabel: Record<string, string> = {
-  reminder: "Reminder · automatic",
-  portal_reply: "Booking link · automatic",
-  booking_confirmation: "Confirmation · automatic",
-  follow_up: "Follow-up · automatic",
-  no_show: "New times · automatic",
-  cancellation_reply: "New times · automatic",
-  nudge: "Check-in · automatic",
-  occupant_booked: "Owner alert · automatic",
-  occupant_rescheduled: "Owner alert · automatic",
-  occupant_cancelled: "Owner alert · automatic",
-  occupant_digest: "Owner alert · automatic",
+  reminder: msg("Reminder · automatic"),
+  portal_reply: msg("Booking link · automatic"),
+  booking_confirmation: msg("Confirmation · automatic"),
+  follow_up: msg("Follow-up · automatic"),
+  no_show: msg("New times · automatic"),
+  cancellation_reply: msg("New times · automatic"),
+  nudge: msg("Check-in · automatic"),
+  occupant_booked: msg("Owner alert · automatic"),
+  occupant_rescheduled: msg("Owner alert · automatic"),
+  occupant_cancelled: msg("Owner alert · automatic"),
+  occupant_digest: msg("Owner alert · automatic"),
 };
-const sentAutomatically = (m: { authorType: string | null; metadata: Record<string, unknown> }) =>
-  m.authorType === "agent" && typeof m.metadata.kind === "string" ? (automaticLabel[m.metadata.kind] ?? null) : null;
+const sentAutomatically = (t: T, m: { authorType: string | null; metadata: Record<string, unknown> }) =>
+  m.authorType === "agent" && typeof m.metadata.kind === "string" && automaticLabel[m.metadata.kind] ? t(automaticLabel[m.metadata.kind]!) : null;
 
 
 /** The portal a lead email came through, stored on the message when it was taken in. */
@@ -47,11 +49,12 @@ export type TimelineMessage = {
 };
 export type TimelineConversation = { id: string; channel: string; provider: string | null; messages: TimelineMessage[] };
 
-export function Timeline({ conversations, name, agentName }: { conversations: TimelineConversation[]; name: string; agentName: string | null }) {
+export async function Timeline({ conversations, name, agentName }: { conversations: TimelineConversation[]; name: string; agentName: string | null }) {
+  const t = await getT();
   const items = conversations
     .flatMap((c) => c.messages.filter((m) => m.direction === "outbound" || m.authorType === "system").map((m) => ({ m, c })))
     .sort((a, b) => a.m.sentAt.getTime() - b.m.sentAt.getTime());
-  if (items.length === 0) return <p className="text-muted">Nothing sent yet.</p>;
+  if (items.length === 0) return <p className="text-muted">{t("Nothing sent yet.")}</p>;
   return (
     <ol className="flex flex-col gap-3">
       {items.map(({ m, c }) => {
@@ -63,7 +66,7 @@ export function Timeline({ conversations, name, agentName }: { conversations: Ti
               <span className="flex-1">
                 <span className="font-medium text-fg">{name}</span> {m.body.charAt(0).toLowerCase() + m.body.slice(1)}
               </span>
-              <span className="shrink-0 text-faint tabular-nums">{formatDateTime(m.sentAt)}</span>
+              <span className="shrink-0 text-faint tabular-nums">{t.dateTime(m.sentAt)}</span>
             </li>
           );
         }
@@ -73,10 +76,10 @@ export function Timeline({ conversations, name, agentName }: { conversations: Ti
           <li key={m.id} className={cn("rounded-lg border border-line bg-panel", outbound && "sm:ml-8")}>
             <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-2 text-[12px] text-muted">
               <ChannelMark provider={provider} size={13} />
-              <span className="font-medium text-fg">{outbound ? (agentName ?? "Agency") : name}</span>
-              {!outbound && portal && <LeadSourcePill origin={portal} prefix="via" className="shrink-0" />}
-              {sentAutomatically(m) && <AiPill>{sentAutomatically(m)}</AiPill>}
-              <span className="ml-auto shrink-0 tabular-nums">{formatDateTime(m.sentAt)}</span>
+              <span className="font-medium text-fg">{outbound ? (agentName ?? t("Agency")) : name}</span>
+              {!outbound && portal && <LeadSourcePill origin={portal} prefix={t("via")} className="shrink-0" />}
+              {sentAutomatically(t, m) && <AiPill>{sentAutomatically(t, m)}</AiPill>}
+              <span className="ml-auto shrink-0 tabular-nums">{t.dateTime(m.sentAt)}</span>
             </header>
             <div className="px-3 py-2.5 whitespace-pre-line break-words">{m.body}</div>
             {(m.intent || m.delivery) && (
@@ -84,10 +87,10 @@ export function Timeline({ conversations, name, agentName }: { conversations: Ti
                 {!outbound && m.intent && categoryMeta[m.intent] && (
                   <span className="flex items-center gap-1.5 text-[11px] text-faint">
                     <StatusDot color={categoryMeta[m.intent]!.color} className="size-1.5" />
-                    {categoryMeta[m.intent]!.label}
+                    {t(categoryMeta[m.intent]!.label)}
                   </span>
                 )}
-                <DeliveryNote delivery={m.delivery} metadata={m.metadata} channel={c.channel === "whatsapp" ? "whatsapp" : "email"} />
+                <DeliveryNote t={t} delivery={m.delivery} metadata={m.metadata} channel={c.channel === "whatsapp" ? "whatsapp" : "email"} />
               </footer>
             )}
           </li>
@@ -97,27 +100,27 @@ export function Timeline({ conversations, name, agentName }: { conversations: Ti
   );
 }
 
-const transportLabel: Record<string, string> = { gmail: "Gmail", outlook: "Outlook", mailgun: "agency email", whatsapp_cloud: "WhatsApp" };
+const transportLabel: Record<string, string> = { gmail: "Gmail", outlook: "Outlook", mailgun: msg("agency email"), whatsapp_cloud: "WhatsApp" };
 const failureLabel: Record<string, string> = {
-  no_email: "no email address for this client",
-  no_phone: "no phone number for this client",
-  whatsapp_window_closed: "WhatsApp only allows templates 24 hours after the client's last message",
+  no_email: msg("no email address for this client"),
+  no_phone: msg("no phone number for this client"),
+  whatsapp_window_closed: msg("WhatsApp only allows templates 24 hours after the client's last message"),
 };
 
 /** Why a message meant for WhatsApp went by email, in Meta's own words when we don't know the code. */
-function fallbackNote(metadata: Record<string, unknown>) {
-  if (metadata.fallbackReason === "whatsapp_window_closed") return " · WhatsApp needed a template";
-  if (metadata.fallbackReason === "whatsapp_not_connected") return " · WhatsApp isn't connected";
+function fallbackNote(t: T, metadata: Record<string, unknown>) {
+  if (metadata.fallbackReason === "whatsapp_window_closed") return ` · ${t("WhatsApp needed a template")}`;
+  if (metadata.fallbackReason === "whatsapp_not_connected") return ` · ${t("WhatsApp isn't connected")}`;
   const detail = typeof metadata.whatsappError === "string" ? metadata.whatsappError : "";
   const why = whatsappProblem(detail) ?? (detail.length > 120 ? `${detail.slice(0, 120)}…` : detail);
-  return why ? ` · WhatsApp didn't work: ${why}` : " · WhatsApp didn't work";
+  return why ? ` · ${t("WhatsApp didn't work: {why}", { why })}` : ` · ${t("WhatsApp didn't work")}`;
 }
 
 /** Whether an outbound message really left: sent, failed (with why) or only stored because the channel isn't connected. */
-function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null; metadata: Record<string, unknown>; channel: "email" | "whatsapp" }) {
+function DeliveryNote({ t, delivery, metadata, channel }: { t: T; delivery: string | null; metadata: Record<string, unknown>; channel: "email" | "whatsapp" }) {
   if (!delivery) return null;
   if (delivery === "simulated") {
-    return <span className="text-[11px] text-faint">Not delivered: {channel === "email" ? "email" : "WhatsApp"} not connected yet</span>;
+    return <span className="text-[11px] text-faint">{channel === "email" ? t("Not delivered: email not connected yet") : t("Not delivered: WhatsApp not connected yet")}</span>;
   }
   if (delivery === "failed") {
     const error = String(metadata.error ?? "");
@@ -125,17 +128,21 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
       return (
         <span className="flex items-center gap-1.5 text-[11px] text-faint" title={error}>
           <StatusDot color="var(--warning)" />
-          WhatsApp couldn&apos;t deliver this{whatsappProblem(error) ? ` (${whatsappProblem(error)})` : ""}; sent by email instead
+          {whatsappProblem(error)
+            ? t("WhatsApp couldn't deliver this ({why}); sent by email instead", { why: whatsappProblem(error)! })
+            : t("WhatsApp couldn't deliver this; sent by email instead")}
         </span>
       );
     }
     const why = metadata.bounced
-      ? `the email bounced${error && error !== "bounced" ? ` (${error.length > 80 ? `${error.slice(0, 80)}…` : error})` : ""}`
-      : (failureLabel[error] ?? whatsappProblem(error) ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || "the provider refused it"));
+      ? `${t("the email bounced")}${error && error !== "bounced" ? ` (${error.length > 80 ? `${error.slice(0, 80)}…` : error})` : ""}`
+      : failureLabel[error]
+        ? t(failureLabel[error]!)
+        : (whatsappProblem(error) ?? (error.length > 80 ? `${error.slice(0, 80)}…` : error || t("the provider refused it")));
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-danger" title={error}>
         <StatusDot color="var(--danger)" />
-        Not delivered: {why}
+        {t("Not delivered: {why}", { why })}
       </span>
     );
   }
@@ -143,11 +150,11 @@ function DeliveryNote({ delivery, metadata, channel }: { delivery: string | null
   return (
     <span className="flex items-center gap-1.5 text-[11px] text-faint">
       <StatusDot color="var(--success)" />
-      Sent via {transportLabel[String(metadata.transport)] ?? channel}
-      {metadata.template ? " template" : ""}
+      {t("Sent via {channel}", { channel: transportLabel[String(metadata.transport)] ? t(transportLabel[String(metadata.transport)]!) : channel })}
+      {metadata.template ? ` ${t("template")}` : ""}
       {status}
-      {metadata.fallbackFrom === "whatsapp" ? fallbackNote(metadata) : ""}
-      {metadata.mailboxError ? " · the agent's mailbox refused it" : ""}
+      {metadata.fallbackFrom === "whatsapp" ? fallbackNote(t, metadata) : ""}
+      {metadata.mailboxError ? ` · ${t("the agent's mailbox refused it")}` : ""}
     </span>
   );
 }

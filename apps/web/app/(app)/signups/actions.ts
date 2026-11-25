@@ -1,4 +1,5 @@
 "use server";
+import { getT } from "@/lib/i18n/server";
 
 import { runTool, SignupError, tools } from "@viewing/core";
 import { platformAgencyId } from "@viewing/core/public";
@@ -15,12 +16,13 @@ async function deciderContext() {
 }
 
 export async function approveSignupAction(requestId: string, _: DecisionState): Promise<DecisionState> {
+  const t = await getT();
   try {
     const sent = await runTool(tools.approveSignup, await deciderContext(), { requestId });
     revalidatePath("/signups");
     return sent.delivery === "sent"
-      ? { message: "Approved. The link is on its way." }
-      : { message: "Approved, but the email wasn't sent. Send them this link yourself:", link: sent.link };
+      ? { message: t("Approved. The link is on its way.") }
+      : { message: t("Approved, but the email wasn't sent. Send them this link yourself:"), link: sent.link };
   } catch (error) {
     if (error instanceof SignupError) return { error: error.message };
     throw error;

@@ -4,6 +4,7 @@ import { startTransition, useActionState, useEffect, useRef, useState } from "re
 import { Globe } from "lucide-react";
 import { Button } from "@/components/ui";
 import type { WebsiteImportState } from "../../actions";
+import { useT } from "@/lib/i18n/client";
 
 const field = "h-8 w-full min-w-0 rounded-md border border-line bg-panel px-2.5 outline-none focus:border-line-strong";
 
@@ -23,6 +24,7 @@ export function ImportForm({
   websiteUrl: string | null;
   label: string;
 }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState(action, undefined);
   const [running, setRunning] = useState(false);
   // Totals over the runs since the button was pressed; null before it is.
@@ -73,18 +75,18 @@ export function ImportForm({
         </div>
         {busy ? (
           <Button type="button" onClick={() => setRunning(false)}>
-            Stop
+            {t("Stop")}
           </Button>
         ) : (
           <Button variant="primary">{label}</Button>
         )}
       </div>
       {busy && !started && (
-        <ImportProgress done={0} total={0} title="Finding your listing pages…" detail="This takes up to a minute. Keep this page open." />
+        <ImportProgress done={0} total={0} title={t("Finding your listing pages…")} detail={t("This takes up to a minute. Keep this page open.")} />
       )}
       {started && progress && state && !busy && !state.searching && !state.remaining && !state.read ? (
         <p className="mt-1 text-danger" role="status">
-          No listings found on this address. Check that it's your agency's website as visitors type it (a missing hyphen leads to another site).
+          {t("No listings found on this address. Check that it's your agency's website as visitors type it (a missing hyphen leads to another site).")}
         </p>
       ) : started && progress && state && (
         <ImportProgress
@@ -92,17 +94,17 @@ export function ImportForm({
           total={progress.checked + (state.remaining ?? 0)}
           title={
             progress.checked + (state.remaining ?? 0) > 0
-              ? `${progress.checked} / ${progress.checked + (state.remaining ?? 0)} pages read`
+              ? t("{done} / {total} pages read", { done: progress.checked, total: progress.checked + (state.remaining ?? 0) })
               : state.searching
-                ? "Going through your overview pages…"
-                : "Everything was read recently"
+                ? t("Going through your overview pages…")
+                : t("Everything was read recently")
           }
           detail={[
-            `${state.read ?? 0} listings`,
-            progress.created > 0 && `${progress.created} new`,
-            progress.updated > 0 && `${progress.updated} checked`,
-            state.searching && "still going through your overview pages, so more may follow",
-            busy ? "keep this page open; if you leave, the nightly run reads the rest" : state.remaining || state.searching ? "stopped; the nightly run reads the rest" : "done",
+            t("{n} listings", { n: state.read ?? 0 }),
+            progress.created > 0 && t("{n} new", { n: progress.created }),
+            progress.updated > 0 && t("{n} checked", { n: progress.updated }),
+            state.searching && t("still going through your overview pages, so more may follow"),
+            busy ? t("keep this page open; if you leave, the nightly run reads the rest") : state.remaining || state.searching ? t("stopped; the nightly run reads the rest") : t("done"),
           ]
             .filter(Boolean)
             .join(" · ")}

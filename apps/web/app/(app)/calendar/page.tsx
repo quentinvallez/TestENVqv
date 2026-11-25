@@ -5,7 +5,8 @@ import { BookingAnswers } from "@/components/booking-answers";
 import { Avatar, PageHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
-import { fullName, formatTime } from "@/lib/format";
+import { fullName } from "@/lib/format";
+import { getT } from "@/lib/i18n/server";
 
 const START_HOUR = 8;
 const END_HOUR = 20;
@@ -35,6 +36,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const from = days[0]!;
   const to = startOfZonedDay(now, 7 - weekdayIndex + week * 7);
   const ctx = await getToolContext();
+  const t = await getT();
+  const loc = t.locale;
   const [all, openHouses] = await Promise.all([runTool(tools.listAppointments, ctx, { from, to }), runTool(tools.listOpenHouses, ctx, { from, to })]);
   // An open house shows as one block with its visitor count, not one card per visitor.
   const shows = openHouses.map((o) => ({
@@ -43,7 +46,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     endsAt: o.endsAt,
     listingId: o.listing.id,
     contactId: null,
-    contactFirstName: "Open house",
+    contactFirstName: t("Open house"),
     contactLastName: `· ${o.booked}/${o.capacity}`,
     contactPhone: null,
     listingStreet: o.listing.street,
@@ -63,32 +66,32 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const selectedDay = days[dayIndex]!;
   const dayEnd = days[dayIndex + 1]?.getTime() ?? to.getTime();
   const dayItems = appointments.filter((a) => a.startsAt.getTime() >= selectedDay.getTime() && a.startsAt.getTime() < dayEnd);
-  const longDay = new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "long", day: "numeric", month: "long" }).format(selectedDay);
+  const longDay = new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, weekday: "long", day: "numeric", month: "long" }).format(selectedDay);
 
-  const dayLabel = (d: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "short", day: "numeric" }).format(d);
-  const rangeLabel = `${new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short" }).format(from)} – ${new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short", year: "numeric" }).format(days[6]!)}`;
+  const dayLabel = (d: Date) => new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, weekday: "short", day: "numeric" }).format(d);
+  const rangeLabel = `${new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short" }).format(from)} – ${new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, day: "numeric", month: "short", year: "numeric" }).format(days[6]!)}`;
 
   return (
     <>
       <PageHeader
-        crumbs={[{ label: "Calendar" }]}
+        crumbs={[{ label: t("Calendar") }]}
         actions={
           <div className="flex items-center gap-1">
             <span className="mr-2 hidden text-muted md:inline">{rangeLabel}</span>
             <Link href="/appointments/new" className="mr-1 flex h-7 items-center gap-1 rounded-md bg-primary px-2.5 font-medium text-primary-fg hover:opacity-90">
               <Plus className="size-3.5" />
-              <span className="hidden sm:inline">Book a viewing</span>
-              <span className="sm:hidden">Book</span>
+              <span className="hidden sm:inline">{t("Book a viewing")}</span>
+              <span className="sm:hidden">{t("Book")}</span>
             </Link>
-            <Link href="/appointments" title="All viewings as a list: mark who came, cancel" className="mr-1 flex h-7 items-center gap-1 rounded-md border border-line px-2.5 hover:bg-hover">
+            <Link href="/appointments" title={t("All viewings as a list: mark who came, cancel")} className="mr-1 flex h-7 items-center gap-1 rounded-md border border-line px-2.5 hover:bg-hover">
               <List className="size-3.5" />
-              <span className="hidden sm:inline">List</span>
+              <span className="hidden sm:inline">{t("List")}</span>
             </Link>
             <Link href={`/calendar?week=${week - 1}`} className="flex size-7 items-center justify-center rounded-md border border-line hover:bg-hover">
               <ChevronLeft className="size-4" />
             </Link>
             <Link href="/calendar" className="flex h-7 items-center rounded-md border border-line px-2.5 hover:bg-hover">
-              Today
+              {t("Today")}
             </Link>
             <Link href={`/calendar?week=${week + 1}`} className="flex size-7 items-center justify-center rounded-md border border-line hover:bg-hover">
               <ChevronRight className="size-4" />
@@ -106,8 +109,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 href={`/calendar?week=${week}&day=${i}`}
                 className={cn("flex flex-col items-center rounded-lg py-1.5", i === dayIndex ? "bg-primary text-primary-fg" : d.getTime() === today ? "text-fg" : "text-muted")}
               >
-                <span className="text-[11px]">{new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, weekday: "narrow" }).format(d)}</span>
-                <span className="font-medium tabular-nums">{new Intl.DateTimeFormat("en-GB", { timeZone: AGENCY_TIMEZONE, day: "numeric" }).format(d)}</span>
+                <span className="text-[11px]">{new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, weekday: "narrow" }).format(d)}</span>
+                <span className="font-medium tabular-nums">{new Intl.DateTimeFormat(loc, { timeZone: AGENCY_TIMEZONE, day: "numeric" }).format(d)}</span>
                 <span className={cn("mt-0.5 size-1 rounded-full", count ? (i === dayIndex ? "bg-primary-fg" : "bg-fg") : "bg-transparent")} />
               </Link>
             );
@@ -117,10 +120,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           <div className="px-4 pt-4 pb-2 font-medium">
             {longDay}
             <span className="ml-2 font-normal text-muted">
-              {dayItems.length} {dayItems.length === 1 ? "viewing" : "viewings"}
+              {dayItems.length === 1 ? t("1 viewing") : t("{n} viewings", { n: dayItems.length })}
             </span>
           </div>
-          {dayItems.length === 0 && <p className="px-4 py-8 text-center text-muted">Nothing planned.</p>}
+          {dayItems.length === 0 && <p className="px-4 py-8 text-center text-muted">{t("Nothing planned.")}</p>}
           <ul className="flex flex-col gap-2 px-4 pb-4">
             {dayItems.map((apt) => {
               const place = [apt.listingStreet, apt.listingHouseNumber, apt.listingCity].filter(Boolean).join(" ") || apt.location;
@@ -128,7 +131,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 <li key={apt.id} className="rounded-lg border border-line bg-panel p-3" style={{ borderLeft: `3px solid ${apt.agentColor ?? "#71717a"}` }}>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold tabular-nums">
-                      {formatTime(apt.startsAt)}–{formatTime(apt.endsAt)}
+                      {t.time(apt.startsAt)}–{t.time(apt.endsAt)}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5 text-[12px] text-muted">
                       <Avatar name={apt.agentName} color={apt.agentColor} size={18} />
@@ -144,10 +147,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                     {apt.contactPhone ? (
                       <a href={`tel:${apt.contactPhone.replace(/\s/g, "")}`} className="flex h-10 items-center justify-center gap-1.5 rounded-md border border-line font-medium">
                         <Phone className="size-4" />
-                        Call
+                        {t("Call")}
                       </a>
                     ) : (
-                      <span className="flex h-10 items-center justify-center rounded-md border border-line text-faint">No phone</span>
+                      <span className="flex h-10 items-center justify-center rounded-md border border-line text-faint">{t("No phone")}</span>
                     )}
                     <a
                       href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place ?? "")}`}
@@ -156,7 +159,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                       className="flex h-10 items-center justify-center gap-1.5 rounded-md border border-line font-medium"
                     >
                       <Navigation className="size-4" />
-                      Route
+                      {t("Route")}
                     </a>
                   </div>
                 </li>
@@ -207,7 +210,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                           <Avatar name={apt.agentName} color={apt.agentColor} size={14} />
                         </div>
                         <div className="truncate text-muted">
-                          {formatTime(apt.startsAt)} · {apt.listingStreet} {apt.listingHouseNumber}
+                          {t.time(apt.startsAt)} · {apt.listingStreet} {apt.listingHouseNumber}
                         </div>
                       </Link>
                     );

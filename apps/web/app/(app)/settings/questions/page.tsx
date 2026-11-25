@@ -6,13 +6,16 @@ import { getSession, getToolContext } from "@/lib/context";
 import { cn } from "@/lib/cn";
 import { saveBookingQuestionsAction } from "../../actions";
 import { QuestionsEditor } from "./editor";
+import { getT } from "@/lib/i18n/server";
+import { msg } from "@/lib/i18n";
 
 const kinds = [
-  { id: "sale", label: "For sale" },
-  { id: "rent", label: "To rent" },
+  { id: "sale", label: msg("For sale") },
+  { id: "rent", label: msg("To rent") },
 ] as const;
 
 export default async function BookingQuestionsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const t = await getT();
   const { isAdmin } = await getSession();
   const kind = (await searchParams).type === "rent" ? "rent" : "sale";
   const data = await runTool(tools.getBookingQuestions, await getToolContext(), {});
@@ -20,14 +23,13 @@ export default async function BookingQuestionsPage({ searchParams }: { searchPar
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Settings", href: "/settings" }, { label: "Booking questions" }]} />
+      <PageHeader crumbs={[{ label: t("Settings"), href: "/settings" }, { label: t("Booking questions") }]} />
       <SettingsTabs active="questions" />
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] px-5 py-6 pb-24 md:pb-6">
-          <h1 className="text-[18px] font-semibold tracking-tight">Booking questions</h1>
+          <h1 className="text-[18px] font-semibold tracking-tight">{t("Booking questions")}</h1>
           <p className="mt-1 text-muted">
-            Clients answer these in the booking widget after they pick a time. The same questions show on every listing of that kind. What they answer goes to the agent by email, into the
-            viewing in the agent&apos;s Outlook or Google calendar, and onto the client&apos;s page here.
+            {t("Clients answer these in the booking widget after they pick a time. The same questions show on every listing of that kind. What they answer goes to the agent by email, into the viewing in the agent's Outlook or Google calendar, and onto the client's page here.")}
           </p>
 
           <div className="mt-5 inline-flex rounded-md border border-line bg-panel p-0.5" role="tablist">
@@ -39,7 +41,7 @@ export default async function BookingQuestionsPage({ searchParams }: { searchPar
                 aria-selected={k.id === kind}
                 className={cn("rounded px-3 py-1 text-[13px] transition-colors", k.id === kind ? "bg-hover font-medium text-fg" : "text-muted hover:text-fg")}
               >
-                {k.label}
+                {t(k.label)}
                 <span className="ml-1.5 text-faint">{data[k.id].questions.length}</span>
               </Link>
             ))}
@@ -47,8 +49,7 @@ export default async function BookingQuestionsPage({ searchParams }: { searchPar
 
           {kind === "rent" && (
             <p className="mt-3 text-[12px] text-muted">
-              Before a viewing, Belgian rules don&apos;t allow asking tenants about origin, nationality, health, family plans or where their income comes from. Keep rental questions practical:
-              moving date, household size, pets.
+              {t("Before a viewing, Belgian rules don't allow asking tenants about origin, nationality, health, family plans or where their income comes from. Keep rental questions practical: moving date, household size, pets.")}
             </p>
           )}
 
@@ -65,7 +66,7 @@ export default async function BookingQuestionsPage({ searchParams }: { searchPar
               />
             ) : (
               <>
-                <Panel className="px-4 py-3 text-muted">Only the agency&apos;s admins can change the booking questions.</Panel>
+                <Panel className="px-4 py-3 text-muted">{t("Only the agency's admins can change the booking questions.")}</Panel>
                 <Panel className="mt-3 divide-y divide-line">
                   {current.questions.map((q, i) => (
                     <div key={q.id} className="px-4 py-3">

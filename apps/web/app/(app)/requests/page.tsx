@@ -5,7 +5,9 @@ import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
 import { Avatar, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getToolContext } from "@/lib/context";
-import { address, formatDay, formatRelative, formatTime } from "@/lib/format";
+import { address } from "@/lib/format";
+import type { T } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server";
 import { requestReasonLabel, requestStageMeta, sourceLabel } from "@/lib/labels";
 import { simulateMessageAction } from "./actions";
 import { SimulateMessage } from "./simulate";
@@ -16,6 +18,7 @@ const columns: RequestStage[] = ["needs_you", "contacted", "not_planned", "plann
 export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
   const params = await searchParams;
   const ctx = await getToolContext();
+  const t = await getT();
   const [{ items, counts }, listings] = await Promise.all([runTool(tools.listRequests, ctx, {}), runTool(tools.listListings, ctx, { status: "active" })]);
   const stage: RequestStage | null = requestStages.includes(params.stage as RequestStage) ? (params.stage as RequestStage) : null;
   // Phones show one stage at a time: the one asked for, else the first that needs attention.
@@ -26,7 +29,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        crumbs={[{ label: "Viewing requests" }]}
+        crumbs={[{ label: t("Viewing requests") }]}
         actions={
           <>
             <Link
@@ -34,7 +37,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
               className={cn("hidden h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] md:flex", showClosed ? "bg-hover font-medium" : "text-muted hover:bg-hover hover:text-fg")}
             >
               <StatusDot color={requestStageMeta.closed.color} />
-              {showClosed ? "Back to the board" : `Closed ${counts.closed}`}
+              {showClosed ? t("Back to the board") : t("Closed {n}", { n: counts.closed })}
             </Link>
             <SimulateMessage action={simulateMessageAction} listings={listings.map((l) => ({ id: l.id, label: `${l.reference} · ${address(l.street, l.houseNumber, l.city)}` }))} />
           </>
@@ -51,19 +54,19 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
               className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5", phoneStage === s ? "bg-primary text-primary-fg" : "text-muted")}
             >
               <StatusDot color={requestStageMeta[s].color} />
-              {requestStageMeta[s].label}
+              {t(requestStageMeta[s].label)}
               <span className="tabular-nums opacity-70">{counts[s]}</span>
             </Link>
           ))}
         </div>
-        <p className="shrink-0 px-4 pt-3 text-[12px] text-muted">{requestStageMeta[phoneStage].hint}.</p>
+        <p className="shrink-0 px-4 pt-3 text-[12px] text-muted">{t(requestStageMeta[phoneStage].hint)}.</p>
         <ul className="flex-1 overflow-y-auto px-3 py-2">
-          {items.filter((i) => i.stage === phoneStage).length === 0 && <EmptyStage stage={phoneStage} />}
+          {items.filter((i) => i.stage === phoneStage).length === 0 && <EmptyStage t={t} stage={phoneStage} />}
           {items
             .filter((i) => i.stage === phoneStage)
             .map((item) => (
               <li key={item.id} className="pb-2">
-                <RequestCard item={item} />
+                <RequestCard t={t} item={item} />
               </li>
             ))}
         </ul>
@@ -73,14 +76,14 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
       <div className="hidden min-h-0 flex-1 overflow-x-auto bg-canvas md:flex">
         {showClosed ? (
           <div className="mx-auto w-full max-w-[760px] px-5 py-5">
-            <h2 className="mb-1 font-medium">Closed in the last 30 days</h2>
-            <p className="mb-4 text-muted">No booking after the reminder, marked not interested, or done. Open one to start again.</p>
+            <h2 className="mb-1 font-medium">{t("Closed in the last 30 days")}</h2>
+            <p className="mb-4 text-muted">{t("No booking after the reminder, marked not interested, or done. Open one to start again.")}</p>
             <div className="grid grid-cols-2 gap-2">
               {items.filter((i) => i.stage === "closed").map((item) => (
-                <RequestCard key={item.id} item={item} />
+                <RequestCard t={t} key={item.id} item={item} />
               ))}
             </div>
-            {counts.closed === 0 && <EmptyStage stage="closed" />}
+            {counts.closed === 0 && <EmptyStage t={t} stage="closed" />}
           </div>
         ) : (
           <div className="flex w-full gap-3 p-3">
@@ -91,16 +94,16 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
                   <header className="px-1.5 pb-2">
                     <div className="flex h-7 items-center gap-2">
                       <StatusDot color={requestStageMeta[s].color} />
-                      <span className="font-medium">{requestStageMeta[s].label}</span>
+                      <span className="font-medium">{t(requestStageMeta[s].label)}</span>
                       <span className="text-faint tabular-nums">{cards.length}</span>
                     </div>
-                    <p className="text-[12px] leading-4 text-faint">{requestStageMeta[s].hint}</p>
+                    <p className="text-[12px] leading-4 text-faint">{t(requestStageMeta[s].hint)}</p>
                   </header>
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
                     {cards.map((item) => (
-                      <RequestCard key={item.id} item={item} />
+                      <RequestCard t={t} key={item.id} item={item} />
                     ))}
-                    {cards.length === 0 && <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12px] text-faint">Nothing here</div>}
+                    {cards.length === 0 && <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-[12px] text-faint">{t("Nothing here")}</div>}
                   </div>
                 </section>
               );
@@ -112,56 +115,56 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   );
 }
 
-function EmptyStage({ stage }: { stage: RequestStage }) {
+function EmptyStage({ t, stage }: { t: T; stage: RequestStage }) {
   const text: Record<RequestStage, string> = {
-    needs_you: "Every request is on its way. Nothing for you to do.",
-    contacted: "No one is waiting on their booking link.",
-    not_planned: "Everyone who got a link has booked.",
-    planned: "No viewings planned yet.",
-    visited: "No viewings took place in the last weeks.",
-    closed: "Nothing closed in the last 30 days.",
+    needs_you: t("Every request is on its way. Nothing for you to do."),
+    contacted: t("No one is waiting on their booking link."),
+    not_planned: t("Everyone who got a link has booked."),
+    planned: t("No viewings planned yet."),
+    visited: t("No viewings took place in the last weeks."),
+    closed: t("Nothing closed in the last 30 days."),
   };
-  return <EmptyState icon={<CheckCheck className="size-5" />} title={requestStageMeta[stage].label} description={text[stage]} />;
+  return <EmptyState icon={<CheckCheck className="size-5" />} title={t(requestStageMeta[stage].label)} description={text[stage]} />;
 }
 
 /** What the card says about where the request stands. */
-function statusLine(item: RequestItem): { text: string; tone?: "danger" | "muted" } {
+function statusLine(t: T, item: RequestItem): { text: string; tone?: "danger" | "muted" } {
   switch (item.stage) {
     case "needs_you":
-      return { text: item.draft && item.reason === "draft" ? item.draft.summary : requestReasonLabel[item.reason ?? "not_contacted"]!, tone: "danger" };
+      return { text: item.draft && item.reason === "draft" ? item.draft.summary : t(requestReasonLabel[item.reason ?? "not_contacted"]!), tone: "danger" };
     case "contacted":
-      return { text: item.invitedAt ? `Booking link sent ${formatRelative(item.invitedAt)}` : "Contacted by phone" };
+      return { text: item.invitedAt ? t("Booking link sent {when}", { when: t.relative(item.invitedAt) }) : t("Contacted by phone") };
     case "not_planned":
       return {
         text: item.remindedAt
-          ? `Reminder ${item.reminders} of 2 sent ${formatRelative(item.remindedAt)}`
+          ? t("Reminder {n} of 2 sent {when}", { n: item.reminders, when: t.relative(item.remindedAt) })
           : item.invitedAt
-            ? `Link sent ${formatRelative(item.invitedAt)} · reminder on its way`
-            : "No booking yet",
+            ? t("Link sent {when} · reminder on its way", { when: t.relative(item.invitedAt) })
+            : t("No booking yet"),
       };
     case "planned":
     case "visited":
       return item.viewing
-        ? { text: `${formatDay(item.viewing.startsAt)} · ${formatTime(item.viewing.startsAt)}${item.viewing.agentName ? ` · ${item.viewing.agentName.split(" ")[0]}` : ""}` }
-        : { text: item.stage === "planned" ? "Viewing booked" : "Visited" };
+        ? { text: `${t.day(item.viewing.startsAt)} · ${t.time(item.viewing.startsAt)}${item.viewing.agentName ? ` · ${item.viewing.agentName.split(" ")[0]}` : ""}` }
+        : { text: item.stage === "planned" ? t("Viewing booked") : t("Visited") };
     case "closed":
-      return { text: requestReasonLabel[item.reason ?? "no_response"]!, tone: "muted" };
+      return { text: t(requestReasonLabel[item.reason ?? "no_response"]!), tone: "muted" };
   }
 }
 
-function RequestCard({ item }: { item: RequestItem }) {
+function RequestCard({ t, item }: { t: T; item: RequestItem }) {
   const origin = leadOrigin(item.source);
-  const status = statusLine(item);
+  const status = statusLine(t, item);
   return (
     <Link href={`/requests/${item.id}`} className="block rounded-lg border border-line bg-panel p-3 transition-colors hover:border-line-strong">
       <div className="flex items-start justify-between gap-2">
-        <span className="truncate font-medium">{item.contact?.name ?? "Unknown"}</span>
+        <span className="truncate font-medium">{item.contact?.name ?? t("Unknown")}</span>
         {origin ? (
           <LeadSourcePill origin={origin} className="shrink-0" />
         ) : item.source ? (
-          <Pill className="shrink-0">{sourceLabel[item.source] ?? item.source}</Pill>
+          <Pill className="shrink-0">{sourceLabel[item.source] ? t(sourceLabel[item.source]!) : item.source}</Pill>
         ) : item.kind === "message" ? (
-          <Pill className="shrink-0">Message</Pill>
+          <Pill className="shrink-0">{t("Message")}</Pill>
         ) : null}
       </div>
       {item.listing && (
@@ -178,9 +181,9 @@ function RequestCard({ item }: { item: RequestItem }) {
       </div>
       {item.stage === "needs_you" && item.message && <p className="mt-1.5 line-clamp-2 text-[12px] text-muted">“{item.message}”</p>}
       <footer className="mt-2.5 flex items-center justify-between text-[12px] text-faint">
-        <span className="flex items-center gap-1" title="When the request came in">
+        <span className="flex items-center gap-1" title={t("When the request came in")}>
           <Clock className="size-3.5" />
-          {formatRelative(item.createdAt)}
+          {t.relative(item.createdAt)}
         </span>
         {item.agent && <Avatar name={item.agent.name} color={item.agent.color} size={18} />}
       </footer>

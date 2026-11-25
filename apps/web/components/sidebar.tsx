@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import { LogOut, Search } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/i18n/client";
+import { LanguagePicker } from "./language-picker";
 import { navItemActive, navSections } from "./nav";
 import { openCommandMenu } from "./command-menu";
 
 export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { agencyName: string; userName: string; myAgentId: string | null; needsYouCount: number }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useT();
   const signOut = async () => {
     await authClient.signOut();
     router.push("/login");
@@ -30,15 +33,15 @@ export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { ag
         onClick={openCommandMenu}
         className="flex h-8 items-center gap-2 rounded-md border border-line bg-panel px-2.5 text-muted transition-colors hover:border-line-strong"
       >
-        <Search className="size-3.5" />
-        <span className="flex-1 text-left">Search or ask…</span>
+        <Search className="size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-left">{t("Search or ask…")}</span>
         <kbd className="rounded border border-line px-1 font-mono text-[10px]">⌘K</kbd>
       </button>
 
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto">
         {navSections.map((section, i) => (
           <div key={i} className="flex flex-col gap-px">
-            {section.title && <div className="px-2 pb-1 text-[11px] font-medium text-faint">{section.title}</div>}
+            {section.title && <div className="px-2 pb-1 text-[11px] font-medium text-faint">{t(section.title)}</div>}
             {section.items.map((item) => (
               <Link
                 key={item.href}
@@ -49,9 +52,9 @@ export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { ag
                 )}
               >
                 <item.icon className="size-4" strokeWidth={1.75} />
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">{t(item.label)}</span>
                 {item.href === "/requests" && needsYouCount > 0 && (
-                  <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger tabular-nums" title="Requests that need you">{needsYouCount}</span>
+                  <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger tabular-nums" title={t("Requests that need you")}>{needsYouCount}</span>
                 )}
               </Link>
             ))}
@@ -59,19 +62,21 @@ export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { ag
         ))}
       </nav>
 
+      <LanguagePicker className="px-2" />
+
       <div className="flex items-center gap-1 border-t border-line pt-3 text-muted">
         <Link
           href={myAgentId ? `/agents/${myAgentId}` : "#"}
-          title="My page: hours, mailbox and viewings"
+          title={t("My page: hours, mailbox and viewings")}
           className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1", myAgentId ? "hover:bg-hover hover:text-fg" : "pointer-events-none")}
         >
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-hover text-[11px] font-medium text-fg">
             {userName.slice(0, 1).toUpperCase()}
           </span>
           <span className="min-w-0 flex-1 truncate">{userName}</span>
-          {myAgentId && <span className="shrink-0 text-[11px] text-faint">My page</span>}
+          {myAgentId && <span className="shrink-0 text-[11px] text-faint">{t("My page")}</span>}
         </Link>
-        <button onClick={signOut} title="Log out" className="rounded p-1 hover:bg-hover hover:text-fg">
+        <button onClick={signOut} title={t("Log out")} className="rounded p-1 hover:bg-hover hover:text-fg">
           <LogOut className="size-3.5" />
         </button>
       </div>

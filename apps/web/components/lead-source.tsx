@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import { Pill } from "./ui";
+import { WebsiteLabel } from "./website-label";
 
 /** Where a lead came from, as the requests board shows it: one of the portals, or the agency's own website. */
 export const leadOrigins = {
@@ -43,7 +44,7 @@ export function LeadSourcePill({ origin, prefix, className }: { origin: LeadOrig
         <img src={logo} alt="" width={14} height={14} className="size-3.5 shrink-0 rounded-[3px] bg-white" />
       )}
       {prefix && <span className="font-normal text-muted">{prefix}</span>}
-      {leadOrigins[origin].label}
+      {origin === "website" ? <WebsiteLabel /> : leadOrigins[origin].label}
     </Pill>
   );
 }
