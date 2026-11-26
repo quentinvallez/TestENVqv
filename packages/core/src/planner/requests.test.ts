@@ -50,24 +50,27 @@ describe("requestStatus", () => {
     expect(status({ leadStage: "offer" }).stage).toBe("visited");
   });
 
-  it("needs a person for our own drafts and failed deliveries, before anything else", () => {
-    expect(status({ leadStage: "booked", hasUpcomingViewing: true, pendingDraft: true })).toEqual({ stage: "needs_you", reason: "draft" });
-    expect(status({ leadStage: "invited", invitedAt: ago(1), lastDeliveryFailed: true })).toEqual({ stage: "needs_you", reason: "not_delivered" });
+  it("keeps our own drafts and failed deliveries in their stage, flagged, and never closes them on its own", () => {
+    expect(status({ leadStage: "booked", hasUpcomingViewing: true, pendingDraft: true })).toEqual({ stage: "planned", reason: "draft" });
+    expect(status({ leadStage: "invited", invitedAt: ago(1), lastDeliveryFailed: true })).toEqual({ stage: "contacted", reason: "not_delivered" });
+    expect(status({ leadStage: "invited", invitedAt: ago(30), lastDeliveryFailed: true })).toEqual({ stage: "not_planned", reason: "not_delivered" });
+    expect(status({ leadStage: "invited", invitedAt: ago(8 * 24), lastDeliveryFailed: true })).toEqual({ stage: "not_planned", reason: "not_delivered" });
   });
 
-  it("says why nothing went out automatically", () => {
-    expect(status({ hasEmail: false })).toEqual({ stage: "needs_you", reason: "phone_only" });
-    expect(status({ hasEmail: false, pendingDraft: true })).toEqual({ stage: "needs_you", reason: "phone_only" });
-    expect(status({ hasEmail: false, hasPhone: false })).toEqual({ stage: "needs_you", reason: "not_contacted" });
-    expect(status({ listingStatus: null })).toEqual({ stage: "needs_you", reason: "listing_unknown" });
-    expect(status({ listingStatus: "under_offer" })).toEqual({ stage: "needs_you", reason: "listing_unavailable" });
-    expect(status({})).toEqual({ stage: "needs_you", reason: "not_contacted" });
-    expect(status({ question: true })).toEqual({ stage: "needs_you", reason: "question" });
+  it("puts what couldn't be sent automatically in not planned yet, with why", () => {
+    expect(status({ hasEmail: false })).toEqual({ stage: "not_planned", reason: "phone_only" });
+    expect(status({ hasEmail: false, pendingDraft: true })).toEqual({ stage: "not_planned", reason: "phone_only" });
+    expect(status({ hasEmail: false, hasPhone: false })).toEqual({ stage: "not_planned", reason: "not_contacted" });
+    expect(status({ listingStatus: null })).toEqual({ stage: "not_planned", reason: "listing_unknown" });
+    expect(status({ listingStatus: "under_offer" })).toEqual({ stage: "not_planned", reason: "listing_unavailable" });
+    expect(status({})).toEqual({ stage: "not_planned", reason: "not_contacted" });
+    expect(status({ question: true })).toEqual({ stage: "not_planned", reason: "question" });
+    expect(status({ pendingDraft: true })).toEqual({ stage: "not_planned", reason: "draft" });
   });
 
-  it("gives the automatic email a few minutes before asking for a person", () => {
-    expect(status({ createdAt: new Date(now.getTime() - 60_000) }).stage).toBe("contacted");
-    expect(status({ createdAt: new Date(now.getTime() - 60_000), hasEmail: false }).stage).toBe("needs_you");
+  it("gives the automatic email a few minutes before flagging it", () => {
+    expect(status({ createdAt: new Date(now.getTime() - 60_000) })).toEqual({ stage: "contacted", reason: null });
+    expect(status({ createdAt: new Date(now.getTime() - 60_000), hasEmail: false })).toEqual({ stage: "not_planned", reason: "phone_only" });
   });
 
   it("treats a request marked contacted by phone as contacted", () => {

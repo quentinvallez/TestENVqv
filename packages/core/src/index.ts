@@ -5,7 +5,7 @@ export { leadStages } from "./tools/leads";
 export { SlotUnavailableError } from "./tools/booking";
 export { computeSlots, type Interval, type WorkingHours } from "./planner/availability";
 export { tools, toolsByName } from "./registry";
-export { requestStages, type RequestReason, type RequestStage } from "./planner/requests";
+export { needsPerson, requestStages, type RequestReason, type RequestStage } from "./planner/requests";
 export { ownMessageDraft, type RequestItem } from "./tools/requests";
 export type { TimelineEntry } from "./tools/contacts";
 export { aiAvailable } from "./ai/client";

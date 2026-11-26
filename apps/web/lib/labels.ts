@@ -12,7 +12,6 @@ export const leadStageMeta = {
 
 /** The requests board's stages, in the order a request moves through them. */
 export const requestStageMeta = {
-  needs_you: { label: msg("Needs you"), color: "#ef4444", hint: msg("Couldn't be handled automatically: call, answer or approve") },
   contacted: { label: msg("Contacted"), color: "#3b82f6", hint: msg("Got the booking link automatically") },
   not_planned: { label: msg("Not planned yet"), color: "#f59e0b", hint: msg("No booking yet: reminders after 24 and 72 hours") },
   planned: { label: msg("Planned"), color: "#16a34a", hint: msg("Viewing booked") },

@@ -3,7 +3,7 @@ import type { LeadSource } from "@viewing/db/schema";
 import { z } from "zod";
 import { recordEvent } from "../events";
 import { MAX_BOOKING_REMINDERS } from "../automations/rules";
-import { invitesClient, requestStatus, requestStages, type RequestReason, type RequestStage } from "../planner/requests";
+import { invitesClient, needsPerson, requestStatus, requestStages, type RequestReason, type RequestStage } from "../planner/requests";
 import { defineTool, type ToolContext } from "../tool";
 
 /*
@@ -223,7 +223,8 @@ async function loadBoard(ctx: ToolContext, now: Date) {
       items.push({
         id: c.id,
         kind: "message",
-        stage: "needs_you",
+        // About to go out once approved: it sits with the requests we contacted, marked as waiting for an OK.
+        stage: "contacted",
         reason: "draft",
         source: null,
         contact: person
@@ -250,7 +251,7 @@ async function loadBoard(ctx: ToolContext, now: Date) {
 export const listRequests = defineTool({
   name: "requests_list",
   description:
-    "The viewing requests board: every request from the website, contact forms and the portals, by stage (needs you, contacted, not planned yet, planned, visited, closed), with why a person is needed and counts per stage.",
+    "The viewing requests board: every request from the website, contact forms and the portals, by stage (contacted, not planned yet, planned, visited, closed), with counts per stage. The rare request a person must act on (no email, unknown or unavailable listing, failed delivery, a message set to Ask me first) stays in its stage with a reason.",
   mutates: false,
   input: z.object({ stage: z.enum(requestStages).optional() }),
   run: async (ctx, input) => {
@@ -260,8 +261,8 @@ export const listRequests = defineTool({
     const order = (i: RequestItem) => (i.stage === "planned" && i.viewing ? -i.viewing.startsAt.getTime() : i.activityAt.getTime());
     const items = all
       .filter((i) => !input.stage || i.stage === input.stage)
-      // Planned: soonest viewing first. Everything else: latest activity first.
-      .sort((a, b) => order(b) - order(a));
+      // The few that need a person first; then planned: soonest viewing first, everything else: latest activity first.
+      .sort((a, b) => Number(needsPerson(b)) - Number(needsPerson(a)) || order(b) - order(a));
     return { items, counts };
   },
 });
