@@ -19,12 +19,7 @@ type Conversation = NonNullable<Awaited<ReturnType<typeof tools.getConversation.
 /** What a person should do, in a sentence, per reason the request waits. */
 const needsYouText: Record<string, (t: T, name: string) => string> = {
   draft: (t) => t("This message goes out after your OK (you set it to “Ask me first” in Settings). Check it and send it."),
-  question: (t, name) => t("{name} asked a question without asking to visit, so no booking link went out. Answer from your own mailbox, then mark it as handled.", { name }),
-  phone_only: (t, name) => t("{name} left no email address, so nothing went out automatically. Call them to plan the viewing, or book it for them.", { name }),
-  listing_unknown: (t) => t("We couldn't tell which listing this is about, so no booking link went out. Contact them yourself."),
-  listing_unavailable: (t) => t("The listing is under option, sold or off the website, so no booking link went out."),
   not_delivered: (t) => t("Our last message didn't reach them. Call them, or email them from your own mailbox."),
-  not_contacted: (t) => t("Nothing went out automatically. Contact them yourself."),
 };
 
 export default async function RequestPage({ params }: { params: Promise<{ id: string }> }) {

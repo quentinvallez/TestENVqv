@@ -99,7 +99,18 @@ export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage
   return { stage: "contacted", reason: attention };
 }
 
-/** Whether an open request needs a person: a reason on any stage but closed. */
+/**
+ * Requests nothing went out for automatically (no email, unknown or unavailable listing, a plain question).
+ * They stay off the board (owner's request): the lead email is in the agent's own mailbox, and the agent handles it there.
+ */
+const leftToMailbox = new Set<RequestReason>(["question", "phone_only", "listing_unknown", "listing_unavailable", "not_contacted"]);
+
+/** Whether a request is shown on the board at all. */
+export function onBoard(item: { stage: RequestStage; reason: RequestReason | null }) {
+  return item.stage === "closed" || !item.reason || !leftToMailbox.has(item.reason);
+}
+
+/** Whether an open request on the board needs a person: one of our own messages waits for an OK, or didn't arrive. */
 export function needsPerson(item: { stage: RequestStage; reason: RequestReason | null }) {
   return item.stage !== "closed" && item.reason !== null;
 }
