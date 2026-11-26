@@ -236,7 +236,7 @@ export default async function SettingsPage() {
                     </Pill>
                   </div>
                   <p className="mt-0.5 max-w-xl text-muted">
-                    {t("When an Immoweb, Zimmo, Immovlan or Immoscoop lead, or your website's contact form, asks to visit an active listing, the planner replies right away with free times and the listing's booking link. Fixed text in the client's language; the AI only recognises the request. Listings under option or sold and plain questions are marked in red under Viewing requests.")}
+                    {t("When an Immoweb, Zimmo, Immovlan or Immoscoop lead, or your website's contact form, asks to visit an active listing, the planner replies right away with free times and the listing's booking link. Fixed text in the client's language; the AI only recognises the request. Listings under option or sold and plain questions stay in your mailbox, off the Viewing requests board.")}
                   </p>
                 </div>
                 <form action={updateAutomationsAction.bind(null, { replyToPortalLeadsAutomatically: !automations.replyToPortalLeadsAutomatically })} className="shrink-0">

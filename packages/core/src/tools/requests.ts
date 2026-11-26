@@ -3,7 +3,7 @@ import type { LeadSource } from "@viewing/db/schema";
 import { z } from "zod";
 import { recordEvent } from "../events";
 import { MAX_BOOKING_REMINDERS } from "../automations/rules";
-import { invitesClient, needsPerson, requestStatus, requestStages, type RequestReason, type RequestStage } from "../planner/requests";
+import { invitesClient, needsPerson, onBoard, requestStatus, requestStages, type RequestReason, type RequestStage } from "../planner/requests";
 import { defineTool, type ToolContext } from "../tool";
 
 /*
@@ -245,7 +245,8 @@ async function loadBoard(ctx: ToolContext, now: Date) {
       });
     }
   }
-  return items;
+  // What nothing went out for automatically stays in the agent's mailbox, not on the board.
+  return items.filter(onBoard);
 }
 
 export const listRequests = defineTool({

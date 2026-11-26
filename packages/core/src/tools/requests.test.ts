@@ -82,14 +82,14 @@ describe.skipIf(!process.env.DATABASE_URL)("viewing requests board", () => {
     expect(await item(result.leadId)).toMatchObject({ stage: "closed", reason: "no_response" });
   });
 
-  it("flags a question without a visit request, and a phone-only portal lead, in not planned yet", async () => {
+  it("leaves a question without a visit request, and a phone-only portal lead, to the agent's mailbox", async () => {
     const question = await runTool(tools.receiveEmail, ctx, form(2, "Wat is het kadastraal inkomen?"));
     if (question.kind !== "website_form") throw new Error("not a website form");
     expect(question.autoReplied).toBeNull();
-    expect(await item(question.leadId)).toMatchObject({ stage: "not_planned", reason: "question", draft: null });
+    expect(await item(question.leadId)).toBeUndefined();
 
     const phoneOnly = await runTool(tools.receivePortalLead, ctx, { portal: "zimmo", name: "Bart Bel", phone: "0477 11 22 33", listingId, visitRequested: true, useAi: false });
-    expect(await item(phoneOnly.leadId)).toMatchObject({ stage: "not_planned", reason: "phone_only", source: "zimmo" });
+    expect(await item(phoneOnly.leadId)).toBeUndefined();
 
     // The agent called: contacted. Then the client says no: closed.
     await runTool(tools.markRequest, ctx, { id: phoneOnly.leadId, action: "handled" });

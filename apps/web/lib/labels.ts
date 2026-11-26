@@ -21,12 +21,7 @@ export const requestStageMeta = {
 
 export const requestReasonLabel: Record<string, string> = {
   draft: msg("Waits for your OK"),
-  question: msg("Question: answer from your mailbox"),
-  phone_only: msg("No email address: call them"),
-  listing_unknown: msg("Listing not recognised"),
-  listing_unavailable: msg("Listing not on offer"),
   not_delivered: msg("Our message didn't arrive"),
-  not_contacted: msg("Not contacted yet"),
   no_response: msg("No response after two reminders"),
   not_interested: msg("Not interested"),
   won: msg("Deal done"),

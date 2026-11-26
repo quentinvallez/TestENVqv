@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invitesClient, requestStatus, type RequestFacts } from "./requests";
+import { invitesClient, onBoard, requestStatus, type RequestFacts } from "./requests";
 
 const HOUR = 3600 * 1000;
 const now = new Date("2026-11-20T15:00:00Z");
@@ -80,6 +80,18 @@ describe("requestStatus", () => {
   it("keeps closed requests closed", () => {
     expect(status({ leadStage: "lost", pendingDraft: true })).toEqual({ stage: "closed", reason: "not_interested" });
     expect(status({ leadStage: "won" })).toEqual({ stage: "closed", reason: "won" });
+  });
+});
+
+describe("onBoard", () => {
+  it("leaves what nothing went out for to the agent's mailbox, and keeps our own drafts and failed messages", () => {
+    expect(onBoard(status({ hasEmail: false }))).toBe(false);
+    expect(onBoard(status({ question: true }))).toBe(false);
+    expect(onBoard(status({ listingStatus: null }))).toBe(false);
+    expect(onBoard(status({ pendingDraft: true }))).toBe(true);
+    expect(onBoard(status({ leadStage: "invited", invitedAt: ago(30), lastDeliveryFailed: true }))).toBe(true);
+    expect(onBoard(status({ leadStage: "invited", invitedAt: ago(3) }))).toBe(true);
+    expect(onBoard(status({ leadStage: "lost" }))).toBe(true);
   });
 });
 
