@@ -99,7 +99,7 @@ export default async function SettingsPage() {
       on: automations.repliesToAgent,
       title: t("Client replies go to the agent's mailbox"),
       description: t(
-        "When a client answers an email, the reply lands in the agent's own Outlook or Gmail, and the agent answers from there. The app keeps a silent copy, only so reminders and check-ins stop for clients who already answered. Turn off to answer replies in the app instead, with a drafted reply under Viewing requests → Needs you.",
+        "When a client answers an email, the reply lands in the agent's own Outlook or Gmail, and the agent answers from there. The app keeps a silent copy, only so reminders and check-ins stop for clients who already answered. Turn off to answer replies in the app instead, with a drafted reply on the request under Viewing requests.",
       ),
     },
     {
@@ -225,7 +225,7 @@ export default async function SettingsPage() {
               <Sparkles className="size-4 text-ai" />
               {t("Agent autonomy")}
             </h2>
-            <p className="mb-2 text-muted">{t("Choose what the planner may do on its own. Anything set to “Ask me first” waits under Viewing requests → Needs you.")}</p>
+            <p className="mb-2 text-muted">{t("Choose what the planner may do on its own. Anything set to “Ask me first” waits for your OK on the request, marked in red under Viewing requests.")}</p>
             <Panel className="divide-y divide-line">
               <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -236,7 +236,7 @@ export default async function SettingsPage() {
                     </Pill>
                   </div>
                   <p className="mt-0.5 max-w-xl text-muted">
-                    {t("When an Immoweb, Zimmo, Immovlan or Immoscoop lead, or your website's contact form, asks to visit an active listing, the planner replies right away with free times and the listing's booking link. Fixed text in the client's language; the AI only recognises the request. Listings under option or sold and plain questions show under Viewing requests → Needs you.")}
+                    {t("When an Immoweb, Zimmo, Immovlan or Immoscoop lead, or your website's contact form, asks to visit an active listing, the planner replies right away with free times and the listing's booking link. Fixed text in the client's language; the AI only recognises the request. Listings under option or sold and plain questions are marked in red under Viewing requests.")}
                   </p>
                 </div>
                 <form action={updateAutomationsAction.bind(null, { replyToPortalLeadsAutomatically: !automations.replyToPortalLeadsAutomatically })} className="shrink-0">
@@ -278,7 +278,7 @@ export default async function SettingsPage() {
                 </Button>
               </form>
             </div>
-            <p className="mb-2 text-muted">{t("These jobs run on their own and send their messages automatically, in fixed text in the client's language. Set any of them to “Ask me first” to approve each message under Viewing requests → Needs you instead.")}</p>
+            <p className="mb-2 text-muted">{t("These jobs run on their own and send their messages automatically, in fixed text in the client's language. Set any of them to “Ask me first” to approve each message on its request under Viewing requests instead.")}</p>
             <Panel className="divide-y divide-line">
               {jobs.map((job) => (
                 <div key={job.key} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">

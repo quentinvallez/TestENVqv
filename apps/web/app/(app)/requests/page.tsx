@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requestStages, runTool, tools, type RequestItem, type RequestStage } from "@viewing/core";
+import { needsPerson, requestStages, runTool, tools, type RequestItem, type RequestStage } from "@viewing/core";
 import { Building2, CheckCheck, Clock } from "lucide-react";
 import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
 import { Avatar, EmptyState, PageHeader, Pill, StatusDot } from "@/components/ui";
@@ -13,7 +13,7 @@ import { simulateMessageAction } from "./actions";
 import { SimulateMessage } from "./simulate";
 
 /** The board's columns; closed requests sit behind their own tab. */
-const columns: RequestStage[] = ["needs_you", "contacted", "not_planned", "planned", "visited"];
+const columns: RequestStage[] = ["contacted", "not_planned", "planned", "visited"];
 
 export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
   const params = await searchParams;
@@ -21,8 +21,8 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   const t = await getT();
   const [{ items, counts }, listings] = await Promise.all([runTool(tools.listRequests, ctx, {}), runTool(tools.listListings, ctx, { status: "active" })]);
   const stage: RequestStage | null = requestStages.includes(params.stage as RequestStage) ? (params.stage as RequestStage) : null;
-  // Phones show one stage at a time: the one asked for, else the first that needs attention.
-  const phoneStage = stage ?? (counts.needs_you ? "needs_you" : "contacted");
+  // Phones show one stage at a time: the one asked for, else the first.
+  const phoneStage = stage ?? "contacted";
   const showClosed = stage === "closed";
   const href = (s: RequestStage | null) => (s ? `/requests?stage=${s}` : "/requests");
 
@@ -117,7 +117,6 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
 
 function EmptyStage({ t, stage }: { t: T; stage: RequestStage }) {
   const text: Record<RequestStage, string> = {
-    needs_you: t("Every request is on its way. Nothing for you to do."),
     contacted: t("No one is waiting on their booking link."),
     not_planned: t("Everyone who got a link has booked."),
     planned: t("No viewings planned yet."),
@@ -129,9 +128,9 @@ function EmptyStage({ t, stage }: { t: T; stage: RequestStage }) {
 
 /** What the card says about where the request stands. */
 function statusLine(t: T, item: RequestItem): { text: string; tone?: "danger" | "muted" } {
+  // The rare request a person must act on says why, in red, in whatever stage it is.
+  if (needsPerson(item)) return { text: item.draft && item.reason === "draft" ? item.draft.summary : t(requestReasonLabel[item.reason!]!), tone: "danger" };
   switch (item.stage) {
-    case "needs_you":
-      return { text: item.draft && item.reason === "draft" ? item.draft.summary : t(requestReasonLabel[item.reason ?? "not_contacted"]!), tone: "danger" };
     case "contacted":
       return { text: item.invitedAt ? t("Booking link sent {when}", { when: t.relative(item.invitedAt) }) : t("Contacted by phone") };
     case "not_planned":
@@ -176,10 +175,10 @@ function RequestCard({ t, item }: { t: T; item: RequestItem }) {
         </div>
       )}
       <div className={cn("mt-2 flex items-start gap-1.5 text-[12px]", status.tone === "danger" ? "text-danger" : status.tone === "muted" ? "text-muted" : "text-fg")}>
-        <StatusDot color={requestStageMeta[item.stage].color} className="mt-[5px] size-1.5 shrink-0" />
+        <StatusDot color={status.tone === "danger" ? "var(--danger)" : requestStageMeta[item.stage].color} className="mt-[5px] size-1.5 shrink-0" />
         <span className="line-clamp-2">{status.text}</span>
       </div>
-      {item.stage === "needs_you" && item.message && <p className="mt-1.5 line-clamp-2 text-[12px] text-muted">“{item.message}”</p>}
+      {needsPerson(item) && item.message && <p className="mt-1.5 line-clamp-2 text-[12px] text-muted">“{item.message}”</p>}
       <footer className="mt-2.5 flex items-center justify-between text-[12px] text-faint">
         <span className="flex items-center gap-1" title={t("When the request came in")}>
           <Clock className="size-3.5" />

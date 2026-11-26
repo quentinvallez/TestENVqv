@@ -18,10 +18,13 @@ export const NO_RESPONSE_WITHOUT_REMINDER = 7 * DAY;
 /** A request this new with nothing sent yet: the automatic email is still on its way. */
 export const AUTO_REPLY_GRACE = 15 * 60 * 1000;
 
-export const requestStages = ["needs_you", "contacted", "not_planned", "planned", "visited", "closed"] as const;
+export const requestStages = ["contacted", "not_planned", "planned", "visited", "closed"] as const;
 export type RequestStage = (typeof requestStages)[number];
 
-/** Why a request waits for a person (stage "needs_you"), or why it closed. */
+/**
+ * Why an open request needs a person (shown as one red line on its card, in whatever
+ * stage it is), or why it closed. Rare: every visit request is contacted automatically.
+ */
 export type RequestReason =
   | "draft" // one of our own messages waits for approval ("Ask me first")
   | "question" // they asked a question without asking to visit: the agent answers from their own mailbox
@@ -62,35 +65,43 @@ export function requestStatus(f: RequestFacts, now: Date): { stage: RequestStage
   if (f.leadStage === "lost") return { stage: "closed", reason: "not_interested" };
   if (f.leadStage === "won") return { stage: "closed", reason: "won" };
 
-  // No email address and nothing sent: a draft can't reach them either, someone has to call.
-  if (f.leadStage === "new" && !f.invitedAt && !f.hasEmail && !f.hasUpcomingViewing) return { stage: "needs_you", reason: f.hasPhone ? "phone_only" : "not_contacted" };
-  // Anything a person has to do comes first, wherever the request stood.
+  // There is no separate "needs you" list: a request stays in its stage and carries the reason a person is needed.
   // Clients' own replies are not here: they go to the agent's mailbox and are answered there.
-  if (f.pendingDraft) return { stage: "needs_you", reason: "draft" };
-  if (f.lastDeliveryFailed) return { stage: "needs_you", reason: "not_delivered" };
+  const attention: RequestReason | null = f.pendingDraft ? "draft" : f.lastDeliveryFailed ? "not_delivered" : null;
 
-  if (f.hasUpcomingViewing || f.leadStage === "booked") return { stage: "planned", reason: null };
-  if (f.hasPastViewing || f.leadStage === "visited" || f.leadStage === "follow_up" || f.leadStage === "offer") return { stage: "visited", reason: null };
+  if (f.hasUpcomingViewing || f.leadStage === "booked") return { stage: "planned", reason: attention };
+  if (f.hasPastViewing || f.leadStage === "visited" || f.leadStage === "follow_up" || f.leadStage === "offer") return { stage: "visited", reason: attention };
 
   if (!f.invitedAt) {
-    if (f.leadStage === "invited") return { stage: "contacted", reason: null }; // marked as contacted (by phone)
-    if (now.getTime() - f.createdAt.getTime() < AUTO_REPLY_GRACE && f.hasEmail && !f.question) return { stage: "contacted", reason: null };
-    if (!f.hasEmail) return { stage: "needs_you", reason: f.hasPhone ? "phone_only" : "not_contacted" };
-    if (f.listingStatus === null) return { stage: "needs_you", reason: "listing_unknown" };
-    if (f.listingStatus !== "active") return { stage: "needs_you", reason: "listing_unavailable" };
-    return { stage: "needs_you", reason: f.question ? "question" : "not_contacted" };
+    if (f.leadStage === "invited") return { stage: "contacted", reason: attention }; // marked as contacted (by phone)
+    if (now.getTime() - f.createdAt.getTime() < AUTO_REPLY_GRACE && f.hasEmail && !f.question) return { stage: "contacted", reason: attention };
+    // Nothing went out automatically: not planned yet, with why. No email address comes first, since a draft can't reach them either.
+    const why: RequestReason = !f.hasEmail
+      ? f.hasPhone
+        ? "phone_only"
+        : "not_contacted"
+      : (attention ??
+        (f.listingStatus === null ? "listing_unknown" : f.listingStatus !== "active" ? "listing_unavailable" : f.question ? "question" : "not_contacted"));
+    return { stage: "not_planned", reason: why };
   }
 
   const since = now.getTime() - f.invitedAt.getTime();
+  // A request that waits for a person never closes on its own: the client may never have seen the link.
+  const mayClose = !attention;
   if (f.remindedAt && f.remindedAt >= f.invitedAt) {
     // Closed only once the last reminder has had its time; until then the next reminder is still to come.
-    if (f.reminders >= f.maxReminders && now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_AFTER_REMINDER) return { stage: "closed", reason: "no_response" };
-    if (now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };
-    return { stage: "not_planned", reason: null };
+    if (mayClose && f.reminders >= f.maxReminders && now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_AFTER_REMINDER) return { stage: "closed", reason: "no_response" };
+    if (mayClose && now.getTime() - f.remindedAt.getTime() >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };
+    return { stage: "not_planned", reason: attention };
   }
-  if (since >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };
-  if (since >= NOT_PLANNED_AFTER) return { stage: "not_planned", reason: null };
-  return { stage: "contacted", reason: null };
+  if (mayClose && since >= NO_RESPONSE_WITHOUT_REMINDER) return { stage: "closed", reason: "no_response" };
+  if (since >= NOT_PLANNED_AFTER) return { stage: "not_planned", reason: attention };
+  return { stage: "contacted", reason: attention };
+}
+
+/** Whether an open request needs a person: a reason on any stage but closed. */
+export function needsPerson(item: { stage: RequestStage; reason: RequestReason | null }) {
+  return item.stage !== "closed" && item.reason !== null;
 }
 
 /**

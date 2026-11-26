@@ -11,7 +11,7 @@ import { LanguagePicker } from "./language-picker";
 import { navItemActive, navSections } from "./nav";
 import { openCommandMenu } from "./command-menu";
 
-export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { agencyName: string; userName: string; myAgentId: string | null; needsYouCount: number }) {
+export function Sidebar({ agencyName, userName, myAgentId }: { agencyName: string; userName: string; myAgentId: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
@@ -53,9 +53,6 @@ export function Sidebar({ agencyName, userName, myAgentId, needsYouCount }: { ag
               >
                 <item.icon className="size-4" strokeWidth={1.75} />
                 <span className="flex-1">{t(item.label)}</span>
-                {item.href === "/requests" && needsYouCount > 0 && (
-                  <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium text-danger tabular-nums" title={t("Requests that need you")}>{needsYouCount}</span>
-                )}
               </Link>
             ))}
           </div>

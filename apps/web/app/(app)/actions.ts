@@ -89,7 +89,7 @@ export async function suggestListingsAction(contactId: string) {
 export async function suggestToMatchesAction(listingId: string) {
   await runTool(tools.suggestListingToMatches, await getToolContext(), { listingId });
   revalidatePath("/", "layout");
-  redirect("/requests?stage=needs_you");
+  redirect("/requests");
 }
 
 export async function setValuationLauncherAction(on: boolean) {

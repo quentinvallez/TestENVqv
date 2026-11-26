@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { aiAvailable, ownMessageDraft, runTool, tools, type RequestItem } from "@viewing/core";
+import { aiAvailable, needsPerson, ownMessageDraft, runTool, tools, type RequestItem } from "@viewing/core";
 import { Building2, CalendarPlus, Check, Mail, Phone, RotateCcw, Send, X } from "lucide-react";
 import { BookingAnswers } from "@/components/booking-answers";
 import { leadOrigin, LeadSourcePill } from "@/components/lead-source";
@@ -111,7 +111,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 
           <Panel className="p-4">
             <NextStep t={t} item={item} firstName={firstName} />
-            {item.stage === "needs_you" && item.message && item.kind === "lead" && (
+            {needsPerson(item) && item.message && item.kind === "lead" && (
               <blockquote className="mt-3 border-l-2 border-line pl-3 whitespace-pre-line text-muted">{item.message}</blockquote>
             )}
 
@@ -151,7 +151,7 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   {t("Book a viewing")}
                 </Link>
               )}
-              {item.stage === "needs_you" && (
+              {needsPerson(item) && (
                 <form action={markRequestAction.bind(null, item.id, "handled")}>
                   <Button className="h-10 sm:h-8">
                     <Check className="size-3.5" />
@@ -210,14 +210,15 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
 
 function NextStep({ t, item, firstName }: { t: T; item: RequestItem; firstName: string }) {
   const viewing = item.viewing;
+  // The rare request a person must act on: what to do comes first, whatever its stage.
+  if (needsPerson(item))
+    return (
+      <div>
+        <p className="font-medium text-danger">{t(requestReasonLabel[item.reason!]!)}</p>
+        <p className="mt-0.5 text-muted">{needsYouText[item.reason!]?.(t, firstName)}</p>
+      </div>
+    );
   switch (item.stage) {
-    case "needs_you":
-      return (
-        <div>
-          <p className="font-medium text-danger">{t(requestReasonLabel[item.reason ?? "not_contacted"]!)}</p>
-          <p className="mt-0.5 text-muted">{needsYouText[item.reason ?? "not_contacted"]?.(t, firstName)}</p>
-        </div>
-      );
     case "contacted":
       return (
         <div>

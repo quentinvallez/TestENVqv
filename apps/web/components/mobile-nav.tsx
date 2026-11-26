@@ -20,7 +20,7 @@ const tabs = [
 ];
 
 /** Bottom tab bar on phones, with everything else behind "More". */
-export function MobileTabBar({ agencyName, userName, myAgentId, needsYouCount }: { agencyName: string; userName: string; myAgentId: string | null; needsYouCount: number }) {
+export function MobileTabBar({ agencyName, userName, myAgentId }: { agencyName: string; userName: string; myAgentId: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const t = useT();
@@ -40,11 +40,6 @@ export function MobileTabBar({ agencyName, userName, myAgentId, needsYouCount }:
           >
             <tab.icon className="size-5" strokeWidth={navItemActive(tab, pathname) ? 2.25 : 1.75} />
             {t(tab.label)}
-            {tab.href === "/requests" && needsYouCount > 0 && (
-              <span className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] leading-4 font-semibold text-white tabular-nums">
-                {needsYouCount}
-              </span>
-            )}
           </Link>
         ))}
         <button

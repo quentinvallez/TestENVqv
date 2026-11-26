@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/client";
 
 const field = "h-8 w-full rounded-md border border-line bg-panel px-2 outline-none focus:border-line-strong";
 
-/** Adds the owner or tenant; the invitation with their link waits under Viewing requests → Needs you for approval. */
+/** Adds the owner or tenant; the invitation with their link waits for approval under Viewing requests. */
 export function OccupantForm({ defaultRole, action }: { defaultRole: "owner" | "tenant"; action: (state: OccupantState, form: FormData) => Promise<OccupantState> }) {
   const t = useT();
   const [state, formAction, pending] = useActionState(action, undefined);
@@ -37,7 +37,7 @@ export function OccupantForm({ defaultRole, action }: { defaultRole: "owner" | "
         <Button variant="primary" disabled={pending}>
           {pending ? t("Adding…") : t("Add and draft invitation")}
         </Button>
-        {state?.added && <span className="text-success">{t("Added. The invitation with their link waits under Viewing requests → Needs you.")}</span>}
+        {state?.added && <span className="text-success">{t("Added. The invitation with their link waits for your OK under Viewing requests.")}</span>}
         {state?.error && <span className="text-danger">{state.error}</span>}
       </div>
     </form>
